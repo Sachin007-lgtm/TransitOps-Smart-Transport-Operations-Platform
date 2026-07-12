@@ -54,33 +54,39 @@
   overflow: hidden;
 }
 
-.brand-badge {
+.logo-box {
   min-width: 32px;
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: #ffc857; /* Gold */
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 1.25rem;
-  color: white;
   flex-shrink: 0;
-  transition: background-color var(--transition-fast);
 }
 
-.sidebar.collapsed .brand-badge {
-  background-color: transparent;
+.logo-svg {
+  width: 18px;
+  height: 18px;
+  color: var(--plum-3, #432b38);
 }
 
-.brand-text {
+.sidebar.collapsed .logo-box {
+  /* keep it gold even when collapsed */
+}
+
+.logo-text {
   white-space: nowrap;
+  color: white;
+  font-family: 'Sora', var(--font-primary);
+  font-weight: 700;
+  font-size: 1.2rem;
   opacity: 1;
   transition: opacity var(--transition-normal), width var(--transition-normal);
 }
 
-.sidebar.collapsed .brand-text {
+.sidebar.collapsed .logo-text {
   opacity: 0;
   width: 0;
 }

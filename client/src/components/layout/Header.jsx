@@ -135,7 +135,7 @@ export default function Header() {
         {/* User Block */}
         <div className="relative" ref={userRef}>
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => togglePopover('user')}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--blue)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#7c4fd6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
               RK
             </div>
             <div className="header-profile-text">
