@@ -9,6 +9,7 @@ const tripRoutes    = require('./tripRoutes');
 const maintenanceRoutes = require('./maintenanceRoutes');
 const fuelRoutes = require('./fuelRoutes');
 const expenseRoutes = require('./expenseRoutes');
+const reportRoutes = require('./reportRoutes');
 
 router.use('/auth',     authRoutes);
 router.use('/vehicles', vehicleRoutes);
@@ -17,5 +18,6 @@ router.use('/trips',    tripRoutes);
 router.use('/maintenance', maintenanceRoutes);
 router.use('/fuel', fuelRoutes);
 router.use('/expenses', expenseRoutes);
+router.use('/reports', reportRoutes);
 
 module.exports = router;
