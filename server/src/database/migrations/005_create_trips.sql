@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS trips (
   cargo_weight DECIMAL(10, 2) NOT NULL,
   planned_distance DECIMAL(10, 2) NOT NULL,
   actual_distance DECIMAL(10, 2),
+  revenue DECIMAL(10, 2) DEFAULT 0.00,
   status VARCHAR(20) DEFAULT 'Draft' CHECK (status IN ('Draft', 'Dispatched', 'Completed', 'Cancelled')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
