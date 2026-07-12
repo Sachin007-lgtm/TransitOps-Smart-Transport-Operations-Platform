@@ -1,0 +1,2 @@
+validateUpdateVehicle: validate(updateVehicleSchema)
+};
