@@ -6,11 +6,12 @@ const vehicleRoutes = require('./vehicleRoutes');
 const driverRoutes  = require('./driverRoutes');
 const tripRoutes    = require('./tripRoutes');
 
+const maintenanceRoutes = require('./maintenanceRoutes');
+
 router.use('/auth',     authRoutes);
 router.use('/vehicles', vehicleRoutes);
 router.use('/drivers',  driverRoutes);
 router.use('/trips',    tripRoutes);
-
-// Additional routes for Maintenance, Fuel, Expenses, and Reports will be registered here.
+router.use('/maintenance', maintenanceRoutes);
 
 module.exports = router;
