@@ -1,41 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, AreaChart, Area } from 'recharts';
+import { apiRequest } from '../utils/api';
 
-// --- Helper: Count Up Hook ---
-function useCountUp(end, duration = 1000, startDelay = 0) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    let startTime;
-    let animationFrame;
-    let timeout;
-
-    const updateCount = (timestamp) => {
-      if (!startTime) startTime = timestamp;
-      const progress = timestamp - startTime;
-      
-      if (progress < duration) {
-        setCount(Math.min(end, Math.floor((progress / duration) * end)));
-        animationFrame = requestAnimationFrame(updateCount);
-      } else {
-        setCount(end);
-      }
-    };
-
-    timeout = setTimeout(() => {
-      animationFrame = requestAnimationFrame(updateCount);
-    }, startDelay);
-
-    return () => {
-      clearTimeout(timeout);
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-    };
-  }, [end, duration, startDelay]);
-
-  return count;
-}
-
-// --- Mock Data ---
+// --- Sparkline default helper data ---
 const sparklineData1 = [{ v: 45 }, { v: 48 }, { v: 50 }, { v: 49 }, { v: 51 }, { v: 52 }, { v: 53 }];
 const sparklineData2 = [{ v: 35 }, { v: 38 }, { v: 40 }, { v: 43 }, { v: 41 }, { v: 42 }, { v: 42 }];
 const fuelData = [
@@ -45,25 +12,27 @@ const fuelData = [
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const [dispatchAnim, setDispatchAnim] = useState(false);
-
-  // Staggered KPI counts
-  const activeVehicles = useCountUp(53, 1000, 0);
-  const availableVehicles = useCountUp(42, 1000, 200);
-  const maintVehicles = useCountUp(5, 1000, 400);
-  const activeTrips = useCountUp(18, 1000, 600);
+  const [stats, setStats] = useState(null);
+  const [trips, setTrips] = useState([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    // Simulate async data fetching
-    const timer = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(timer);
+    async function loadDashboardData() {
+      try {
+        const statsRes = await apiRequest('GET', '/reports/dashboard');
+        setStats(statsRes.data);
+        
+        const tripsRes = await apiRequest('GET', '/trips');
+        setTrips(tripsRes.data || []);
+      } catch (err) {
+        console.error('Failed to load dashboard data:', err);
+        setError('Failed to fetch real-time dashboard data.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadDashboardData();
   }, []);
-
-  // Simulate a status morphing dispatch event
-  const triggerDispatch = () => {
-    setDispatchAnim(true);
-    setTimeout(() => setDispatchAnim(false), 2000);
-  };
 
   if (loading) {
     return (
@@ -83,15 +52,18 @@ export default function Dashboard() {
     );
   }
 
+  // Extracted metrics
+  const activeVehicles = stats?.vehicles?.vehicles_on_trip || 0;
+  const availableVehicles = stats?.vehicles?.available_vehicles || 0;
+  const maintVehicles = stats?.vehicles?.vehicles_in_shop || 0;
+  const activeTrips = stats?.trips?.active_trips || 0;
+  const netProfit = stats?.financials?.net_profit || 0;
+
   return (
     <div className="fade-in">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl heading">Control Tower</h1>
-        <div className="flex gap-4">
-          <button className="btn btn-primary pulse-blue" onClick={triggerDispatch}>
-            Simulate Dispatch
-          </button>
-        </div>
+        {error && <span className="text-xs text-status-red">{error}</span>}
       </div>
 
       {/* KPI Grid */}
@@ -101,10 +73,10 @@ export default function Dashboard() {
         <div className="card kpi-card" style={{ paddingBottom: '0' }}>
           <div className="text-muted text-xs font-semibold uppercase tracking-wider mb-1">Active Vehicles</div>
           <div className="text-3xl font-bold mono kpi-value mb-2">{activeVehicles}</div>
-          <div style={{ height: '40px', width: '100%', marginLeft: '-1.5rem', marginRight: '-1.5rem', width: 'calc(100% + 3rem)' }}>
+          <div style={{ height: '40px', marginLeft: '-1.5rem', marginRight: '-1.5rem', width: 'calc(100% + 3rem)' }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={sparklineData1}>
-                <Line type="monotone" dataKey="v" stroke="var(--accent-purple)" strokeWidth={2} dot={false} isAnimationActive={true} />
+                <Line type="monotone" dataKey="v" stroke="var(--accent-purple)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -128,7 +100,7 @@ export default function Dashboard() {
           <div className="text-muted text-xs font-semibold uppercase tracking-wider mb-1">In Maintenance</div>
           <div className="text-3xl font-bold mono kpi-value">{maintVehicles}</div>
           <div className="text-xs text-status-orange mt-2 flex items-center gap-1 font-medium">
-            <span role="img" aria-label="lock">🔒</span> Auto-locked from dispatch
+            🔒 Auto-locked from dispatch
           </div>
         </div>
 
@@ -149,36 +121,20 @@ export default function Dashboard() {
           <div className="card">
             <h2 className="heading text-lg mb-4">Live Route-Map</h2>
             <div className="route-map-panel">
-              {/* Route 1 */}
-              <div className="route-row">
-                <div className="mono text-xs w-16">TR001</div>
-                <div className="route-visual">
-                  <div className="route-node-start"></div>
-                  <div className="route-dot" style={{ left: '40%' }}></div>
-                  <div className="route-node-end"></div>
+              {trips.filter(t => t.status === 'Dispatched').slice(0, 3).map((trip, idx) => (
+                <div className="route-row" key={trip.id}>
+                  <div className="mono text-xs w-16">TR-{trip.id}</div>
+                  <div className="route-visual">
+                    <div className="route-node-start"></div>
+                    <div className="route-dot" style={{ left: idx === 0 ? '40%' : idx === 1 ? '70%' : '15%' }}></div>
+                    <div className="route-node-end"></div>
+                  </div>
+                  <div className="text-xs font-medium w-32 text-right">{trip.vehicle_name} / {trip.driver_name}</div>
                 </div>
-                <div className="text-xs font-medium w-32 text-right">VAN-05 / Alex</div>
-              </div>
-              {/* Route 2 */}
-              <div className="route-row">
-                <div className="mono text-xs w-16">TR002</div>
-                <div className="route-visual" style={{ opacity: 0.5 }}>
-                  <div className="route-node-start" style={{ background: 'var(--status-green)' }}></div>
-                  <div className="route-dot" style={{ left: '100%', background: 'var(--status-green)', boxShadow: 'none' }}></div>
-                  <div className="route-node-end"></div>
-                </div>
-                <div className="text-xs font-medium w-32 text-right text-status-green">Completed</div>
-              </div>
-              {/* Route 3 */}
-              <div className="route-row">
-                <div className="mono text-xs w-16">TR003</div>
-                <div className="route-visual">
-                  <div className="route-node-start"></div>
-                  <div className="route-dot" style={{ left: dispatchAnim ? '10%' : '0%', transition: 'left 2s ease' }}></div>
-                  <div className="route-node-end"></div>
-                </div>
-                <div className="text-xs font-medium w-32 text-right">MINI-08 / Priya</div>
-              </div>
+              ))}
+              {trips.filter(t => t.status === 'Dispatched').length === 0 && (
+                <div className="text-xs text-muted py-4 text-center">No dispatched trips currently active.</div>
+              )}
             </div>
           </div>
 
@@ -190,60 +146,37 @@ export default function Dashboard() {
                 <thead>
                   <tr>
                     <th>Trip ID</th>
+                    <th>Source</th>
+                    <th>Destination</th>
                     <th>Vehicle</th>
                     <th>Driver</th>
                     <th>Status</th>
-                    <th>ETA / Progress</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="mono font-medium">TR001</td>
-                    <td>VAN-05</td>
-                    <td>Alex</td>
-                    <td><span className="pill pill-blue">On Trip</span></td>
-                    <td style={{ width: '150px' }}>
-                      <div className="flex justify-between text-xs mono mb-1">
-                        <span>45m</span>
-                        <span>40%</span>
-                      </div>
-                      <div className="eta-progress-container">
-                        <div className="eta-progress-bar" style={{ width: '40%' }}></div>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="mono font-medium">TR002</td>
-                    <td>TRK-12</td>
-                    <td>John</td>
-                    <td><span className="pill pill-green">Completed</span></td>
-                    <td className="text-xs mono text-status-green">Arrived</td>
-                  </tr>
-                  <tr>
-                    <td className="mono font-medium">TR003</td>
-                    <td>MINI-08</td>
-                    <td>Priya</td>
-                    <td>
-                      <span className={`pill ${dispatchAnim ? 'pill-blue morphing-to-blue' : 'pill-gray'}`}>
-                        {dispatchAnim ? 'Dispatched' : 'Draft'}
-                      </span>
-                    </td>
-                    <td style={{ width: '150px' }}>
-                      {dispatchAnim ? (
-                         <>
-                           <div className="flex justify-between text-xs mono mb-1">
-                             <span>1h 10m</span>
-                             <span>10%</span>
-                           </div>
-                           <div className="eta-progress-container">
-                             <div className="eta-progress-bar" style={{ width: '10%' }}></div>
-                           </div>
-                         </>
-                      ) : (
-                        <span className="text-xs text-muted">Awaiting vehicle</span>
-                      )}
-                    </td>
-                  </tr>
+                  {trips.slice(0, 5).map(trip => (
+                    <tr key={trip.id}>
+                      <td className="mono font-medium">TR-{trip.id}</td>
+                      <td>{trip.source}</td>
+                      <td>{trip.destination}</td>
+                      <td>{trip.vehicle_name}</td>
+                      <td>{trip.driver_name}</td>
+                      <td>
+                        <span className={`pill ${
+                          trip.status === 'Completed' ? 'pill-green' : 
+                          trip.status === 'Dispatched' ? 'pill-blue' : 
+                          trip.status === 'Cancelled' ? 'pill-red' : 'pill-gray'
+                        }`}>
+                          {trip.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {trips.length === 0 && (
+                    <tr>
+                      <td colSpan="6" className="text-center text-xs text-muted py-4">No trips found. Create a trip to get started.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -253,14 +186,16 @@ export default function Dashboard() {
         {/* Right Column */}
         <div className="flex-col gap-6">
           
-          {/* Vehicle ROI Widget */}
+          {/* Net Profit Financials Widget */}
           <div className="card" style={{ borderLeft: '4px solid var(--status-green)' }}>
-            <h2 className="heading text-sm uppercase text-muted tracking-wide mb-4">Fleet ROI</h2>
+            <h2 className="heading text-sm uppercase text-muted tracking-wide mb-4">Net Profit</h2>
             <div className="flex items-end gap-2 mb-1">
-              <span className="text-3xl font-bold mono text-status-green">+14.2%</span>
+              <span className="text-3xl font-bold mono text-status-green">
+                ${netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
             </div>
             <p className="text-xs text-muted font-mono bg-app p-2 rounded border border-gray-200 mt-2">
-              (Rev - (Maint + Fuel)) / Cost
+              Revenue - Total Operational Costs
             </p>
           </div>
 
@@ -288,7 +223,6 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
           </div>
-
         </div>
 
       </div>
