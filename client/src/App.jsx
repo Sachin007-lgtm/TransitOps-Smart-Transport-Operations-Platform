@@ -8,6 +8,10 @@ import LoginPage from './pages/auth/LoginPage';
 import { GlobalSearchProvider } from './contexts/GlobalSearchContext';
 
 import TripDispatcher from './pages/TripDispatcher';
+import Maintenance from './pages/Maintenance';
+import FuelExpenses from './pages/FuelExpenses';
+import Analytics from './pages/Analytics';
+import Settings from './pages/Settings';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -69,6 +73,10 @@ function App() {
             <Route path="vehicles" element={<Vehicles />} />
             <Route path="drivers" element={<Drivers />} />
             <Route path="trips" element={<TripDispatcher />} />
+            <Route path="maintenance" element={<Maintenance />} />
+            <Route path="fuel" element={<FuelExpenses />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </GlobalSearchProvider>
