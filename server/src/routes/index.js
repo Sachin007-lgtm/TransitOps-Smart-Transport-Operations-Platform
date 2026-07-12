@@ -1,9 +1,15 @@
 const express = require('express');
 const router = express.Router();
 
-const tripRoutes = require('./tripRoutes');
+const authRoutes    = require('./authRoutes');
+const vehicleRoutes = require('./vehicleRoutes');
+const driverRoutes  = require('./driverRoutes');
+const tripRoutes    = require('./tripRoutes');
 
-router.use('/trips', tripRoutes);
+router.use('/auth',     authRoutes);
+router.use('/vehicles', vehicleRoutes);
+router.use('/drivers',  driverRoutes);
+router.use('/trips',    tripRoutes);
 
 // Additional routes for Maintenance, Fuel, Expenses, and Reports will be registered here.
 
