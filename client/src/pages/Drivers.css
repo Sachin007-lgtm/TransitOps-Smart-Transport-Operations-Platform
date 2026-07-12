@@ -1,0 +1,208 @@
+/* Table Styles */
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.roster-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.roster-table td {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.roster-table tr:last-child td {
+  border-bottom: none;
+}
+
+.roster-table tr:hover {
+  background-color: var(--bg);
+}
+
+.btn-amber-gradient {
+  background: linear-gradient(135deg, var(--amber) 0%, #c47614 100%);
+  color: white;
+  border: none;
+  border-radius: 9999px;
+  transition: all 0.2s ease;
+}
+
+.btn-amber-gradient:hover {
+  background: linear-gradient(135deg, #c47614 0%, #b06912 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(224, 138, 30, 0.2);
+}
+
+/* Driver Avatar */
+.driver-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Category Pill (Indigo) */
+.pill-indigo {
+  color: var(--indigo);
+  background-color: var(--indigo-bg);
+  border: 1px solid rgba(106, 90, 205, 0.2);
+}
+
+/* Progress Ring */
+.progress-ring-container {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
+}
+
+.circular-chart {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  max-height: 250px;
+}
+
+.circle-bg {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2.5;
+}
+
+.circle {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s ease-out;
+}
+
+.progress-ring-container .percentage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.6rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Status Popover */
+.status-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 110px;
+  cursor: pointer;
+}
+
+.status-popover {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  background-color: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  min-width: 150px;
+  z-index: 50;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.status-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.status-option:hover:not(.blocked) {
+  background-color: var(--bg);
+}
+
+.status-option.blocked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Shake Animation */
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.shake {
+  animation: shake-x 0.3s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* Filter Chips */
+.filter-chip {
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.filter-chip.active.pill-green { border-color: var(--green); }
+.filter-chip.active.pill-blue { border-color: var(--blue); }
+.filter-chip.active.pill-gray { border-color: var(--sub); }
+.filter-chip.active.pill-red { border-color: var(--red); }
+
+.filter-chip:hover:not(.active) {
+  opacity: 0.8;
+}
+
+
+
+/* Row Animations */
+.slide-in-row {
+  opacity: 0;
+  animation: slideInRow 0.4s ease-out forwards;
+}
+
+@keyframes slideInRow {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.highlight-bounce {
+  animation: highlightBounce 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes highlightBounce {
+  0% { background-color: var(--amber-bg); transform: scaleY(1); }
+  25% { background-color: var(--amber-bg); transform: scaleY(1.02); }
+  50% { background-color: var(--amber-bg); transform: scaleY(1); }
+  100% { background-color: transparent; }
+}
+
+/* Helper dynamic color classes for popover dots */
+.bg-var-green { background-color: var(--green); }
+.bg-var-blue { background-color: var(--blue); }
+.bg-var-gray { background-color: var(--sub); }
+.bg-var-red { background-color: var(--red); }

@@ -1,0 +1,356 @@
+/* Layout */
+.trip-dispatcher {
+  padding-bottom: 2rem;
+}
+
+.layout-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--plum-3);
+  letter-spacing: 0.05em;
+}
+
+.section-divider {
+  flex: 1;
+  height: 1px;
+  background-color: var(--line);
+}
+
+/* Stepper Component */
+.stepper-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 2rem 0;
+}
+
+.stepper-line-bg {
+  position: absolute;
+  top: 1.625rem;
+  left: 3rem;
+  right: 3rem;
+  height: 2px;
+  background-color: var(--line);
+  z-index: 1;
+}
+
+.stepper-line-fill {
+  position: absolute;
+  top: 1.625rem;
+  left: 3rem;
+  height: 2px;
+  background: linear-gradient(90deg, var(--green) 0%, var(--blue) 100%);
+  z-index: 2;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 0%;
+}
+
+.stepper-line-fill.step-0 { width: 0%; }
+.stepper-line-fill.step-1 { width: 33.33%; }
+.stepper-line-fill.step-2 { width: 66.66%; }
+.stepper-line-fill.step-3 { width: 100%; }
+.stepper-line-fill.cancelled { background: var(--red); width: 100%; }
+
+.step-nodes {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  z-index: 3;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 60px;
+}
+
+.step-item.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.step-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--card);
+  border: 2px solid var(--sub);
+  transition: all 0.3s ease;
+}
+
+.step-dot.completed {
+  background-color: var(--green);
+  border-color: var(--green);
+}
+
+.step-dot.active-blue {
+  background-color: var(--blue);
+  border-color: var(--blue);
+}
+
+.step-dot.active-red {
+  background-color: var(--red);
+  border-color: var(--red);
+}
+
+.step-dot.pulsing {
+  box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.4);
+  animation: pulseBlue 2s infinite;
+}
+
+@keyframes pulseBlue {
+  0% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(47, 111, 237, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0); }
+}
+
+.step-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--sub);
+  letter-spacing: 0.05em;
+}
+
+/* Trip Form */
+.trip-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Validation Boxes */
+.validation-box {
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 4px solid;
+  margin-bottom: 0.5rem;
+}
+
+.validation-box.error {
+  background-color: var(--red-bg);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.validation-box.success {
+  background-color: var(--green-bg);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.val-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.val-details {
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  padding-left: 1.75rem;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.shake {
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* Custom Source Dropdown */
+.custom-source-dropdown-wrapper {
+  position: relative;
+}
+
+.custom-source-input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.custom-source-input.active {
+  border-color: var(--plum-1);
+}
+
+.custom-source-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 200px;
+  background-color: #2b2530; /* Dark bg */
+  color: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  z-index: 50;
+  padding: 0.5rem 0;
+  animation: scaleIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform-origin: top left;
+}
+
+/* The arrow on top */
+.custom-source-menu::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 20px;
+  width: 10px;
+  height: 10px;
+  background-color: #2b2530;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.custom-source-option {
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+
+.custom-source-option:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Live Board */
+.cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.route-line-small {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-down {
+  animation: slideDown 0.3s ease-out forwards;
+}
+
+/* Workflow Panel */
+.workflow-panel {
+  background-color: var(--bg);
+  border: 1px dashed var(--line);
+  box-shadow: none;
+}
+
+.workflow-steps {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  padding: 0 1rem;
+}
+
+.workflow-track {
+  position: absolute;
+  top: 14px;
+  left: 2rem;
+  right: 2rem;
+  height: 2px;
+  background-color: var(--line);
+  z-index: 1;
+}
+
+.workflow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  z-index: 2;
+  width: 60px;
+}
+
+.workflow-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: var(--card);
+  border: 2px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sub);
+  transition: all 0.3s ease;
+}
+
+.workflow-badge.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background-color: var(--blue-bg);
+}
+
+.workflow-badge.passed {
+  border-color: var(--green);
+  color: var(--card);
+  background-color: var(--green);
+}
+
+.workflow-text {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--sub);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
