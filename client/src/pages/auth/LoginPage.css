@@ -1,0 +1,128 @@
+.login-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--bg-app);
+}
+
+.login-left {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2rem;
+  width: 50%;
+  background-color: #e9ecef;
+  border-right: 1px solid var(--border-color);
+}
+
+@media (min-width: 768px) {
+  .login-left {
+    display: flex;
+    padding: 4rem;
+  }
+}
+
+.login-branding {
+  margin-bottom: 3rem;
+}
+
+.login-logo {
+  width: 3rem;
+  height: 3rem;
+  background-color: var(--bg-card);
+  border-radius: 4px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--sidebar-gradient-start);
+}
+
+.login-roles-section {
+  margin-bottom: 2rem;
+}
+
+.login-roles-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.login-roles-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.role-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent-hover);
+}
+
+.login-footer {
+  margin-top: auto;
+}
+
+.login-right {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 4rem 2rem;
+  width: 100%;
+  background-color: var(--bg-card);
+}
+
+@media (min-width: 768px) {
+  .login-right {
+    width: 50%;
+  }
+}
+
+.login-form-container {
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.login-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  margin: 1rem 0;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.forgot-password {
+  color: var(--status-blue);
+  text-decoration: none;
+}
+
+.login-access-notes {
+  margin-top: 2rem;
+  line-height: 1.6;
+}
