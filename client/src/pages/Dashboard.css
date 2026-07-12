@@ -1,0 +1,202 @@
+/* Layout Rows */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.kpi-card {
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.kpi-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sub);
+  margin-bottom: 0.5rem;
+}
+
+.kpi-value {
+  color: var(--text);
+}
+
+.kpi-chart-wrap {
+  height: 40px;
+  width: calc(100% + 3rem);
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+  margin-top: auto;
+}
+
+.content-row-1 {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 1.5rem;
+}
+
+.content-row-2 {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 1.5rem;
+}
+
+.content-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+/* Border colors */
+.border-l-green { border-left: 4px solid var(--green) !important; }
+.border-l-amber { border-left: 4px solid var(--amber) !important; }
+.border-l-blue { border-left: 4px solid var(--blue) !important; }
+.border-l-teal { border-left: 4px solid var(--teal) !important; }
+
+/* Filter Bar */
+.filter-pill {
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.filter-pill:hover {
+  background: var(--bg);
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+  min-width: 150px;
+  overflow: hidden;
+  animation: scaleIn 0.15s ease-out;
+  transform-origin: top left;
+}
+
+.filter-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.filter-item:hover {
+  background: var(--bg);
+}
+
+/* Route Map */
+.route-map-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.route-visual {
+  flex: 1;
+  position: relative;
+  height: 2px;
+  background-image: linear-gradient(to right, var(--line) 50%, transparent 50%);
+  background-size: 12px 2px;
+  background-repeat: repeat-x;
+  display: flex;
+  align-items: center;
+}
+
+.route-node-start, .route-node-end {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--sub);
+  position: absolute;
+}
+
+.route-node-start { left: -5px; }
+.route-node-end { right: -5px; background: var(--card); border: 2px solid var(--sub); }
+
+.route-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--blue);
+  position: absolute;
+  top: -6px;
+  box-shadow: 0 0 0 4px rgba(47, 111, 237, 0.2);
+  z-index: 2;
+}
+
+.route-dot.ghost {
+  background: var(--card);
+  border: 2px dashed var(--sub);
+  box-shadow: none;
+}
+
+@keyframes travel {
+  0% { left: 0%; }
+  100% { left: 90%; }
+}
+
+.travel-anim {
+  animation: travel 10s linear infinite;
+}
+
+/* Misc Utilities */
+.live-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--blue);
+  animation: pulseBlue 2s infinite;
+  display: inline-block;
+}
+
+.live-dot.sm {
+  width: 8px;
+  height: 8px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+@keyframes pulseBlue {
+  0% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(47, 111, 237, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0); }
+}
+
+.pulse-amber {
+  animation: pulseAmber 2s infinite;
+}
+
+@keyframes pulseAmber {
+  0% { box-shadow: 0 0 0 0 rgba(224, 138, 30, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(224, 138, 30, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(224, 138, 30, 0); }
+}

@@ -3,31 +3,57 @@
   --font-primary: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Colors (Odoo Light Mode Inspiration) */
-  --bg-app: #f8f9fa;
-  --bg-card: #ffffff;
+  /* Spec Color System */
+  --plum-1: #7a4a63; 
+  --plum-2: #5c3a4c; 
+  --plum-3: #432b38;
   
-  --sidebar-gradient-start: #6a4055;
-  --sidebar-gradient-end: #4d2b3c;
+  --bg: #f3f4f7; 
+  --card: #ffffff; 
+  --text: #2b2530; 
+  --sub: #8a8794; 
+  --line: #eceaef;
+  
+  --blue: #2f6fed; 
+  --blue-bg: #e8f0fe;
+  
+  --green: #22a06b; 
+  --green-bg: #e6f7ef;
+  
+  --amber: #e08a1e; 
+  --amber-bg: #fdf1e0;
+  
+  --gray: #8a8794; 
+  --gray-bg: #eeedf1;
+  
+  --red: #e0473f; 
+  --red-bg: #fdeceb;
+  
+  --teal: #1fa88f; 
+  --teal-bg: #e2f5f1;
+  --indigo: #6a5acd;
+  --indigo-bg: #eeecfb;
+
+  /* Aliasing for backward compatibility in our app */
+  --bg-app: var(--bg);
+  --bg-card: var(--card);
+  --sidebar-gradient-start: var(--plum-1);
+  --sidebar-gradient-end: var(--plum-3);
   --sidebar-text: #e0d0d8;
-  --sidebar-text-active: #ffffff;
   
-  --accent-primary: #fbb130;
+  --accent-primary: var(--amber);
   --accent-hover: #e59d20;
-  --accent-purple: #86526e; /* Deep purple/magenta for KPIs */
+  --accent-purple: var(--plum-1);
+  
+  --text-primary: var(--text);
+  --text-muted: var(--sub);
+  --border-color: var(--line);
 
-  --text-primary: #212529;
-  --text-secondary: #495057;
-  --text-muted: #6c757d;
-
-  --border-color: #dee2e6;
-
-  /* Status Colors */
-  --status-green: #28a745;
-  --status-blue: #007bff;
-  --status-orange: #fd7e14;
-  --status-red: #dc3545;
-  --status-gray: #6c757d;
+  --status-green: var(--green);
+  --status-blue: var(--blue);
+  --status-orange: var(--amber);
+  --status-red: var(--red);
+  --status-gray: var(--gray);
 
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
@@ -253,43 +279,142 @@ tbody tr:hover { background-color: var(--bg-app); }
 }
 
 /* Layout Specifics */
+/* App Layout specifics (Sidebar styling moved to Sidebar.css) */
 .app-container { display: flex; height: 100vh; overflow: hidden; }
-.sidebar {
-  width: 250px;
-  background: linear-gradient(180deg, var(--sidebar-gradient-start) 0%, var(--sidebar-gradient-end) 100%);
-  display: flex; flex-direction: column; align-items: flex-start;
-  z-index: 10; color: var(--sidebar-text); overflow: hidden;
-  box-shadow: 2px 0 8px rgba(0,0,0,0.1);
-  flex-shrink: 0;
+.main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+
+/* Staggered Row Fades */
+@keyframes rowFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.sidebar-nav { width: 100%; display: flex; flex-direction: column; gap: 0.25rem; padding: 0 1rem; }
-
-.nav-item {
-  position: relative;
-  display: flex; align-items: center; width: 100%; padding: 0.6rem 1rem;
-  color: #e0d0d8; text-decoration: none; transition: all var(--transition-fast);
-  border-radius: 8px; font-weight: 400; font-size: 1rem;
+.table-row-animate {
+  opacity: 0;
+  animation: rowFadeIn 0.3s ease-out forwards;
 }
 
-.nav-item:hover { color: #ffffff; background: rgba(255, 255, 255, 0.05); }
-
-.nav-item.active {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+/* Modal Overlay & Scale In */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease-out;
 }
 
-/* The yellow indicator pill matching the screenshot */
-.nav-item.active::before {
-  content: "";
+.modal-content {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: var(--shadow-lg);
+  animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  transform-origin: center;
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Custom Registry Dropdowns */
+.custom-dropdown-menu {
   position: absolute;
-  left: -1rem; /* Reaches the edge of the sidebar */
-  top: 15%;
-  height: 70%;
-  width: 6px;
-  background-color: var(--accent-primary);
-  border-top-right-radius: 4px;
-  border-bottom-right-radius: 4px;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-top: 4px;
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+  padding: 0.25rem 0;
+}
+
+.custom-dropdown-item {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.custom-dropdown-item:hover {
+  background-color: var(--bg-app);
+}
+
+/* Toast Notification */
+.toast-container {
+  position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+  z-index: 1000;
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+
+.toast {
+  background: var(--text-primary);
+  color: white;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  display: flex; align-items: center; gap: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Odometer Bar */
+.odometer-wrapper {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.odometer-bg {
+  width: 100%; height: 4px; background: var(--bg-app); border-radius: 2px; overflow: hidden;
+}
+.odometer-fill {
+  height: 100%; background: var(--status-orange); transform-origin: left;
+  animation: fillBar 1s ease-out forwards;
+}
+
+@keyframes fillBar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Pulsing Dot */
+.pulsing-dot {
+  width: 6px; height: 6px; background-color: var(--status-blue); border-radius: 50%;
+  display: inline-block; margin-right: 6px;
+  box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.4);
+  animation: dotPulse 2s infinite;
+}
+@keyframes dotPulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.4); }
+  70% { box-shadow: 0 0 0 4px rgba(0, 123, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 123, 255, 0); }
+}
+
+/* Glowing Add Button */
+.btn-plum-glow {
+  background: linear-gradient(135deg, #8a5670 0%, #5c3a4c 100%);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 10px rgba(92, 58, 76, 0.2);
+}
+.btn-plum-glow:hover {
+  box-shadow: 0 6px 14px rgba(92, 58, 76, 0.4);
+  transform: translateY(-1px);
+}
+.btn-plum-glow:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 2px 4px rgba(92, 58, 76, 0.2);
 }
 
 .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -300,30 +425,3 @@ tbody tr:hover { background-color: var(--bg-app); }
 }
 .content-area { flex: 1; padding: 2rem; overflow-y: auto; }
 
-/* Table ETA Progress Bar */
-.eta-progress-container {
-  width: 100%; height: 4px; background: var(--bg-app); border-radius: 2px; margin-top: 4px; overflow: hidden;
-}
-.eta-progress-bar {
-  height: 100%; background: var(--status-blue); transition: width 1s linear;
-}
-
-/* Route Map Panel */
-.route-map-panel {
-  display: flex; flex-direction: column; gap: 1rem;
-}
-.route-row {
-  display: flex; align-items: center; justify-content: space-between; font-size: 0.875rem; gap: 1rem;
-}
-.route-visual {
-  flex: 1; position: relative; height: 2px; border-top: 2px dashed var(--border-color); display: flex; align-items: center;
-}
-.route-dot {
-  position: absolute; width: 10px; height: 10px; background: var(--status-blue); border-radius: 50%;
-  transform: translateY(-1px); box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2); transition: left 1s linear;
-}
-.route-node-start, .route-node-end {
-  width: 8px; height: 8px; background: var(--text-muted); border-radius: 50%; position: absolute; transform: translateY(-1px);
-}
-.route-node-start { left: -4px; }
-.route-node-end { right: -4px; }
