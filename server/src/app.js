@@ -1,11 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const { query } = require('./config/db');
+const apiRouter = require('./routes');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.use('/api', apiRouter);
 
 // Healthcheck endpoint that validates Neon database connectivity
 app.get('/api/health', async (req, res) => {
