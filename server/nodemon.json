@@ -1,0 +1,9 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "src/database/migrations/*",
+    "src/database/seeds/*"
+  ],
+  "exec": "node src/index.js"
+}
