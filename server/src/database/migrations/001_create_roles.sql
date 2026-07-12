@@ -1,4 +1,6 @@
 CREATE TABLE IF NOT EXISTS roles (
   id   SERIAL PRIMARY KEY,
-  name VARCHAR(50) UNIQUE NOT NULL  -- 'Fleet Manager', 'Driver', 'Safety Officer', 'Financial Analyst'
+  name VARCHAR(50) UNIQUE NOT NULL, -- 'Fleet Manager', 'Driver', 'Safety Officer', 'Financial Analyst'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
