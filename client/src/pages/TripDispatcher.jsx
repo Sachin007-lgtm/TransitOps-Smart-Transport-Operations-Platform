@@ -1,61 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, Navigation, X, Check, Activity, FileText, CheckCircle2, User, Truck, Info, Settings, FileWarning, ChevronDown } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
+import { apiRequest } from '../utils/api';
 import './TripDispatcher.css';
-
-// Seed Data
-const initialVehicles = [
-  { id: 'VAN-05', type: 'Van', capacity: 500, label: 'VAN-05 — 500 kg capacity' },
-  { id: 'TRK-04', type: 'Truck', capacity: 2000, label: 'TRK-04 — 2000 kg capacity' },
-  { id: 'MINI-08', type: 'Mini', capacity: 300, label: 'MINI-08 — 300 kg capacity' },
-  { id: 'TRK-12', type: 'Truck', capacity: 2000, label: 'TRK-12 — 2000 kg capacity' }
-];
-
-const initialDrivers = [
-  { id: 'D01', name: 'Alex' },
-  { id: 'D02', name: 'Suresh' },
-  { id: 'D03', name: 'Priya' },
-  { id: 'D04', name: 'John' }
-];
-
-const initialTrips = [
-  { id: 'TR001', status: 'Dispatched', source: 'Gandhinagar Depot', dest: 'Ahmedabad Hub', vehicleId: 'VAN-05', driverName: 'Alex', eta: '45 min' },
-  { id: 'TR004', status: 'Draft', source: 'Vatva Industrial Area', dest: 'Sanand Warehouse', vehicleId: 'TRK-04', driverName: 'Suresh', eta: 'Awaiting driver' },
-  { id: 'TR006', status: 'Cancelled', source: 'Mansa', dest: 'Kalol Depot', vehicleId: null, driverName: null, eta: 'Vehicle went to shop' }
-];
 
 export default function TripDispatcher() {
   const { globalSearch } = useGlobalSearch();
 
-  // Shared Pools State
-  const [trips, setTrips] = useState(initialTrips);
-  // Vehicles and drivers are removed from available pool if they are in a Dispatched trip
-  const dispatchedTripVehicles = trips.filter(t => t.status === 'Dispatched').map(t => t.vehicleId);
-  const dispatchedTripDrivers = trips.filter(t => t.status === 'Dispatched').map(t => t.driverName);
-  
-  const availableVehicles = initialVehicles.filter(v => !dispatchedTripVehicles.includes(v.id));
-  const availableDrivers = initialDrivers.filter(d => !dispatchedTripDrivers.includes(d.name));
+  const [loading, setLoading] = useState(true);
+  const [vehicles, setVehicles] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [trips, setTrips] = useState([]);
+  const [error, setError] = useState('');
 
   // Form State
   const [source, setSource] = useState('');
   const [dest, setDest] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  const [driverName, setDriverName] = useState('');
+  const [driverId, setDriverId] = useState('');
   const [weight, setWeight] = useState('');
   const [distance, setDistance] = useState('');
 
   const [isDispatching, setIsDispatching] = useState(false);
   const [workflowActiveId, setWorkflowActiveId] = useState(null); // Trip ID currently running through completion workflow
   const [workflowStep, setWorkflowStep] = useState(0); // 0 = idle, 1,2,3,4 = steps
-
-  // Derived Validation
-  const selectedVehicle = initialVehicles.find(v => v.id === vehicleId);
-  const weightNum = parseFloat(weight);
-  const distanceNum = parseFloat(distance);
-  
-  const isOverCapacity = selectedVehicle && !isNaN(weightNum) && weightNum > selectedVehicle.capacity;
-  const isWithinCapacity = selectedVehicle && !isNaN(weightNum) && weightNum <= selectedVehicle.capacity;
-  const isFormValid = source && dest && vehicleId && driverName && weight && distance && isWithinCapacity;
 
   // Most recent trip status for Stepper
   const [latestStatus, setLatestStatus] = useState('Draft');
@@ -66,7 +34,28 @@ export default function TripDispatcher() {
   const [isDestDropdownOpen, setIsDestDropdownOpen] = useState(false);
   const destDropdownRef = useRef(null);
 
+  const loadData = async () => {
+    try {
+      setError('');
+      const [vehiclesRes, driversRes, tripsRes] = await Promise.all([
+        apiRequest('GET', '/vehicles'),
+        apiRequest('GET', '/drivers'),
+        apiRequest('GET', '/trips')
+      ]);
+      setVehicles(vehiclesRes.data || []);
+      setDrivers(driversRes.data || []);
+      setTrips(tripsRes.data || []);
+    } catch (err) {
+      console.error('Failed to load dispatch data:', err);
+      setError('Failed to fetch dispatch pool records.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
+    loadData();
+
     function handleClickOutside(event) {
       if (sourceDropdownRef.current && !sourceDropdownRef.current.contains(event.target)) {
         setIsSourceDropdownOpen(false);
@@ -79,12 +68,25 @@ export default function TripDispatcher() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Filter pools
+  const availableVehicles = vehicles.filter(v => v.status === 'Available');
+  const availableDrivers = drivers.filter(d => d.status === 'Available');
+
+  // Derived Validation
+  const selectedVehicle = vehicles.find(v => v.id === Number(vehicleId));
+  const weightNum = parseFloat(weight);
+  const distanceNum = parseFloat(distance);
+  
+  const isOverCapacity = selectedVehicle && !isNaN(weightNum) && weightNum > selectedVehicle.max_load_capacity;
+  const isWithinCapacity = selectedVehicle && !isNaN(weightNum) && weightNum <= selectedVehicle.max_load_capacity;
+  const isFormValid = source && dest && vehicleId && driverId && weight && distance && isWithinCapacity;
+
   // Handle Form Cancel
   const handleCancelForm = () => {
     setSource('');
     setDest('');
     setVehicleId('');
-    setDriverName('');
+    setDriverId('');
     setWeight('');
     setDistance('');
     setLatestStatus('Cancelled');
@@ -93,69 +95,103 @@ export default function TripDispatcher() {
   };
 
   // Handle Dispatch
-  const handleDispatch = (e) => {
+  const handleDispatch = async (e) => {
     e.preventDefault();
     if (!isFormValid || isDispatching) return;
     
     setIsDispatching(true);
-    setTimeout(() => {
-      // Calculate ETA
-      const etaMinutes = Math.max(10, Math.round((distanceNum / 40) * 60)); // Assumes 40km/h avg speed
-      
-      const newTripId = `TR00${trips.length + 7}`; // Auto increment
-      const newTrip = {
-        id: newTripId,
-        status: 'Dispatched',
+    try {
+      const res = await apiRequest('POST', '/trips', {
         source,
-        dest,
-        vehicleId,
-        driverName,
-        eta: `${Math.floor(etaMinutes/60) > 0 ? Math.floor(etaMinutes/60) + 'h ' : ''}${etaMinutes%60}m`
-      };
+        destination: dest,
+        vehicle_id: Number(vehicleId),
+        driver_id: Number(driverId),
+        cargo_weight: weightNum,
+        planned_distance: distanceNum,
+        status: 'Dispatched'
+      });
 
-      setTrips([newTrip, ...trips]);
-      setIsDispatching(false);
       setLatestStatus('Dispatched');
-
-      // Reset form
-      setSource(''); setDest(''); setVehicleId(''); setDriverName(''); setWeight(''); setDistance('');
-
-      const evt = new CustomEvent('app-toast', { detail: `${newTripId} dispatched successfully.` });
+      setSource(''); setDest(''); setVehicleId(''); setDriverId(''); setWeight(''); setDistance('');
+      
+      const evt = new CustomEvent('app-toast', { detail: `Trip TR-${res.data.id} dispatched successfully.` });
       window.dispatchEvent(evt);
-    }, 850);
+      
+      loadData();
+    } catch (err) {
+      const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to dispatch trip', type: 'error' });
+      window.dispatchEvent(evt);
+    } finally {
+      setIsDispatching(false);
+    }
   };
 
   // Quick Dispatch from Draft
-  const handleQuickDispatch = (tripId) => {
-    setTrips(trips.map(t => {
-      if (t.id === tripId) {
-        return { ...t, status: 'Dispatched', eta: '45 min' }; // Mock ETA for quick dispatch
-      }
-      return t;
-    }));
-    setLatestStatus('Dispatched');
+  const handleQuickDispatch = async (tripId) => {
+    try {
+      await apiRequest('PUT', `/trips/${tripId}`, { status: 'Dispatched' });
+      setLatestStatus('Dispatched');
+      const evt = new CustomEvent('app-toast', { detail: `Trip TR-${tripId} dispatched.` });
+      window.dispatchEvent(evt);
+      loadData();
+    } catch (err) {
+      const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to dispatch', type: 'error' });
+      window.dispatchEvent(evt);
+    }
   };
 
   // Mark Complete Workflow
-  const handleMarkComplete = (tripId) => {
-    if (workflowActiveId) return; // Prevent concurrent workflows
+  const handleMarkComplete = async (tripId) => {
+    if (workflowActiveId) return;
     setWorkflowActiveId(tripId);
     setWorkflowStep(1);
 
-    // Sequence of steps
-    setTimeout(() => setWorkflowStep(2), 480 * 1);
-    setTimeout(() => setWorkflowStep(3), 480 * 2);
-    setTimeout(() => setWorkflowStep(4), 480 * 3);
-    setTimeout(() => {
-      const trip = trips.find(t => t.id === tripId);
-      setTrips(trips.map(t => t.id === tripId ? { ...t, status: 'Completed', eta: 'Arrived' } : t));
+    const tripObj = trips.find(t => t.id === tripId);
+    const actualDist = tripObj ? tripObj.planned_distance : 100;
+
+    try {
+      // Step 1: Simulated telematics odometer log
+      setTimeout(async () => {
+        setWorkflowStep(2);
+        
+        // Step 2: Simulated fuel log sync
+        setTimeout(async () => {
+          setWorkflowStep(3);
+          
+          // Step 3: Simulated expenses
+          setTimeout(async () => {
+            setWorkflowStep(4);
+            
+            // Step 4: Finalize backend state transition
+            setTimeout(async () => {
+              try {
+                await apiRequest('PUT', `/trips/${tripId}`, {
+                  status: 'Completed',
+                  actual_distance: Number(actualDist)
+                });
+
+                setWorkflowActiveId(null);
+                setWorkflowStep(0);
+                setLatestStatus('Completed');
+
+                const evt = new CustomEvent('app-toast', { detail: `Trip TR-${tripId} completed successfully.` });
+                window.dispatchEvent(evt);
+                
+                loadData();
+              } catch (err) {
+                setWorkflowActiveId(null);
+                setWorkflowStep(0);
+                const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to complete trip', type: 'error' });
+                window.dispatchEvent(evt);
+              }
+            }, 480);
+          }, 480);
+        }, 480);
+      }, 480);
+    } catch (err) {
       setWorkflowActiveId(null);
       setWorkflowStep(0);
-      setLatestStatus('Completed');
-
-      const evt = new CustomEvent('app-toast', { detail: `${tripId} completed. ${trip.vehicleId} & ${trip.driverName} are now available.` });
-      window.dispatchEvent(evt);
-    }, 480 * 4 + 200);
+    }
   };
 
   // Filter logic
@@ -163,19 +199,32 @@ export default function TripDispatcher() {
     if (!globalSearch) return true;
     const searchLower = globalSearch.toLowerCase();
     return (
-      t.id.toLowerCase().includes(searchLower) ||
+      String(t.id).includes(searchLower) ||
       (t.source && t.source.toLowerCase().includes(searchLower)) ||
-      (t.dest && t.dest.toLowerCase().includes(searchLower)) ||
-      (t.vehicleId && t.vehicleId.toLowerCase().includes(searchLower)) ||
-      (t.driverName && t.driverName.toLowerCase().includes(searchLower))
+      (t.destination && t.destination.toLowerCase().includes(searchLower)) ||
+      (t.vehicle_name && t.vehicle_name.toLowerCase().includes(searchLower)) ||
+      (t.driver_name && t.driver_name.toLowerCase().includes(searchLower))
     );
   });
+
+  if (loading) {
+    return (
+      <div className="flex-col gap-6 w-full h-full p-4">
+        <div className="skeleton w-1/4 h-10 mb-4"></div>
+        <div className="flex gap-4 mb-8 overflow-hidden">
+          <div className="skeleton flex-1 h-96"></div>
+          <div className="skeleton flex-1 h-96"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="trip-dispatcher fade-in">
       <div className="mb-6">
         <h1 className="text-2xl heading">Trip Dispatcher</h1>
         <p className="text-sm text-muted mt-1">Create a trip, validate capacity against the assigned vehicle, and dispatch it to the live board.</p>
+        {error && <div className="text-xs text-status-red mt-1">{error}</div>}
       </div>
 
       <div className="layout-grid">
@@ -227,7 +276,7 @@ export default function TripDispatcher() {
             <div className="section-divider"></div>
           </div>
 
-          <form className="trip-form">
+          <form className="trip-form" onSubmit={handleDispatch}>
             <div className="form-row">
               <div className="input-group" ref={sourceDropdownRef}>
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>SOURCE</label>
@@ -300,15 +349,15 @@ export default function TripDispatcher() {
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>VEHICLE (AVAILABLE ONLY)</label>
                 <select className="select" value={vehicleId} onChange={e => setVehicleId(e.target.value)}>
                   <option value="">Select vehicle...</option>
-                  {availableVehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                  {availableVehicles.map(v => <option key={v.id} value={v.id}>{v.name} ({v.type})</option>)}
                 </select>
-                {selectedVehicle && <div className="text-xs text-muted mt-1 font-mono">Rated capacity: {selectedVehicle.capacity} kg</div>}
+                {selectedVehicle && <div className="text-xs text-muted mt-1 font-mono">Rated capacity: {selectedVehicle.max_load_capacity} kg</div>}
               </div>
               <div className="input-group">
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>DRIVER (AVAILABLE ONLY)</label>
-                <select className="select" value={driverName} onChange={e => setDriverName(e.target.value)}>
+                <select className="select" value={driverId} onChange={e => setDriverId(e.target.value)}>
                   <option value="">Select driver...</option>
-                  {availableDrivers.map(d => <option key={d.id} value={d.name}>{d.name} ({d.id})</option>)}
+                  {availableDrivers.map(d => <option key={d.id} value={d.id}>{d.name} ({d.license_category})</option>)}
                 </select>
               </div>
             </div>
@@ -330,10 +379,10 @@ export default function TripDispatcher() {
                 <div className="validation-box error shake">
                   <div className="val-header">
                     <FileWarning size={18} />
-                    <span className="font-semibold">Capacity exceeded by {weightNum - selectedVehicle.capacity} kg — dispatch blocked.</span>
+                    <span className="font-semibold">Capacity exceeded by {weightNum - selectedVehicle.max_load_capacity} kg — dispatch blocked.</span>
                   </div>
                   <div className="val-details mono">
-                    <div>Vehicle Capacity: {selectedVehicle.capacity} kg</div>
+                    <div>Vehicle Capacity: {selectedVehicle.max_load_capacity} kg</div>
                     <div>Cargo Weight: {weightNum} kg</div>
                   </div>
                 </div>
@@ -342,7 +391,7 @@ export default function TripDispatcher() {
                 <div className="validation-box success fade-in">
                   <div className="val-header">
                     <CheckCircle2 size={18} />
-                    <span className="font-semibold">Capacity check passed — {selectedVehicle.capacity - weightNum} kg headroom remaining. Ready to dispatch.</span>
+                    <span className="font-semibold">Capacity check passed — {selectedVehicle.max_load_capacity - weightNum} kg headroom remaining. Ready to dispatch.</span>
                   </div>
                 </div>
               )}
@@ -361,7 +410,6 @@ export default function TripDispatcher() {
               <button 
                 type="submit" 
                 className={`btn btn-primary flex-1 ${!isFormValid ? 'disabled' : ''}`}
-                onClick={handleDispatch}
                 disabled={!isFormValid || isDispatching}
               >
                 {isDispatching ? (
@@ -390,9 +438,9 @@ export default function TripDispatcher() {
               <div key={trip.id} className="card trip-card slide-down">
                 
                 <div className="flex justify-between items-start mb-3">
-                  <span className="mono font-bold">{trip.id}</span>
-                  <span className="text-xs text-muted">
-                    {trip.vehicleId ? `${trip.vehicleId} / ${trip.driverName}` : 'Unassigned'}
+                  <span className="mono font-bold">TR-{trip.id}</span>
+                  <span className="text-xs text-muted font-medium">
+                    {trip.vehicle_name ? `${trip.vehicle_name} / ${trip.driver_name}` : 'Unassigned'}
                   </span>
                 </div>
 
@@ -400,7 +448,7 @@ export default function TripDispatcher() {
                   <MapPin size={14} className="text-muted" style={{ flexShrink: 0 }} />
                   <span className="text-sm font-medium truncate">{trip.source}</span>
                   <Navigation size={12} className="text-muted mx-1" style={{ transform: 'rotate(90deg)' }} />
-                  <span className="text-sm font-medium truncate">{trip.dest}</span>
+                  <span className="text-sm font-medium truncate">{trip.destination}</span>
                 </div>
 
                 <div className="flex justify-between items-center mt-auto pt-2 border-t border-[var(--line)]">
@@ -412,7 +460,9 @@ export default function TripDispatcher() {
                   </div>
                   
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs mono ${trip.status === 'Completed' ? 'text-status-green' : 'text-muted'}`}>{trip.eta}</span>
+                    <span className={`text-xs mono ${trip.status === 'Completed' ? 'text-status-green' : 'text-muted'}`}>
+                      {trip.status === 'Completed' ? 'Arrived' : `${trip.planned_distance} km`}
+                    </span>
                     
                     {trip.status === 'Draft' && (
                       <button className="btn btn-outline text-xs py-1 px-2" onClick={() => handleQuickDispatch(trip.id)}>Quick dispatch</button>
@@ -427,6 +477,9 @@ export default function TripDispatcher() {
 
               </div>
             ))}
+            {filteredTrips.length === 0 && (
+              <div className="text-center py-8 text-xs text-muted">No trips recorded.</div>
+            )}
           </div>
 
           {/* Workflow Panel */}

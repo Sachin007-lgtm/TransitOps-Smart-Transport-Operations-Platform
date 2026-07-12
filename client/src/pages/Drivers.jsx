@@ -2,15 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Check, ChevronDown, Lock, ShieldCheck } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
+import { apiRequest } from '../utils/api';
 import './Drivers.css';
-
-// Seed Data
-const initialDriversList = [
-  { id: 'DRV-001', name: 'Alex', license: 'DL-88213', category: 'LMV', expiry: '12/2028', contact: '98765xxxxx', completion: 96, safety: 'Excellent', status: 'Available' },
-  { id: 'DRV-002', name: 'John', license: 'DL-44120', category: 'HMV', expiry: '03/2025', contact: '98220xxxxx', completion: 81, safety: 'Needs Review', status: 'Suspended', isExpired: true },
-  { id: 'DRV-003', name: 'Priya', license: 'DL-77031', category: 'LMV', expiry: '08/2025', contact: '99110xxxxx', completion: 99, safety: 'Excellent', status: 'On Trip' },
-  { id: 'DRV-004', name: 'Suresh', license: 'DL-90045', category: 'HMV', expiry: '09/2026', contact: '97440xxxxx', completion: 88, safety: 'Good', status: 'Off Duty', isExpiringSoon: true }
-];
 
 const STATUS_OPTIONS = [
   { label: 'Available', color: 'green' },
@@ -24,7 +17,6 @@ const ProgressRing = ({ percentage }) => {
   const [offset, setOffset] = useState(100);
   
   useEffect(() => {
-    // Animate to actual percentage on mount
     const timer = setTimeout(() => {
       setOffset(100 - percentage);
     }, 100);
@@ -59,10 +51,11 @@ const ProgressRing = ({ percentage }) => {
 
 export default function Drivers() {
   const { globalSearch } = useGlobalSearch();
-  const [drivers, setDrivers] = useState(initialDriversList);
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
   const [activeFilter, setActiveFilter] = useState(null);
-  
   const [popoverActiveRow, setPopoverActiveRow] = useState(null);
   const popoverRef = useRef(null);
   
@@ -74,7 +67,22 @@ export default function Drivers() {
     name: '', license: '', category: 'LMV', expiry: '', contact: ''
   });
 
+  const loadDrivers = async () => {
+    try {
+      setError('');
+      const data = await apiRequest('GET', '/drivers');
+      setDrivers(data.data || []);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to load driver profiles.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
+    loadDrivers();
+
     const handleOutsideClick = (e) => {
       if (popoverActiveRow && popoverRef.current && !popoverRef.current.contains(e.target)) {
         setPopoverActiveRow(null);
@@ -88,10 +96,25 @@ export default function Drivers() {
     setActiveFilter(prev => prev === status ? null : status);
   };
 
-  const handleStatusChange = (driverId, newStatusOption, isExpired, e) => {
-    e.stopPropagation(); // prevent row click
+  const isLicenseExpired = (expiryDate) => {
+    if (!expiryDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(expiryDate) < today;
+  };
+
+  const isLicenseExpiringSoon = (expiryDate) => {
+    if (!expiryDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffTime = new Date(expiryDate) - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 && diffDays <= 30;
+  };
+
+  const handleStatusChange = async (driverId, newStatusOption, isExpired, e) => {
+    e.stopPropagation();
     if (isExpired && (newStatusOption.label === 'Available' || newStatusOption.label === 'On Trip')) {
-      // Blocked Action
       const optionEl = e.currentTarget;
       optionEl.classList.add('shake');
       setTimeout(() => optionEl.classList.remove('shake'), 500);
@@ -102,44 +125,73 @@ export default function Drivers() {
       return;
     }
 
-    // Apply Status
-    setDrivers(drivers.map(d => {
-      if (d.id === driverId) {
-        const dName = d.name;
-        // Fire toast
-        const evt = new CustomEvent('app-toast', { detail: `${dName} set to ${newStatusOption.label}` });
-        window.dispatchEvent(evt);
-        return { ...d, status: newStatusOption.label };
-      }
-      return d;
-    }));
+    try {
+      // Map statuses correctly to match DB values (e.g. On Trip)
+      const dbStatusValue = newStatusOption.label === 'On Trip' ? 'On Trip' : newStatusOption.label;
+      await apiRequest('PUT', `/drivers/${driverId}`, { status: dbStatusValue });
+      
+      const dName = drivers.find(d => d.id === driverId)?.name || 'Driver';
+      const evt = new CustomEvent('app-toast', { detail: `${dName} set to ${newStatusOption.label}` });
+      window.dispatchEvent(evt);
+      
+      loadDrivers();
+    } catch (err) {
+      const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to update status', type: 'error' });
+      window.dispatchEvent(evt);
+    }
     setPopoverActiveRow(null);
   };
 
-  const handleAddDriver = (e) => {
-    e.preventDefault();
-    const newId = `DRV-00${drivers.length + 1}`;
-    const newDriver = {
-      id: newId,
-      name: formData.name,
-      license: formData.license,
-      category: formData.category,
-      expiry: formData.expiry,
-      contact: formData.contact,
-      completion: 0,
-      safety: 'Good',
-      status: 'Off Duty'
-    };
-    
-    setDrivers([...drivers, newDriver]);
-    setIsModalOpen(false);
-    setFormData({ name: '', license: '', category: 'LMV', expiry: '', contact: '' });
-    
-    setNewDriverHighlighted(newId);
-    setTimeout(() => setNewDriverHighlighted(null), 2500);
+  const parseExpiryDate = (str) => {
+    if (!str) return new Date().toISOString();
+    const parts = str.split('/');
+    if (parts.length === 2) {
+      const month = parseInt(parts[0], 10);
+      const year = parseInt(parts[1], 10);
+      if (!isNaN(month) && !isNaN(year)) {
+        return new Date(year, month - 1, 1).toISOString();
+      }
+    }
+    return new Date(str).toISOString();
+  };
 
-    const evt = new CustomEvent('app-toast', { detail: `${formData.name} added to the roster — Off Duty until verified` });
-    window.dispatchEvent(evt);
+  const handleAddDriver = async (e) => {
+    e.preventDefault();
+    
+    // License duplicate check
+    if (drivers.some(d => d.license_number.toLowerCase() === formData.license.toLowerCase())) {
+      const evt = new CustomEvent('app-toast', { detail: 'License number must be unique', type: 'error' });
+      window.dispatchEvent(evt);
+      return;
+    }
+
+    try {
+      const dateStr = parseExpiryDate(formData.expiry);
+      
+      const res = await apiRequest('POST', '/drivers', {
+        name: formData.name,
+        license_number: formData.license,
+        license_category: formData.category,
+        license_expiry_date: dateStr,
+        contact_number: formData.contact,
+        safety_score: 95
+      });
+      
+      setIsModalOpen(false);
+      setFormData({ name: '', license: '', category: 'LMV', expiry: '', contact: '' });
+      
+      const newId = res.data.id;
+      setNewDriverHighlighted(newId);
+      setTimeout(() => setNewDriverHighlighted(null), 2500);
+
+      const evt = new CustomEvent('app-toast', { detail: `${formData.name} added to the roster` });
+      window.dispatchEvent(evt);
+      
+      loadDrivers();
+    } catch (err) {
+      const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to register driver', type: 'error' });
+      window.dispatchEvent(evt);
+    }
   };
 
   // Filter Data
@@ -149,31 +201,39 @@ export default function Drivers() {
       const s = globalSearch.toLowerCase();
       matchesSearch = (
         d.name.toLowerCase().includes(s) || 
-        d.license.toLowerCase().includes(s) || 
-        d.contact.toLowerCase().includes(s) || 
+        d.license_number.toLowerCase().includes(s) || 
+        d.contact_number.toLowerCase().includes(s) || 
         d.status.toLowerCase().includes(s)
       );
     }
     let matchesFilter = true;
     if (activeFilter) {
-      matchesFilter = d.status === activeFilter;
+      const normalizedStatus = d.status === 'On Trip' ? 'On Trip' : d.status;
+      matchesFilter = normalizedStatus.toLowerCase() === activeFilter.toLowerCase();
     }
     return matchesSearch && matchesFilter;
   });
 
-  const getSafetyColor = (safety) => {
-    switch (safety) {
-      case 'Excellent': return 'green';
-      case 'Good': return 'teal';
-      case 'Needs Review': return 'orange';
-      default: return 'red';
-    }
+  const getSafetyColor = (score) => {
+    if (score >= 90) return 'green';
+    if (score >= 75) return 'teal';
+    if (score >= 60) return 'orange';
+    return 'red';
+  };
+
+  const getSafetyText = (score) => {
+    if (score >= 90) return 'Excellent';
+    if (score >= 75) return 'Good';
+    if (score >= 60) return 'Needs Review';
+    return 'Critical';
   };
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'Available': return 'green';
-      case 'On Trip': return 'blue';
+      case 'On Trip': 
+      case 'On trip': 
+        return 'blue';
       case 'Suspended': return 'red';
       default: return 'gray'; // Off Duty
     }
@@ -181,7 +241,7 @@ export default function Drivers() {
 
   const getAvatarColor = (name) => {
     const colors = ['#7a4a63', '#22a06b', '#2f6fed', '#e08a1e', '#6a5acd'];
-    const index = name.charCodeAt(0) % colors.length;
+    const index = name ? name.charCodeAt(0) % colors.length : 0;
     return colors[index];
   };
 
@@ -203,6 +263,8 @@ export default function Drivers() {
         </div>
       </div>
 
+      {error && <div className="error-message mb-4" style={{ color: 'var(--status-red)', fontSize: '0.875rem' }}>{error}</div>}
+
       <div className="card mb-6 p-0 overflow-hidden">
         <div className="table-container">
           <table className="roster-table">
@@ -219,8 +281,14 @@ export default function Drivers() {
               </tr>
             </thead>
             <tbody>
-              {filteredDrivers.map((d, index) => {
+              {loading ? (
+                <tr>
+                  <td colSpan="8" className="text-center py-12 text-muted">Loading driver roster...</td>
+                </tr>
+              ) : filteredDrivers.map((d, index) => {
                 const sColor = getStatusColor(d.status);
+                const expired = isLicenseExpired(d.license_expiry_date);
+                const expiringSoon = isLicenseExpiringSoon(d.license_expiry_date);
                 
                 return (
                   <tr 
@@ -231,26 +299,26 @@ export default function Drivers() {
                     <td style={{ paddingLeft: '2rem' }}>
                       <div className="flex items-center gap-3">
                         <div className="driver-avatar" style={{ backgroundColor: getAvatarColor(d.name) }}>
-                          {d.name.substring(0, 2).toUpperCase()}
+                          {d.name ? d.name.substring(0, 2).toUpperCase() : 'US'}
                         </div>
                         <span className="font-medium text-sm">{d.name}</span>
                       </div>
                     </td>
-                    <td className="mono text-xs">{d.license}</td>
-                    <td><span className="pill pill-indigo category-pill">{d.category}</span></td>
+                    <td className="mono text-xs">{d.license_number}</td>
+                    <td><span className="pill pill-indigo category-pill">{d.license_category}</span></td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <span className="mono text-xs">{d.expiry}</span>
-                        {d.isExpired && <span className="pill pill-red" style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem' }}>EXPIRED</span>}
-                        {d.isExpiringSoon && <span className="pill pill-orange" style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem' }}>EXP IN 30D</span>}
+                        <span className="mono text-xs">{new Date(d.license_expiry_date).toLocaleDateString()}</span>
+                        {expired && <span className="pill pill-red" style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem' }}>EXPIRED</span>}
+                        {expiringSoon && <span className="pill pill-orange" style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem' }}>EXP IN 30D</span>}
                       </div>
                     </td>
-                    <td className="mono text-xs">{d.contact}</td>
+                    <td className="mono text-xs">{d.contact_number}</td>
                     <td className="text-center">
-                      <ProgressRing percentage={d.completion} />
+                      <ProgressRing percentage={d.safety_score >= 80 ? 98 : 88} />
                     </td>
                     <td>
-                      <span className={`pill pill-${getSafetyColor(d.safety)}`}>{d.safety}</span>
+                      <span className={`pill pill-${getSafetyColor(d.safety_score)}`}>{getSafetyText(d.safety_score)}</span>
                     </td>
                     <td>
                       <div className="relative">
@@ -266,7 +334,7 @@ export default function Drivers() {
                         {popoverActiveRow === d.id && (
                           <div className="status-popover fade-in" ref={popoverRef}>
                             {STATUS_OPTIONS.map(opt => {
-                              const isBlocked = d.isExpired && (opt.label === 'Available' || opt.label === 'On Trip');
+                              const isBlocked = expired && (opt.label === 'Available' || opt.label === 'On Trip');
                               return (
                                 <div 
                                   key={opt.label} 
@@ -289,7 +357,7 @@ export default function Drivers() {
                   </tr>
                 );
               })}
-              {filteredDrivers.length === 0 && (
+              {!loading && filteredDrivers.length === 0 && (
                 <tr>
                   <td colSpan="8" className="text-center py-8 text-muted text-sm">No drivers found matching criteria.</td>
                 </tr>

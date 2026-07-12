@@ -1,109 +1,130 @@
 import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { apiRequest } from '../utils/api';
 import './FuelExpenses.css';
 
-const initialFuelLogs = [
-  { id: '1', vehicle: 'VAN-05', date: '05 Jul 2026', liters: 42, cost: 3150 },
-  { id: '2', vehicle: 'TRUCK-11', date: '06 Jul 2026', liters: 110, cost: 8400 },
-  { id: '3', vehicle: 'MINI-08', date: '06 Jul 2026', liters: 28, cost: 2050 }
-];
-
-const initialOtherExpenses = [
-  { id: '101', trip: 'TR001', vehicle: 'VAN-05', toll: 120, other: 0, maintLinked: 0, status: 'Available' },
-  { id: '102', trip: 'TR002', vehicle: 'TRK-12', toll: 340, other: 150, maintLinked: 15000, status: 'Completed' }
-];
-
 export default function FuelExpenses() {
-  const [fuelLogs, setFuelLogs] = useState(initialFuelLogs);
-  const [otherExpenses, setOtherExpenses] = useState(initialOtherExpenses);
+  const [vehicles, setVehicles] = useState([]);
+  const [trips, setTrips] = useState([]);
+  const [fuelLogs, setFuelLogs] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
   // Modal states
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   
-  // Animation states (IDs of newly added rows)
+  // Animation states
   const [newFuelId, setNewFuelId] = useState(null);
   const [newExpenseId, setNewExpenseId] = useState(null);
 
   // Form states
-  const [fuelForm, setFuelForm] = useState({ vehicle: '', date: '', liters: '', cost: '' });
-  const [expenseForm, setExpenseForm] = useState({ trip: '', vehicle: '', toll: '', other: '', maintLinked: '', status: 'Available' });
+  const [fuelForm, setFuelForm] = useState({ vehicleId: '', date: '', liters: '', cost: '' });
+  const [expenseForm, setExpenseForm] = useState({ tripId: '', vehicleId: '', description: 'Tolls & Other', amount: '', date: '' });
+
+  const loadData = async () => {
+    try {
+      setError('');
+      const [vehRes, tripsRes, fuelRes, expRes] = await Promise.all([
+        apiRequest('GET', '/vehicles'),
+        apiRequest('GET', '/trips'),
+        apiRequest('GET', '/fuel'),
+        apiRequest('GET', '/expenses')
+      ]);
+      setVehicles(vehRes.data || []);
+      setTrips(tripsRes.data || []);
+      setFuelLogs(fuelRes.data || []);
+      setExpenses(expRes.data || []);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to load operational logs.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Calculate totals
   const totalFuelCost = fuelLogs.reduce((acc, log) => acc + (Number(log.cost) || 0), 0);
-  const totalMaintCost = otherExpenses.reduce((acc, exp) => acc + (Number(exp.maintLinked) || 0), 0);
-  const totalOperationalCost = totalFuelCost + totalMaintCost;
+  const totalExpenseCost = expenses.reduce((acc, exp) => acc + (Number(exp.amount) || 0), 0);
+  const totalOperationalCost = totalFuelCost + totalExpenseCost;
 
   // Format currency
-  const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
+  const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
-  // Layout check for sidebar width to adjust total bar
-  const [sidebarWidth, setSidebarWidth] = useState(216);
-  useEffect(() => {
-    // A bit of a hack to sync bottom bar with sidebar state without global context
-    const checkSidebar = () => {
-      const sidebar = document.querySelector('.sidebar');
-      if (sidebar) {
-        setSidebarWidth(sidebar.classList.contains('collapsed') ? 72 : 216);
-      }
-    };
-    const observer = new MutationObserver(checkSidebar);
-    const sidebarNode = document.querySelector('.sidebar');
-    if (sidebarNode) {
-      observer.observe(sidebarNode, { attributes: true, attributeFilter: ['class'] });
-      checkSidebar();
+  const handleFuelSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiRequest('POST', '/fuel', {
+        vehicle_id: Number(fuelForm.vehicleId),
+        liters: Number(fuelForm.liters),
+        cost: Number(fuelForm.cost),
+        date: fuelForm.date ? new Date(fuelForm.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      });
+
+      setNewFuelId(res.data.id);
+      setIsFuelModalOpen(false);
+      setFuelForm({ vehicleId: '', date: '', liters: '', cost: '' });
+      loadData();
+      
+      setTimeout(() => setNewFuelId(null), 1000);
+    } catch (err) {
+      const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to log fuel', type: 'error' });
+      window.dispatchEvent(evt);
     }
-    return () => observer.disconnect();
-  }, []);
-
-  const handleFuelSubmit = (e) => {
-    e.preventDefault();
-    const newEntry = {
-      id: Date.now().toString(),
-      vehicle: fuelForm.vehicle,
-      date: fuelForm.date,
-      liters: Number(fuelForm.liters),
-      cost: Number(fuelForm.cost)
-    };
-    setFuelLogs([newEntry, ...fuelLogs]);
-    setNewFuelId(newEntry.id);
-    setIsFuelModalOpen(false);
-    setFuelForm({ vehicle: '', date: '', liters: '', cost: '' });
-    
-    // Clear animation class after delay
-    setTimeout(() => setNewFuelId(null), 1000);
   };
 
-  const handleExpenseSubmit = (e) => {
+  const handleExpenseSubmit = async (e) => {
     e.preventDefault();
-    const newEntry = {
-      id: Date.now().toString(),
-      trip: expenseForm.trip,
-      vehicle: expenseForm.vehicle,
-      toll: Number(expenseForm.toll) || 0,
-      other: Number(expenseForm.other) || 0,
-      maintLinked: Number(expenseForm.maintLinked) || 0,
-      status: expenseForm.status
-    };
-    setOtherExpenses([newEntry, ...otherExpenses]);
-    setNewExpenseId(newEntry.id);
-    setIsExpenseModalOpen(false);
-    setExpenseForm({ trip: '', vehicle: '', toll: '', other: '', maintLinked: '', status: 'Available' });
-    
-    setTimeout(() => setNewExpenseId(null), 1000);
+    try {
+      const res = await apiRequest('POST', '/expenses', {
+        vehicle_id: Number(expenseForm.vehicleId),
+        trip_id: expenseForm.tripId ? Number(expenseForm.tripId) : null,
+        description: expenseForm.description,
+        amount: Number(expenseForm.amount),
+        date: expenseForm.date ? new Date(expenseForm.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      });
+
+      setNewExpenseId(res.data.id);
+      setIsExpenseModalOpen(false);
+      setExpenseForm({ tripId: '', vehicleId: '', description: 'Tolls & Other', amount: '', date: '' });
+      loadData();
+      
+      setTimeout(() => setNewExpenseId(null), 1000);
+    } catch (err) {
+      const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to save expense', type: 'error' });
+      window.dispatchEvent(evt);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex-col gap-6 w-full h-full p-4">
+        <div className="skeleton w-1/4 h-10 mb-4"></div>
+        <div className="flex gap-4">
+          <div className="skeleton flex-1 h-96"></div>
+          <div className="skeleton flex-1 h-96"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fuel-page">
       <h1 className="fuel-title">Fuel & Expense Management</h1>
+      {error && <div className="text-xs text-status-red mb-2">{error}</div>}
 
       <div className="fe-grid">
-        {/* Panel 1: Fuel Loss */}
+        {/* Panel 1: Fuel Log */}
         <div className="fe-card">
           <div className="fe-card-header">
             <div className="fe-card-title">
-              Fuel Loss
+              Fuel Logs
               <span className="fe-badge">{fuelLogs.length} Entries</span>
             </div>
             <button className="fe-btn-amber" onClick={() => setIsFuelModalOpen(true)}>
@@ -124,12 +145,17 @@ export default function FuelExpenses() {
               <tbody>
                 {fuelLogs.map(log => (
                   <tr key={log.id} className={log.id === newFuelId ? 'fe-row-enter' : ''}>
-                    <td className="fe-mono text-text-primary font-medium">{log.vehicle}</td>
-                    <td>{log.date}</td>
+                    <td className="fe-mono text-text-primary font-medium">{log.vehicle_registration || `Veh #${log.vehicle_id}`}</td>
+                    <td>{new Date(log.date).toLocaleDateString()}</td>
                     <td className="fe-mono">{log.liters} L</td>
                     <td className="fe-mono font-medium">{formatCurrency(log.cost)}</td>
                   </tr>
                 ))}
+                {fuelLogs.length === 0 && (
+                  <tr>
+                    <td colSpan="4" className="text-center py-4 text-xs text-muted">No fuel entries logged yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -139,8 +165,8 @@ export default function FuelExpenses() {
         <div className="fe-card">
           <div className="fe-card-header">
             <div className="fe-card-title">
-              Other Expenses <span style={{fontSize: '0.9rem', opacity: 0.6, fontWeight: 400}}>— toll / misc</span>
-              <span className="fe-badge">{otherExpenses.length} Entries</span>
+              Operational Expenses
+              <span className="fe-badge">{expenses.length} Entries</span>
             </div>
             <button className="fe-btn-ghost" onClick={() => setIsExpenseModalOpen(true)}>
               <Plus size={16} /> Add Expense
@@ -151,33 +177,30 @@ export default function FuelExpenses() {
             <table className="fe-table">
               <thead>
                 <tr>
-                  <th>Trip</th>
+                  <th>Trip ID</th>
                   <th>Vehicle</th>
-                  <th>Toll</th>
-                  <th>Other</th>
-                  <th>Maint. (Linked)</th>
-                  <th>Status</th>
+                  <th>Description</th>
+                  <th>Date</th>
+                  <th>Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {otherExpenses.map(exp => (
+                {expenses.map(exp => (
                   <tr key={exp.id} className={exp.id === newExpenseId ? 'fe-row-enter' : ''}>
-                    <td className="fe-mono">{exp.trip}</td>
-                    <td className="fe-mono font-medium">{exp.vehicle}</td>
-                    <td className="fe-mono">{formatCurrency(exp.toll)}</td>
-                    <td className="fe-mono">{formatCurrency(exp.other)}</td>
-                    <td className="fe-mono font-medium" style={{ color: exp.maintLinked > 0 ? 'var(--fe-violet)' : 'inherit' }}>
-                      {formatCurrency(exp.maintLinked)}
-                    </td>
-                    <td>
-                      {exp.status === 'Completed' ? (
-                        <span className="fe-pill fe-pill-green">Completed</span>
-                      ) : (
-                        <span className="fe-pill fe-pill-blue">Available</span>
-                      )}
+                    <td className="fe-mono">{exp.trip_id ? `TR-${exp.trip_id}` : 'General'}</td>
+                    <td className="fe-mono font-medium">{exp.vehicle_registration || `Veh #${exp.vehicle_id}`}</td>
+                    <td>{exp.description}</td>
+                    <td>{new Date(exp.date).toLocaleDateString()}</td>
+                    <td className="fe-mono font-medium" style={{ color: 'var(--fe-violet)' }}>
+                      {formatCurrency(exp.amount)}
                     </td>
                   </tr>
                 ))}
+                {expenses.length === 0 && (
+                  <tr>
+                    <td colSpan="5" className="text-center py-4 text-xs text-muted">No general expenses logged yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -188,7 +211,7 @@ export default function FuelExpenses() {
       <div className="fe-total-bar">
         <div>
           <div className="fe-total-label">Total Operational Cost</div>
-          <div className="fe-total-subtext">Fuel + Maintenance (linked)</div>
+          <div className="fe-total-subtext">Fuel + General Expenses</div>
         </div>
         <div className="fe-total-value">
           {formatCurrency(totalOperationalCost)}
@@ -203,11 +226,16 @@ export default function FuelExpenses() {
             <form onSubmit={handleFuelSubmit}>
               <div className="input-group mb-4">
                 <label>Vehicle</label>
-                <input required type="text" className="input w-full" placeholder="e.g. VAN-05" value={fuelForm.vehicle} onChange={e => setFuelForm({...fuelForm, vehicle: e.target.value})} />
+                <select required className="select w-full" value={fuelForm.vehicleId} onChange={e => setFuelForm({...fuelForm, vehicleId: e.target.value})}>
+                  <option value="" disabled>Select vehicle...</option>
+                  {vehicles.map(v => (
+                    <option key={v.id} value={v.id}>{v.registration_number} ({v.name})</option>
+                  ))}
+                </select>
               </div>
               <div className="input-group mb-4">
                 <label>Date</label>
-                <input required type="text" className="input w-full" placeholder="e.g. 07 Jul 2026" value={fuelForm.date} onChange={e => setFuelForm({...fuelForm, date: e.target.value})} />
+                <input required type="date" className="input w-full" value={fuelForm.date} onChange={e => setFuelForm({...fuelForm, date: e.target.value})} />
               </div>
               <div className="flex gap-4 mb-6">
                 <div className="input-group flex-1">
@@ -215,8 +243,8 @@ export default function FuelExpenses() {
                   <input required type="number" className="input w-full" placeholder="40" value={fuelForm.liters} onChange={e => setFuelForm({...fuelForm, liters: e.target.value})} />
                 </div>
                 <div className="input-group flex-1">
-                  <label>Fuel Cost (₹)</label>
-                  <input required type="number" className="input w-full" placeholder="3000" value={fuelForm.cost} onChange={e => setFuelForm({...fuelForm, cost: e.target.value})} />
+                  <label>Fuel Cost ($)</label>
+                  <input required type="number" className="input w-full" placeholder="50" value={fuelForm.cost} onChange={e => setFuelForm({...fuelForm, cost: e.target.value})} />
                 </div>
               </div>
               <div className="flex justify-end gap-3">
@@ -237,37 +265,38 @@ export default function FuelExpenses() {
             <form onSubmit={handleExpenseSubmit}>
               <div className="flex gap-4 mb-4">
                 <div className="input-group flex-1">
-                  <label>Trip ID</label>
-                  <input required type="text" className="input w-full" placeholder="e.g. TR003" value={expenseForm.trip} onChange={e => setExpenseForm({...expenseForm, trip: e.target.value})} />
+                  <label>Vehicle</label>
+                  <select required className="select w-full" value={expenseForm.vehicleId} onChange={e => setExpenseForm({...expenseForm, vehicleId: e.target.value})}>
+                    <option value="" disabled>Select vehicle...</option>
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.registration_number} ({v.name})</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="input-group flex-1">
-                  <label>Vehicle</label>
-                  <input required type="text" className="input w-full" placeholder="e.g. TRK-12" value={expenseForm.vehicle} onChange={e => setExpenseForm({...expenseForm, vehicle: e.target.value})} />
+                  <label>Linked Trip ID (Optional)</label>
+                  <select className="select w-full" value={expenseForm.tripId} onChange={e => setExpenseForm({...expenseForm, tripId: e.target.value})}>
+                    <option value="">None (General)</option>
+                    {trips.map(t => (
+                      <option key={t.id} value={t.id}>TR-{t.id} ({t.source} → {t.destination})</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               
-              <div className="flex gap-4 mb-4">
-                <div className="input-group flex-1">
-                  <label>Toll (₹)</label>
-                  <input type="number" className="input w-full" placeholder="0" value={expenseForm.toll} onChange={e => setExpenseForm({...expenseForm, toll: e.target.value})} />
-                </div>
-                <div className="input-group flex-1">
-                  <label>Other (₹)</label>
-                  <input type="number" className="input w-full" placeholder="0" value={expenseForm.other} onChange={e => setExpenseForm({...expenseForm, other: e.target.value})} />
-                </div>
+              <div className="input-group mb-4">
+                <label>Description</label>
+                <input required type="text" className="input w-full" placeholder="e.g. Tolls / Permits / Repairs" value={expenseForm.description} onChange={e => setExpenseForm({...expenseForm, description: e.target.value})} />
               </div>
 
               <div className="flex gap-4 mb-6">
                 <div className="input-group flex-1">
-                  <label>Maint. Linked (₹)</label>
-                  <input type="number" className="input w-full" placeholder="0" value={expenseForm.maintLinked} onChange={e => setExpenseForm({...expenseForm, maintLinked: e.target.value})} />
+                  <label>Amount ($)</label>
+                  <input required type="number" className="input w-full" placeholder="100" value={expenseForm.amount} onChange={e => setExpenseForm({...expenseForm, amount: e.target.value})} />
                 </div>
                 <div className="input-group flex-1">
-                  <label>Status</label>
-                  <select className="select w-full" value={expenseForm.status} onChange={e => setExpenseForm({...expenseForm, status: e.target.value})}>
-                    <option value="Available">Available</option>
-                    <option value="Completed">Completed</option>
-                  </select>
+                  <label>Date</label>
+                  <input required type="date" className="input w-full" value={expenseForm.date} onChange={e => setExpenseForm({...expenseForm, date: e.target.value})} />
                 </div>
               </div>
 

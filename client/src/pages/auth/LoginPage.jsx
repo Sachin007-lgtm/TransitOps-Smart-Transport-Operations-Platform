@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ChevronDown, Shield, Truck, BarChart3, Users } from 'lucide-react';
+import { apiRequest } from '../../utils/api';
 import './LoginPage.css';
 
 // Custom Hook for count up
@@ -20,7 +21,6 @@ function useCountUp(end, duration = 2000, startDelay = 0) {
         setCount(Math.min(end, Math.floor((progress / duration) * end)));
         animationFrame = requestAnimationFrame(updateCount);
       } else {
-        // format with decimal if needed
         setCount(end);
       }
     };
@@ -46,18 +46,20 @@ const taglines = [
 ];
 
 const rolesData = [
-  { id: 'Fleet Manager', title: 'Fleet manager', desc: 'Full access', icon: Truck },
-  { id: 'Dispatcher', title: 'Dispatcher', desc: 'Trips + fleet', icon: Users },
-  { id: 'Safety Officer', title: 'Safety officer', desc: 'Compliance', icon: Shield },
-  { id: 'Financial Analyst', title: 'Financial analyst', desc: 'Reports only', icon: BarChart3 }
+  { id: 'Fleet Manager', title: 'Fleet manager', desc: 'Full access', icon: Truck, defaultEmail: 'fleet@transitops.com' },
+  { id: 'Driver', title: 'Driver', desc: 'Trips + Refueling', icon: Users, defaultEmail: 'driver@transitops.com' },
+  { id: 'Safety Officer', title: 'Safety officer', desc: 'Compliance', icon: Shield, defaultEmail: 'safety@transitops.com' },
+  { id: 'Financial Analyst', title: 'Financial analyst', desc: 'Reports only', icon: BarChart3, defaultEmail: 'finance@transitops.com' }
 ];
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [role, setRole] = useState(rolesData[1]); // Default Dispatcher
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [role, setRole] = useState(rolesData[0]); // Default Fleet Manager
+  const [email, setEmail] = useState('fleet@transitops.com');
+  const [password, setPassword] = useState('password123');
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   
   const [taglineIdx, setTaglineIdx] = useState(0);
   const [fadeTagline, setFadeTagline] = useState(true);
@@ -65,10 +67,8 @@ export default function LoginPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  const [isLoading, setIsLoading] = useState(false);
-
   const vehiclesTracked = useCountUp(118, 1500, 0);
-  const fleetUptime = useCountUp(99, 1500, 300); // We'll manually append .2% below for simplicity
+  const fleetUptime = useCountUp(99, 1500, 300);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -76,12 +76,11 @@ export default function LoginPage() {
       setTimeout(() => {
         setTaglineIdx((prev) => (prev + 1) % taglines.length);
         setFadeTagline(true);
-      }, 500); // 500ms fade out duration
+      }, 500);
     }, 3200);
     return () => clearInterval(interval);
   }, []);
 
-  // Click outside listener for dropdown
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -92,13 +91,29 @@ export default function LoginPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setError('');
     setIsLoading(true);
-    setTimeout(() => {
-      localStorage.setItem('userRole', role.id);
+
+    try {
+      const res = await apiRequest('POST', '/auth/login', { email, password });
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('userRole', res.data.user.role);
+      localStorage.setItem('userName', res.data.user.name);
       navigate('/');
-    }, 1500);
+    } catch (err) {
+      setError(err.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRoleSelect = (r) => {
+    setRole(r);
+    setEmail(r.defaultEmail);
+    setPassword('password123');
+    setIsDropdownOpen(false);
   };
 
   return (
@@ -107,7 +122,6 @@ export default function LoginPage() {
       <div className="login-left">
         <div className="login-branding">
           <div className="new-logo-badge">
-            {/* Custom Route Mark SVG */}
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 12h4l3-9 5 18 3-9h3" />
               <circle cx="21" cy="12" r="2" fill="var(--accent-primary)" />
@@ -164,6 +178,8 @@ export default function LoginPage() {
             Sign in to dispatch, track, and manage every vehicle in one place.
           </p>
 
+          {error && <div className="error-message" style={{ color: 'var(--status-red)', marginBottom: '1rem', fontSize: '0.875rem' }}>{error}</div>}
+
           <form onSubmit={handleLogin} className="login-form">
             <div className="input-group">
               <label>EMAIL</label>
@@ -193,7 +209,7 @@ export default function LoginPage() {
             </div>
 
             <div className="input-group" style={{ position: 'relative' }} ref={dropdownRef}>
-              <label>ROLE (RBAC DEMO)</label>
+              <label>AUTOFILL DEMO LOGIN</label>
               <div className="custom-select-container">
                 <div 
                   className={`custom-select-trigger ${isDropdownOpen ? 'open' : ''}`}
@@ -212,10 +228,7 @@ export default function LoginPage() {
                       <div 
                         key={r.id} 
                         className="custom-select-option"
-                        onClick={() => {
-                          setRole(r);
-                          setIsDropdownOpen(false);
-                        }}
+                        onClick={() => handleRoleSelect(r)}
                       >
                         <r.icon size={20} className="icon" />
                         <div>

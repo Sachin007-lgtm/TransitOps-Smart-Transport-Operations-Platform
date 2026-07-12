@@ -2,21 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Search, ChevronDown, Copy, Lock, Info } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
-
-// Sample Data
-const initialVehicles = [
-  { id: '1', regNo: 'GJ01AB452', name: 'VAN-05', type: 'Van', capacity: '500 kg', odometer: 74000, cost: '6,20,000', status: 'Available' },
-  { id: '2', regNo: 'GJ01AB998', name: 'TRUCK-11', type: 'Truck', capacity: '5 Ton', odometer: 182000, cost: '24,50,000', status: 'On trip' },
-  { id: '3', regNo: 'GJ01AB1120', name: 'MINI-03', type: 'Mini', capacity: '1 Ton', odometer: 66000, cost: '4,10,000', status: 'In shop' },
-  { id: '4', regNo: 'GJ01AB008', name: 'VAN-09', type: 'Van', capacity: '750 kg', odometer: 241900, cost: '5,90,000', status: 'Retired' }
-];
+import { apiRequest } from '../utils/api';
 
 const vehicleTypes = ['All Types', 'Van', 'Truck', 'Mini'];
 const vehicleStatuses = ['All Statuses', 'Available', 'On trip', 'In shop', 'Retired'];
 
 export default function Vehicles() {
-  const { globalSearch, setGlobalSearch } = useGlobalSearch();
-  const [vehicles, setVehicles] = useState(initialVehicles);
+  const { globalSearch } = useGlobalSearch();
+  const [vehicles, setVehicles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
   // Filters
   const [typeFilter, setTypeFilter] = useState('All Types');
@@ -37,7 +32,22 @@ export default function Vehicles() {
   const typeRef = useRef(null);
   const statusRef = useRef(null);
 
+  const loadVehicles = async () => {
+    try {
+      setError('');
+      const data = await apiRequest('GET', '/vehicles');
+      setVehicles(data.data || []);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to load fleet registry.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
+    loadVehicles();
+
     function handleClickOutside(e) {
       if (typeRef.current && !typeRef.current.contains(e.target)) setIsTypeOpen(false);
       if (statusRef.current && !statusRef.current.contains(e.target)) setIsStatusOpen(false);
@@ -67,7 +77,7 @@ export default function Vehicles() {
     addToast(`Copied ${text} to clipboard`);
   };
 
-  const handleAddVehicle = (e) => {
+  const handleAddVehicle = async (e) => {
     e.preventDefault();
     if (!newVehicle.regNo || !newVehicle.name) {
       addToast("Reg No and Name are required", true);
@@ -75,24 +85,44 @@ export default function Vehicles() {
     }
     
     // Uniqueness check
-    if (vehicles.some(v => v.regNo.toLowerCase() === newVehicle.regNo.toLowerCase())) {
+    if (vehicles.some(v => v.registration_number.toLowerCase() === newVehicle.regNo.toLowerCase())) {
       addToast("Registration number must be unique", true);
       return;
     }
 
-    const created = { ...newVehicle, id: Date.now().toString(), odometer: 0 };
-    setVehicles([created, ...vehicles]);
-    setIsModalOpen(false);
-    setNewVehicle({ regNo: '', name: '', type: 'Van', capacity: '', cost: '', status: 'Available' });
-    addToast("Vehicle added successfully");
+    // Clean inputs for database types
+    const parsedCapacity = parseInt(newVehicle.capacity.replace(/\D/g, '')) || 0;
+    const parsedCost = parseFloat(newVehicle.cost.replace(/[^0-9.]/g, '')) || 0;
+
+    try {
+      await apiRequest('POST', '/vehicles', {
+        registration_number: newVehicle.regNo,
+        name: newVehicle.name,
+        type: newVehicle.type,
+        max_load_capacity: parsedCapacity,
+        odometer: 0,
+        acquisition_cost: parsedCost,
+        status: newVehicle.status === 'On trip' ? 'On Trip' : newVehicle.status === 'In shop' ? 'In Shop' : newVehicle.status
+      });
+
+      setIsModalOpen(false);
+      setNewVehicle({ regNo: '', name: '', type: 'Van', capacity: '', cost: '', status: 'Available' });
+      addToast("Vehicle added successfully");
+      loadVehicles();
+    } catch (err) {
+      addToast(err.message || "Failed to add vehicle", true);
+    }
   };
 
   // Filter Logic
   const filteredVehicles = vehicles.filter(v => {
-    const matchesSearch = v.regNo.toLowerCase().includes(globalSearch.toLowerCase()) || 
+    const matchesSearch = v.registration_number.toLowerCase().includes(globalSearch.toLowerCase()) || 
                           v.name.toLowerCase().includes(globalSearch.toLowerCase());
     const matchesType = typeFilter === 'All Types' || v.type === typeFilter;
-    const matchesStatus = statusFilter === 'All Statuses' || v.status === statusFilter;
+    
+    // Handle state mapping differences
+    const mappedStatus = v.status === 'On Trip' ? 'On trip' : v.status === 'In Shop' ? 'In shop' : v.status;
+    const matchesStatus = statusFilter === 'All Statuses' || mappedStatus === statusFilter;
     
     return matchesSearch && matchesType && matchesStatus;
   });
@@ -100,8 +130,12 @@ export default function Vehicles() {
   const getStatusPill = (status) => {
     switch(status) {
       case 'Available': return <span className="pill pill-green">Available</span>;
-      case 'On trip': return <span className="pill pill-blue"><span className="pulsing-dot"></span>On trip</span>;
-      case 'In shop': return <span className="pill pill-orange">In shop</span>;
+      case 'On Trip': 
+      case 'On trip': 
+        return <span className="pill pill-blue"><span className="pulsing-dot"></span>On trip</span>;
+      case 'In Shop':
+      case 'In shop': 
+        return <span className="pill pill-orange">In shop</span>;
       case 'Retired': return <span className="pill pill-red">Retired</span>;
       default: return <span className="pill pill-gray">{status}</span>;
     }
@@ -110,8 +144,12 @@ export default function Vehicles() {
   const getLeftBorderColor = (status) => {
     switch(status) {
       case 'Available': return 'var(--status-green)';
-      case 'On trip': return 'var(--status-blue)';
-      case 'In shop': return 'var(--status-orange)';
+      case 'On Trip':
+      case 'On trip': 
+        return 'var(--status-blue)';
+      case 'In Shop':
+      case 'In shop': 
+        return 'var(--status-orange)';
       case 'Retired': return 'var(--status-red)';
       default: return 'transparent';
     }
@@ -122,6 +160,7 @@ export default function Vehicles() {
       {/* Header Row */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl heading">Vehicle registry</h1>
+        {error && <span className="text-xs text-status-red">{error}</span>}
       </div>
 
       {/* Toolbar */}
@@ -195,7 +234,7 @@ export default function Vehicles() {
           <table>
             <thead style={{ backgroundColor: '#fafafa' }}>
               <tr>
-                <th>Reg. No. (Unique)</th>
+                <th>Reg. No.</th>
                 <th>Name/Model</th>
                 <th>Type</th>
                 <th>Capacity</th>
@@ -205,7 +244,11 @@ export default function Vehicles() {
               </tr>
             </thead>
             <tbody>
-              {filteredVehicles.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan="7" className="text-center py-12 text-muted">Loading fleet registry...</td>
+                </tr>
+              ) : filteredVehicles.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center py-12 text-muted">
                     No vehicles match these filters.
@@ -219,31 +262,31 @@ export default function Vehicles() {
                     style={{ 
                       animationDelay: `${idx * 70}ms`,
                       borderLeft: `4px solid ${getLeftBorderColor(v.status)}`,
-                      opacity: (v.status === 'Retired' || v.status === 'In shop') ? 0.7 : 1
+                      opacity: (v.status === 'Retired' || v.status === 'In shop' || v.status === 'In Shop') ? 0.7 : 1
                     }}
                   >
                     <td className="mono font-medium group relative" style={{ cursor: 'pointer' }}>
-                      <div className="flex items-center gap-2" onClick={() => copyToClipboard(v.regNo)} title="Click to copy">
-                        {v.regNo}
+                      <div className="flex items-center gap-2" onClick={() => copyToClipboard(v.registration_number)} title="Click to copy">
+                        {v.registration_number}
                         <Copy size={14} className="text-muted opacity-0 hover:opacity-100 transition-opacity" style={{ opacity: 0.5 }} />
                       </div>
                     </td>
                     <td>{v.name}</td>
                     <td>{v.type}</td>
-                    <td className="mono">{v.capacity}</td>
+                    <td className="mono">{v.max_load_capacity} kg</td>
                     <td className="mono">
                       <div className="odometer-wrapper" style={{ width: '80px' }}>
-                        <span>{v.odometer.toLocaleString()}</span>
+                        <span>{Number(v.odometer).toLocaleString()} km</span>
                         <div className="odometer-bg">
                           <div className="odometer-fill" style={{ animationDelay: `${(idx * 70) + 300}ms` }}></div>
                         </div>
                       </div>
                     </td>
-                    <td className="mono">{v.cost}</td>
+                    <td className="mono">${Number(v.acquisition_cost).toLocaleString()}</td>
                     <td>
                       <div className="flex items-center gap-2">
                         {getStatusPill(v.status)}
-                        {(v.status === 'Retired' || v.status === 'In shop') && (
+                        {(v.status === 'Retired' || v.status === 'In shop' || v.status === 'In Shop') && (
                           <div className="flex items-center gap-1 text-status-orange text-xs">
                             <Lock size={12} />
                             <span style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Hidden</span>

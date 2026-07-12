@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Shield, Check } from 'lucide-react';
 import './Settings.css';
 
@@ -22,16 +22,24 @@ const PERMISSION_LABELS = {
 };
 
 export default function Settings() {
-  const [depotName, setDepotName] = useState('Gandhinagar Depot GJ4');
-  const [currency, setCurrency] = useState('INR');
-  const [distanceUnit, setDistanceUnit] = useState('km');
+  const [depotName, setDepotName] = useState(() => localStorage.getItem('depotName') || 'Gandhinagar Depot GJ4');
+  const [currency, setCurrency] = useState(() => localStorage.getItem('currency') || 'USD');
+  const [distanceUnit, setDistanceUnit] = useState(() => localStorage.getItem('distanceUnit') || 'km');
 
   const [isSaved, setIsSaved] = useState(false);
-  const [rbacData, setRbacData] = useState(INITIAL_RBAC_DATA);
+  const [rbacData, setRbacData] = useState(() => {
+    const stored = localStorage.getItem('rbacData');
+    return stored ? JSON.parse(stored) : INITIAL_RBAC_DATA;
+  });
   const [popState, setPopState] = useState({ roleId: null, module: null, ts: 0 });
 
   const handleSave = () => {
     if (isSaved) return;
+    localStorage.setItem('depotName', depotName);
+    localStorage.setItem('currency', currency);
+    localStorage.setItem('distanceUnit', distanceUnit);
+    localStorage.setItem('rbacData', JSON.stringify(rbacData));
+
     setIsSaved(true);
     setTimeout(() => {
       setIsSaved(false);
@@ -39,19 +47,22 @@ export default function Settings() {
   };
 
   const handleCyclePermission = (roleId, module) => {
-    setRbacData(prev => prev.map(row => {
-      if (row.id === roleId) {
-        return {
-          ...row,
-          permissions: {
-            ...row.permissions,
-            [module]: PERMISSION_CYCLE[row.permissions[module]]
-          }
-        };
-      }
-      return row;
-    }));
-    // Trigger animation pop
+    setRbacData(prev => {
+      const updated = prev.map(row => {
+        if (row.id === roleId) {
+          return {
+            ...row,
+            permissions: {
+              ...row.permissions,
+              [module]: PERMISSION_CYCLE[row.permissions[module]]
+            }
+          };
+        }
+        return row;
+      });
+      localStorage.setItem('rbacData', JSON.stringify(updated));
+      return updated;
+    });
     setPopState({ roleId, module, ts: Date.now() });
   };
 
@@ -68,7 +79,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="settings-page">
+    <div className="settings-page fade-in">
       <div className="st-grid">
         
         {/* Panel 1: General */}
@@ -78,7 +89,7 @@ export default function Settings() {
               <SettingsIcon size={20} />
             </div>
             <div className="st-header-text">
-              <h2 className="st-title">General</h2>
+              <h2 className="st-title">General Settings</h2>
               <div className="st-subtitle">Depot & unit preferences</div>
             </div>
           </div>
