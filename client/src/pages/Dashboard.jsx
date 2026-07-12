@@ -136,7 +136,7 @@ export default function Dashboard() {
 
       {/* KPI Strip */}
       <div className="kpi-strip mb-6">
-        <div className="card kpi-card">
+        <div className="card kpi-card border-l-plum">
           <div className="kpi-label">Active Vehicles</div>
           <div className="text-3xl font-bold mono kpi-value mb-2">{activeVehicles}</div>
           <div className="kpi-chart-wrap">
@@ -163,7 +163,7 @@ export default function Dashboard() {
         <div className="card kpi-card border-l-amber">
           <div className="kpi-label">In Maintenance</div>
           <div className="text-3xl font-bold mono kpi-value">{maintVehicles}</div>
-          <div className="text-xs text-[var(--amber)] mt-2 flex items-center gap-1 font-medium">
+          <div className="text-xs text-[var(--amber)] mt-auto pt-2 flex items-center gap-1 font-medium">
             <Lock size={12} /> Auto-locked from dispatch
           </div>
         </div>
@@ -174,15 +174,15 @@ export default function Dashboard() {
             {activeTrips}
             <span className="live-dot bg-blue-500"></span>
           </div>
-          <div className="text-xs text-muted mt-2">Live updates streaming</div>
+          <div className="text-xs text-muted mt-auto pt-2">Live updates streaming</div>
         </div>
 
-        <div className="card kpi-card">
+        <div className="card kpi-card border-l-gray">
           <div className="kpi-label">Total Fleet</div>
           <div className="text-3xl font-bold mono kpi-value">{totalVehicles}</div>
         </div>
 
-        <div className="card kpi-card">
+        <div className="card kpi-card border-l-gray">
           <div className="kpi-label">Drivers on Duty</div>
           <div className="text-3xl font-bold mono kpi-value">{totalDrivers}</div>
         </div>

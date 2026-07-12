@@ -60,6 +60,8 @@
 .border-l-amber { border-left: 4px solid var(--amber) !important; }
 .border-l-blue { border-left: 4px solid var(--blue) !important; }
 .border-l-teal { border-left: 4px solid var(--teal) !important; }
+.border-l-plum { border-left: 4px solid var(--plum-1) !important; }
+.border-l-gray { border-left: 4px solid var(--gray) !important; }
 
 /* Filter Bar */
 .filter-pill {

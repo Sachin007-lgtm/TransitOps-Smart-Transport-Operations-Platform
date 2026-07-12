@@ -153,7 +153,6 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
 }
 .kpi-card:hover {
   transform: translateY(-2px);

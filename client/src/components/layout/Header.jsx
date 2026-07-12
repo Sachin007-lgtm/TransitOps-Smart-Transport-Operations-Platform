@@ -15,6 +15,7 @@ export default function Header() {
 
   const [userName, setUserName] = useState('Guest');
   const [userRole, setUserRole] = useState('User');
+  const [userEmail, setUserEmail] = useState('user@example.com');
 
   const bellRef = useRef(null);
   const userRef = useRef(null);
@@ -22,8 +23,10 @@ export default function Header() {
   useEffect(() => {
     const storedName = localStorage.getItem('userName');
     const storedRole = localStorage.getItem('userRole');
+    const storedEmail = localStorage.getItem('userEmail');
     if (storedName) setUserName(storedName);
     if (storedRole) setUserRole(storedRole);
+    if (storedEmail) setUserEmail(storedEmail);
   }, []);
 
   useEffect(() => {
@@ -117,41 +120,41 @@ export default function Header() {
         )}
         
         {/* Notifications */}
-        <div className="relative" ref={bellRef}>
+        <div className="relative" style={{ position: 'relative' }} ref={bellRef}>
           <button 
-            className="btn-outline flex items-center justify-center relative" 
-            style={{ padding: '0.4rem', borderRadius: '50%', border: 'none', cursor: 'pointer' }}
+            className="btn-outline flex items-center justify-center" 
+            style={{ position: 'relative', padding: '0.4rem', borderRadius: '50%', border: 'none', cursor: 'pointer' }}
             onClick={() => togglePopover('bell')}
           >
             <Bell size={20} className="text-muted" />
-            <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--card)' }}></span>
+            <span style={{ position: 'absolute', top: '2px', right: '4px', width: '8px', height: '8px', background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--card)' }}></span>
           </button>
 
           {openPopover === 'bell' && (
             <div className="popover-menu" style={{ width: '300px', right: '-1rem' }}>
-              <div className="px-4 py-3 border-b border-[var(--line)]">
-                <h3 className="heading text-sm">Notifications</h3>
+              <div className="popover-header">
+                <h3 style={{ fontSize: '0.875rem', fontWeight: '600', margin: 0, color: 'var(--text-primary)' }}>Notifications</h3>
               </div>
-              <div className="flex flex-col">
-                <div className="popover-item flex gap-3 p-3">
-                  <div className="text-status-red mt-1"><FileWarning size={16} /></div>
+              <div style={{ padding: '0.5rem 0' }}>
+                <div className="popover-item" onClick={() => { navigate('/drivers'); setOpenPopover(null); }}>
+                  <div style={{ color: 'var(--red)', marginTop: '2px' }}><FileWarning size={16} /></div>
                   <div>
-                    <div className="text-sm font-medium">License Expiry</div>
-                    <div className="text-xs text-muted">Driver Priya's license expires in 3 days.</div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>License Expiry</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Driver Priya's license expires in 3 days.</div>
                   </div>
                 </div>
-                <div className="popover-item flex gap-3 p-3">
-                  <div className="text-status-orange mt-1"><ShieldAlert size={16} /></div>
+                <div className="popover-item" onClick={() => { navigate('/vehicles'); setOpenPopover(null); }}>
+                  <div style={{ color: 'var(--orange)', marginTop: '2px' }}><ShieldAlert size={16} /></div>
                   <div>
-                    <div className="text-sm font-medium">Vehicle Locked</div>
-                    <div className="text-xs text-muted">MINI-03 is locked from dispatch.</div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>Vehicle Locked</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MINI-03 is locked from dispatch.</div>
                   </div>
                 </div>
-                <div className="popover-item flex gap-3 p-3">
-                  <div className="text-status-blue mt-1"><Wrench size={16} /></div>
+                <div className="popover-item" onClick={() => { navigate('/maintenance'); setOpenPopover(null); }}>
+                  <div style={{ color: 'var(--blue)', marginTop: '2px' }}><Wrench size={16} /></div>
                   <div>
-                    <div className="text-sm font-medium">Service Due</div>
-                    <div className="text-xs text-muted">VAN-05 requires scheduled maintenance.</div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>Service Due</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>VAN-05 requires scheduled maintenance.</div>
                   </div>
                 </div>
               </div>
@@ -160,7 +163,7 @@ export default function Header() {
         </div>
 
         {/* User Block */}
-        <div className="relative" ref={userRef}>
+        <div className="relative" style={{ position: 'relative' }} ref={userRef}>
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => togglePopover('user')}>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#7c4fd6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
               {getInitials(userName)}
@@ -174,20 +177,21 @@ export default function Header() {
 
           {openPopover === 'user' && (
             <div className="popover-menu" style={{ width: '220px', right: 0 }}>
-              <div className="px-4 py-3 border-b border-[var(--line)]">
-                <div className="text-sm font-medium">{userName}</div>
-                <div className="text-xs text-muted">{userRole}</div>
+              <div className="popover-header">
+                <div style={{ fontWeight: '500', fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '2px' }}>{userName}</div>
+                <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '8px' }}>{userEmail}</div>
+                <div style={{ display: 'inline-block', backgroundColor: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '500' }}>{userRole}</div>
               </div>
-              <div className="py-1">
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <User size={16} className="text-muted" /> View profile
+              <div style={{ padding: '0.5rem 0' }}>
+                <div className="popover-item" onClick={() => { navigate('/settings'); setOpenPopover(null); }}>
+                  <User size={16} style={{ color: 'var(--text-muted)' }} /> View profile
                 </div>
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <Settings size={16} className="text-muted" /> Account settings
+                <div className="popover-item" onClick={() => { navigate('/settings'); setOpenPopover(null); }}>
+                  <Settings size={16} style={{ color: 'var(--text-muted)' }} /> Account settings
                 </div>
               </div>
-              <div className="border-t border-[var(--line)] py-1">
-                <div className="popover-item px-4 py-2 text-sm text-status-red flex items-center gap-2" onClick={handleLogout}>
+              <div style={{ borderTop: '1px solid var(--line)', padding: '0.5rem 0' }}>
+                <div className="popover-item" style={{ color: 'var(--red)' }} onClick={handleLogout}>
                   <LogOut size={16} /> Sign out
                 </div>
               </div>

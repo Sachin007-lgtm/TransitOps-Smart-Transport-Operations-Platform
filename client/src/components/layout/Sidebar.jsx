@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { LayoutDashboard, Truck, Users, Map, Wrench, Droplet, BarChart2, Settings, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, Truck, Users, Map, Wrench, Droplet, BarChart2, Settings, ChevronLeft, LogOut } from 'lucide-react';
 import './Sidebar.css';
 
 export default function Sidebar() {
@@ -73,6 +73,14 @@ export default function Sidebar() {
           <Settings size={20} className="nav-icon" />
           <span className="nav-label">Settings</span>
         </NavLink>
+
+        <div className="nav-item" onClick={() => {
+          localStorage.clear();
+          window.location.href = '/login';
+        }} style={{ marginTop: 'auto', marginBottom: '1rem', cursor: 'pointer', color: 'var(--red)' }}>
+          <LogOut size={20} className="nav-icon" style={{ color: 'var(--red)' }} />
+          <span className="nav-label">Sign Out</span>
+        </div>
       </nav>
     </aside>
   );

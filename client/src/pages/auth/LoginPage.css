@@ -8,12 +8,19 @@
 .login-left {
   display: none;
   flex-direction: column;
+  justify-content: center;
+  align-items: center;
   padding: 2rem;
   width: 50%;
   background: linear-gradient(135deg, #8a5670 0%, #5c3a4c 50%, #3c2531 100%);
   color: white;
   position: relative;
   overflow: hidden;
+}
+
+.login-left > div {
+  width: 100%;
+  max-width: 400px;
 }
 
 @media (min-width: 768px) {
@@ -101,10 +108,9 @@
   letter-spacing: 0.05em;
 }
 
-/* Rotating Taglines */
 .tagline-container {
   min-height: 2.5rem;
-  margin-top: auto;
+  margin-top: 3rem;
   position: relative;
   z-index: 2;
 }
@@ -130,7 +136,7 @@
   align-items: center;
   padding: 2rem;
   width: 100%;
-  background-color: var(--bg-card);
+  background-color: var(--bg-app);
 }
 
 @media (min-width: 768px) {
@@ -141,7 +147,12 @@
 
 .login-form-container {
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
+  background-color: var(--bg-card);
+  padding: 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.05);
+  border: 1px solid var(--border-color);
 }
 
 .login-form {
@@ -322,6 +333,8 @@
   box-shadow: var(--shadow-lg);
   z-index: 50;
   animation: fadeIn 0.15s ease-out;
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .custom-select-option {

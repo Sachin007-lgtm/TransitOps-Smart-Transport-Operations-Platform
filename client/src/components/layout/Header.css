@@ -28,7 +28,7 @@
 .popover-menu {
   position: absolute;
   top: calc(100% + 0.5rem);
-  background-color: var(--card);
+  background-color: var(--bg-card);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow-lg);
@@ -39,9 +39,20 @@
   transform-origin: top right;
 }
 
+.popover-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
 .popover-item {
   cursor: pointer;
   transition: background-color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
 }
 
 .popover-item:hover {

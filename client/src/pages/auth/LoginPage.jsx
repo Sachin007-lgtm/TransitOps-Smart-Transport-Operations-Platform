@@ -101,6 +101,9 @@ export default function LoginPage() {
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('userRole', res.data.user.role);
       localStorage.setItem('userName', res.data.user.name);
+      if (res.data.user.email) {
+        localStorage.setItem('userEmail', res.data.user.email);
+      }
       navigate('/');
     } catch (err) {
       setError(err.message || 'Login failed. Please check your credentials.');
