@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   FileText, Plus, RefreshCw, IndianRupee, Building2, AlertCircle,
-  CheckCircle2, Printer, Trash2, Landmark, Search
+  CheckCircle2, Printer, Trash2, Landmark, Search, Download
 } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
-import { apiRequest } from '../utils/api';
+import { apiRequest, apiDownload } from '../utils/api';
 import './Billing.css';
 
 const PAYMENT_MODES = ['Cash', 'UPI', 'NEFT', 'IMPS', 'RTGS', 'Cheque', 'Bank Transfer', 'Other'];
@@ -81,8 +81,20 @@ export default function Billing() {
       const res = await apiRequest('POST', '/billing/bills', { company_id: companyId });
       showToast(`${res.data.bill_no} generated for ${companyName} — balance due ₹${fmt(res.data.balance_due)}`);
       loadData();
+      // Open the bill breakdown right away so the owner sees every trip
+      // charge immediately instead of hunting for it in the Bills tab.
+      setActiveBill(res.data);
     } catch (err) {
       showToast(err.message || 'Failed to generate bill', 'error');
+    }
+  };
+
+  const downloadBill = async (bill) => {
+    try {
+      await apiDownload(`/billing/bills/${bill.id}/download`, `${bill.bill_no}.html`);
+      showToast(`${bill.bill_no} downloaded — open it and print to PDF.`);
+    } catch (err) {
+      showToast(err.message || 'Failed to download bill', 'error');
     }
   };
 
@@ -290,6 +302,7 @@ export default function Billing() {
                       <td><span className={`pill pill-${color}`}>{b.status}</span></td>
                       <td className="text-right billing-row-actions">
                         <button className="billing-icon-btn" title="View bill" onClick={() => openBill(b.id)}><FileText size={15} /></button>
+                        <button className="billing-icon-btn" title="Download bill" onClick={() => downloadBill(b)}><Download size={15} /></button>
                         {b.status !== 'Paid' && (
                           <button
                             className="billing-icon-btn"
@@ -439,6 +452,9 @@ export default function Billing() {
                   <IndianRupee size={14} /> Record Payment
                 </button>
               )}
+              <button className="btn btn-outline" onClick={() => downloadBill(activeBill)}>
+                <Download size={14} /> Download
+              </button>
               <button className="btn btn-outline" onClick={() => window.print()}>
                 <Printer size={14} /> Print
               </button>

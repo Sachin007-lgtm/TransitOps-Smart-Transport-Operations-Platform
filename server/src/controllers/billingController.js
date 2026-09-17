@@ -4,6 +4,7 @@ const Trip = require('../models/tripModel');
 const asyncWrapper = require('../utils/asyncWrapper');
 const apiResponse = require('../utils/apiResponse');
 const { numberToWords } = require('../utils/amountInWords');
+const { billHtml } = require('../utils/billHtml');
 
 // --- Companies ---
 
@@ -68,6 +69,19 @@ const getBillById = asyncWrapper(async (req, res) => {
   return apiResponse.success(res, { ...bill, balance_due_in_words: words }, 'Bill retrieved successfully.');
 });
 
+// Download a print-ready HTML bill document (opens in any browser;
+// printing it yields a paper/PDF bill).
+const getBillDownload = asyncWrapper(async (req, res) => {
+  const bill = await Bill.findById(req.params.id);
+  if (!bill) {
+    return apiResponse.error(res, 'Bill not found.', 404);
+  }
+  const html = billHtml(bill);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${bill.bill_no}.html"`);
+  return res.status(200).send(html);
+});
+
 const generateBill = asyncWrapper(async (req, res) => {
   const bill = await Bill.generate(req.body);
   const words = numberToWords(bill.balance_due);
@@ -121,6 +135,7 @@ module.exports = {
   deleteCompany,
   getAllBills,
   getBillById,
+  getBillDownload,
   generateBill,
   recordPayment,
   deleteBill,

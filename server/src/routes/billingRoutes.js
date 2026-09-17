@@ -8,6 +8,7 @@ const {
   deleteCompany,
   getAllBills,
   getBillById,
+  getBillDownload,
   generateBill,
   recordPayment,
   deleteBill,
@@ -39,6 +40,9 @@ router.route('/bills')
 router.route('/bills/:id')
   .get(getBillById)
   .delete(deleteBill);
+
+router.route('/bills/:id/download')
+  .get(getBillDownload);
 
 router.route('/bills/:id/payments')
   .post(validateRecordPayment, recordPayment);
