@@ -1,4 +1,5 @@
 const { query, pool } = require('../config/db');
+const { numberToWords } = require('../utils/amountInWords');
 
 const Bill = {
   // List bills (optionally for one company), newest first, with company name.
@@ -46,7 +47,21 @@ const Bill = {
       `SELECT * FROM payments WHERE bill_id = $1 ORDER BY payment_date ASC, id ASC;`,
       [id]
     );
-    return { ...bill, items: items.rows, payments: payments.rows };
+
+    // Outstanding after payments — the figure the bottom BALANCE line shows
+    // on the paper bills. Words describe it too, computed here so every
+    // caller (detail API, download document) sees the same numbers.
+    const remaining = Math.max(
+      0, parseFloat(bill.balance_due) - parseFloat(bill.amount_paid || 0)
+    );
+    return {
+      ...bill,
+      items: items.rows,
+      payments: payments.rows,
+      remaining_balance: remaining,
+      balance_due_in_words: numberToWords(bill.balance_due),
+      remaining_balance_in_words: numberToWords(remaining)
+    };
   },
 
   // Unbilled (completed) trips for a company — the pool "Generate Bill" composes.

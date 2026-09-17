@@ -65,8 +65,17 @@ const getBillById = asyncWrapper(async (req, res) => {
     return apiResponse.error(res, 'Bill not found.', 404);
   }
   // Amount in words, Indian convention (lakh/crore), as on GST-format bills.
-  const words = numberToWords(bill.balance_due);
-  return apiResponse.success(res, { ...bill, balance_due_in_words: words }, 'Bill retrieved successfully.');
+  // Words describe the OUTSTANDING balance (what is still owed after
+  // payments) — the figure the owner quotes when following up.
+  const remaining = Math.max(
+    0, parseFloat(bill.balance_due) - parseFloat(bill.amount_paid || 0)
+  );
+  return apiResponse.success(res, {
+    ...bill,
+    remaining_balance: remaining,
+    balance_due_in_words: numberToWords(bill.balance_due),
+    remaining_balance_in_words: numberToWords(remaining)
+  }, 'Bill retrieved successfully.');
 });
 
 // Download a print-ready HTML bill document (opens in any browser;
@@ -85,7 +94,12 @@ const getBillDownload = asyncWrapper(async (req, res) => {
 const generateBill = asyncWrapper(async (req, res) => {
   const bill = await Bill.generate(req.body);
   const words = numberToWords(bill.balance_due);
-  return apiResponse.success(res, { ...bill, balance_due_in_words: words }, `Bill ${bill.bill_no} generated successfully.`, 201);
+  return apiResponse.success(res, {
+    ...bill,
+    remaining_balance: Math.max(0, parseFloat(bill.balance_due) - parseFloat(bill.amount_paid || 0)),
+    balance_due_in_words: words,
+    remaining_balance_in_words: words
+  }, `Bill ${bill.bill_no} generated successfully.`, 201);
 });
 
 const recordPayment = asyncWrapper(async (req, res) => {

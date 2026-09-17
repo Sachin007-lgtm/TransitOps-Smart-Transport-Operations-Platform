@@ -33,7 +33,11 @@ function billHtml(bill) {
           <td class="num">${fmt(p.amount)}</td>
         </tr>`).join('');
 
-  const remaining = parseFloat(bill.balance_due) - parseFloat(bill.amount_paid || 0);
+  // Outstanding after payments — the figure the bottom BALANCE line shows on
+  // the paper bills (updates as payments are recorded).
+  const remaining = Math.max(
+    0, parseFloat(bill.balance_due) - parseFloat(bill.amount_paid || 0)
+  );
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -110,7 +114,7 @@ function billHtml(bill) {
       <div class="totals-row"><span>Paid</span><span class="num">₹${fmt(bill.amount_paid)}</span></div>
     </div>
 
-    <div class="words"><b>Amount in words:</b> Rupees ${esc(bill.balance_due_in_words || '').replace(/^Rupees /, '')}</div>
+    <div class="words"><b>Amount in words (balance due):</b> Rupees ${esc(bill.remaining_balance_in_words || bill.balance_due_in_words || '').replace(/^Rupees /, '')}</div>
 
     ${paymentRows ? `
     <div class="payments">

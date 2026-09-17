@@ -423,10 +423,13 @@ export default function Billing() {
               <div className="billing-totals-row"><span>Previous balance</span><span className="mono">₹{fmt(activeBill.previous_balance)}</span></div>
               <div className="billing-totals-row"><span>Subtotal (this bill)</span><span className="mono">₹{fmt(activeBill.subtotal)}</span></div>
               <div className="billing-totals-row"><span>Less: advances received</span><span className="mono">− ₹{fmt(activeBill.total_advance)}</span></div>
-              <div className="billing-totals-row billing-totals-due"><span>Balance due</span><span className="mono">₹{fmt(activeBill.balance_due)}</span></div>
-              <div className="billing-totals-row"><span>Paid</span><span className="mono">₹{fmt(activeBill.amount_paid)}</span></div>
+              <div className="billing-totals-row"><span>Total (this bill)</span><span className="mono">₹{fmt(activeBill.balance_due)}</span></div>
+              {parseFloat(activeBill.amount_paid) > 0 && (
+                <div className="billing-totals-row"><span>Less: payments received</span><span className="mono">− ₹{fmt(activeBill.amount_paid)}</span></div>
+              )}
+              <div className="billing-totals-row billing-totals-due"><span>Balance due (outstanding)</span><span className="mono">₹{fmt(activeBill.remaining_balance ?? (parseFloat(activeBill.balance_due) - parseFloat(activeBill.amount_paid || 0)))}</span></div>
               <div className="billing-words">
-                <em>Amount in words:</em> {activeBill.balance_due_in_words}
+                <em>Amount in words (balance due):</em> {activeBill.remaining_balance_in_words || activeBill.balance_due_in_words}
               </div>
             </div>
 
