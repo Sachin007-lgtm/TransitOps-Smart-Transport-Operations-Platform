@@ -22,8 +22,8 @@ const createTrip = asyncWrapper(async (req, res) => {
 });
 
 const getAllTrips = asyncWrapper(async (req, res) => {
-  const { status, vehicle_id, driver_id } = req.query;
-  const trips = await Trip.findAll({ status, vehicle_id, driver_id });
+  const { status, vehicle_id, driver_id, company_id, billing_status } = req.query;
+  const trips = await Trip.findAll({ status, vehicle_id, driver_id, company_id, billing_status });
   return apiResponse.success(res, trips, 'Trips retrieved successfully.');
 });
 

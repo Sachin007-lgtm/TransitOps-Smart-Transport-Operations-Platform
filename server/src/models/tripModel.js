@@ -9,27 +9,34 @@ const Trip = {
     cargo_weight,
     planned_distance,
     revenue = 0.00,
-    status = 'Draft'
+    status = 'Draft',
+    company_id = null,
+    trip_date = null,
+    advance_received = 0.00,
+    rate_basis = null
   }) => {
     const sql = `
       INSERT INTO trips (
-        source, destination, vehicle_id, driver_id, cargo_weight, planned_distance, revenue, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        source, destination, vehicle_id, driver_id, cargo_weight, planned_distance, revenue, status,
+        company_id, trip_date, advance_received, rate_basis
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *;
     `;
-    const values = [source, destination, vehicle_id, driver_id, cargo_weight, planned_distance, revenue, status];
+    const values = [source, destination, vehicle_id, driver_id, cargo_weight, planned_distance, revenue, status, company_id, trip_date, advance_received, rate_basis];
     const result = await query(sql, values);
     return result.rows[0];
   },
 
-  findAll: async ({ status, vehicle_id, driver_id } = {}) => {
+  findAll: async ({ status, vehicle_id, driver_id, company_id, billing_status } = {}) => {
     let sql = `
       SELECT t.*, 
              v.name as vehicle_name, v.registration_number as vehicle_registration, 
-             d.name as driver_name, d.license_number as driver_license
+             d.name as driver_name, d.license_number as driver_license,
+             c.name as company_name
       FROM trips t
       LEFT JOIN vehicles v ON t.vehicle_id = v.id
       LEFT JOIN drivers d ON t.driver_id = d.id
+      LEFT JOIN companies c ON t.company_id = c.id
       WHERE 1=1
     `;
     const values = [];
@@ -50,6 +57,18 @@ const Trip = {
     if (driver_id) {
       sql += ` AND t.driver_id = $${paramIndex}`;
       values.push(driver_id);
+      paramIndex++;
+    }
+
+    if (company_id) {
+      sql += ` AND t.company_id = $${paramIndex}`;
+      values.push(company_id);
+      paramIndex++;
+    }
+
+    if (billing_status) {
+      sql += ` AND t.billing_status = $${paramIndex}`;
+      values.push(billing_status);
       paramIndex++;
     }
 
@@ -87,7 +106,11 @@ const Trip = {
       'planned_distance',
       'actual_distance',
       'revenue',
-      'status'
+      'status',
+      'company_id',
+      'trip_date',
+      'advance_received',
+      'rate_basis'
     ];
 
     for (const key of allowedFields) {
