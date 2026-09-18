@@ -140,7 +140,13 @@ const Bill = {
       const totalAdvance = unbilledTrips.reduce(
         (sum, t) => sum + parseFloat(t.advance_received || 0), 0
       );
-      const balanceDue = previousBalance + subtotal - totalAdvance;
+      // Clamp at zero: per-trip advances can exceed charges + prior
+      // outstanding (owner overpaid in advance). A negative balance_due
+      // would be a permanently unpayable bill showing self-contradictory
+      // figures. The excess advance stays visible in total_advance; carrying
+      // it forward into the next bill's previous_balance is deferred to the
+      // planned ledger redesign (billing_events / credit notes).
+      const balanceDue = Math.max(0, previousBalance + subtotal - totalAdvance);
 
       const billNoResult = await client.query(
         "SELECT 'INV-' || LPAD(nextval('bill_number_seq')::TEXT, 4, '0') AS bill_no;"
