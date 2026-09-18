@@ -3,9 +3,11 @@
 // The file opens in any browser; printing it (Ctrl+P → Save as PDF) yields
 // a paper/PDF bill without needing a PDF-rendering dependency.
 function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => (
-    { '&': '&', '<': '<', '>': '>', '"': '"', "'": '&#39;' }[c]
-  ));
+  // Numeric HTML entities built from char codes — escapes all five
+  // metacharacters correctly. (Built via charCodeAt, not an entity-literal
+  // map: editor/tooling pipelines have silently stripped literal entities
+  // out of this file before, which turned the escape into a no-op.)
+  return String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 function fmt(n) {
