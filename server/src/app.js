@@ -30,9 +30,11 @@ app.get('/api/health', async (req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    error: 'Internal Server Error',
+  // Business-logic errors can carry a statusCode (400/404/409); default 500.
+  const status = err.statusCode || 500;
+  if (status >= 500) console.error(err.stack);
+  res.status(status).json({
+    error: status >= 500 ? 'Internal Server Error' : 'Request failed',
     message: err.message
   });
 });

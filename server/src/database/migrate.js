@@ -31,7 +31,9 @@ async function runMigrationsAndSeeds() {
       'seed_roles.sql',
       'seed_users.sql',
       'seed_vehicles.sql',
-      'seed_drivers.sql'
+      'seed_drivers.sql',
+      'seed_companies.sql',
+      'seed_trips.sql'
     ];
 
     for (const file of seedFiles) {

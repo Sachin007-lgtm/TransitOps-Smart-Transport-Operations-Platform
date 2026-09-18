@@ -7,7 +7,11 @@ const createTripSchema = {
   driver_id: { required: true, type: 'integer', positive: true },
   cargo_weight: { required: true, type: 'number', positive: true },
   planned_distance: { required: true, type: 'number', positive: true },
-  revenue: { required: false, type: 'number', positive: true }
+  revenue: { required: false, type: 'number', positive: true },
+  company_id: { required: false, type: 'integer', positive: true },
+  trip_date: { required: false, type: 'string' },
+  advance_received: { required: false, type: 'number' },
+  rate_basis: { required: false, type: 'string' }
 };
 
 const updateTripSchema = {
@@ -19,7 +23,11 @@ const updateTripSchema = {
   planned_distance: { required: false, type: 'number', positive: true },
   actual_distance: { required: false, type: 'number', positive: true },
   revenue: { required: false, type: 'number', positive: true },
-  status: { required: false, type: 'enum', enum: ['Draft', 'Dispatched', 'Completed', 'Cancelled'] }
+  status: { required: false, type: 'enum', enum: ['Draft', 'Dispatched', 'Completed', 'Cancelled'] },
+  company_id: { required: false, type: 'integer', positive: true },
+  trip_date: { required: false, type: 'string' },
+  advance_received: { required: false, type: 'number' },
+  rate_basis: { required: false, type: 'string' }
 };
 
 module.exports = {

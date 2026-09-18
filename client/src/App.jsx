@@ -12,6 +12,7 @@ import Maintenance from './pages/Maintenance';
 import FuelExpenses from './pages/FuelExpenses';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Billing from './pages/Billing';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -73,6 +74,7 @@ function App() {
             <Route path="vehicles" element={<Vehicles />} />
             <Route path="drivers" element={<Drivers />} />
             <Route path="trips" element={<TripDispatcher />} />
+            <Route path="billing" element={<Billing />} />
             <Route path="maintenance" element={<Maintenance />} />
             <Route path="fuel" element={<FuelExpenses />} />
             <Route path="analytics" element={<Analytics />} />
