@@ -72,6 +72,7 @@ const Trip = {
       SELECT t.*,
              -- Legacy alias for backwards-compatibility
              t.origin AS source,
+             o.name AS organization_name,
              v.name AS vehicle_name,
              v.registration_number AS vehicle_registration,
              v.type AS vehicle_type,
@@ -82,6 +83,7 @@ const Trip = {
              d.contact_number AS driver_contact,
              d.status AS driver_status
       FROM trips t
+      LEFT JOIN organizations o ON t.organization_id = o.id
       LEFT JOIN vehicles v ON t.vehicle_id = v.id
       LEFT JOIN drivers d ON t.driver_id = d.id
       WHERE t.id = $1 AND t.organization_id = $2
@@ -109,6 +111,57 @@ const Trip = {
   },
 
   /**
+   * Find any active operational trip (Assigned or Dispatched) colliding with the specified
+   * vehicle or driver within the organization, excluding a specific trip ID if provided.
+   */
+  findActiveCollision: async (client, { organization_id, vehicle_id, driver_id, excludeTripId = null }) => {
+    assertOrganizationId(organization_id, 'findActiveCollision');
+
+    if (!vehicle_id && !driver_id) {
+      return null;
+    }
+
+    let sql = `
+      SELECT id, vehicle_id, driver_id, status 
+      FROM trips 
+      WHERE organization_id = $1 
+        AND status IN ('Assigned', 'Dispatched')
+    `;
+    const values = [organization_id];
+    let idx = 2;
+
+    if (excludeTripId) {
+      sql += ` AND id <> $${idx++}`;
+      values.push(excludeTripId);
+    }
+
+    const conditions = [];
+    if (vehicle_id) {
+      conditions.push(`vehicle_id = $${idx++}`);
+      values.push(vehicle_id);
+    }
+    if (driver_id) {
+      conditions.push(`driver_id = $${idx++}`);
+      values.push(driver_id);
+    }
+
+    sql += ` AND (${conditions.join(' OR ')}) ORDER BY id ASC`;
+
+    const executor = client || { query };
+    const result = await executor.query(sql, values);
+    if (result.rows.length === 0) return null;
+
+    const vehicleCollision = result.rows.find(r => vehicle_id && r.vehicle_id === vehicle_id);
+    const driverCollision = result.rows.find(r => driver_id && r.driver_id === driver_id);
+
+    return {
+      ...result.rows[0],
+      vehicleCollision,
+      driverCollision
+    };
+  },
+
+  /**
    * List trips with mandatory tenant isolation and optional filters.
    */
   findAll: async ({
@@ -125,6 +178,7 @@ const Trip = {
     let sql = `
       SELECT t.*,
              t.origin AS source,
+             o.name AS organization_name,
              v.name AS vehicle_name,
              v.registration_number AS vehicle_registration,
              v.type AS vehicle_type,
@@ -135,6 +189,7 @@ const Trip = {
              d.contact_number AS driver_contact,
              d.status AS driver_status
       FROM trips t
+      LEFT JOIN organizations o ON t.organization_id = o.id
       LEFT JOIN vehicles v ON t.vehicle_id = v.id
       LEFT JOIN drivers d ON t.driver_id = d.id
       WHERE t.organization_id = $1
@@ -265,6 +320,7 @@ const Trip = {
 
     return {
       ...trip,
+      organization_name: row.organization_name || null,
       vehicle: row.vehicle_id
         ? {
             id: row.vehicle_id,

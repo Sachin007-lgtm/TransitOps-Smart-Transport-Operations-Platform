@@ -28,6 +28,7 @@ async function runMigrationsAndSeeds() {
     
     // Explicit sequence of seeds to prevent foreign key constraint issues
     const seedFiles = [
+      'seed_organizations.sql',
       'seed_roles.sql',
       'seed_users.sql',
       'seed_vehicles.sql',

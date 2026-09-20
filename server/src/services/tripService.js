@@ -43,13 +43,14 @@ const tripService = {
 
     // Validate vehicle if provided
     if (vehicle_id) {
-      const vehicle = await Vehicle.findById(vehicle_id);
-      if (!vehicle) {
+      const anyVehicle = await query('SELECT organization_id, status, registration_number FROM vehicles WHERE id = $1', [vehicle_id]);
+      if (anyVehicle.rows.length === 0) {
         throw new TripServiceError(`Vehicle with ID ${vehicle_id} not found.`, 404);
       }
-      if (vehicle.organization_id !== orgId) {
+      if (anyVehicle.rows[0].organization_id !== orgId) {
         throw new TripServiceError(`Vehicle belongs to another organization.`, 400);
       }
+      const vehicle = await Vehicle.findById(vehicle_id, orgId);
       if (vehicle.status !== 'Available') {
         throw new TripServiceError(
           `Vehicle ${vehicle.registration_number} is currently '${vehicle.status}' and unavailable for assignment.`,
@@ -74,6 +75,13 @@ const tripService = {
           409
         );
       }
+    }
+
+    if (status !== 'Draft' && status !== 'Planned') {
+      throw new TripServiceError(
+        `Trips can only be created in 'Draft' or 'Planned' status. Advancing to '${status}' must follow the lifecycle via PATCH /api/trips/:id/status.`,
+        400
+      );
     }
 
     const created = await Trip.create({
@@ -141,55 +149,172 @@ const tripService = {
   },
 
   /**
-   * Update non-status trip attributes, strictly scoped by tenant.
+   * Update non-status trip attributes, strictly scoped by tenant and transactionally safe against collisions.
    */
   updateTrip: async (id, fields, user) => {
-    const existing = await Trip.findById(id, user.organization_id);
-    if (!existing) {
-      throw new TripServiceError('Trip not found.', 404);
-    }
+    const client = await pool.connect();
 
-    if (existing.status === 'Completed' || existing.status === 'Cancelled') {
-      throw new TripServiceError(`Cannot modify a trip that is ${existing.status}.`, 400);
-    }
+    try {
+      await client.query('BEGIN');
 
-    // Prevent removing vehicle or driver if trip is Assigned or Dispatched
-    if ((existing.status === 'Assigned' || existing.status === 'Dispatched')) {
-      if (fields.vehicle_id === null || fields.driver_id === null) {
-        throw new TripServiceError(`Cannot unassign vehicle or driver while trip is '${existing.status}'.`, 400);
+      // 1. Lock trip row strictly scoped by tenant
+      const trip = await Trip.findByIdForUpdate(client, id, user.organization_id);
+      if (!trip) {
+        throw new TripServiceError('Trip not found.', 404);
       }
-    }
 
-    // Validate new vehicle if changing
-    if (fields.vehicle_id && fields.vehicle_id !== existing.vehicle_id) {
-      const v = await Vehicle.findById(fields.vehicle_id);
-      if (!v) throw new TripServiceError('Vehicle not found.', 404);
-      if (v.organization_id !== user.organization_id) {
-        throw new TripServiceError('Vehicle belongs to another organization.', 400);
+      if (trip.status === 'Completed' || trip.status === 'Cancelled') {
+        throw new TripServiceError(`Cannot modify a trip that is ${trip.status}.`, 400);
       }
-      if (v.status !== 'Available') {
-        throw new TripServiceError(`Vehicle is currently '${v.status}' and unavailable.`, 409);
-      }
-    }
 
-    // Validate new driver if changing
-    if (fields.driver_id && fields.driver_id !== existing.driver_id) {
-      const anyDriver = await query('SELECT organization_id, status, name FROM drivers WHERE id = $1', [fields.driver_id]);
-      if (anyDriver.rows.length === 0) throw new TripServiceError('Driver not found.', 404);
-      if (anyDriver.rows[0].organization_id !== user.organization_id) {
-        throw new TripServiceError('Driver belongs to another organization.', 400);
-      }
-      const d = await Driver.findById(fields.driver_id, user.organization_id);
-      if (d.status !== 'Available') {
-        throw new TripServiceError(`Driver is currently '${d.status}' and unavailable.`, 409);
-      }
-    }
+      const isOperational = trip.status === 'Assigned' || trip.status === 'Dispatched';
 
-    const updated = await Trip.update(id, fields, user.organization_id);
-    if (!updated) {
-      throw new TripServiceError('Trip not found or belongs to another organization.', 404);
+      // Prevent unassigning vehicle or driver if trip is currently operational
+      if (isOperational) {
+        if (fields.vehicle_id === null || fields.driver_id === null) {
+          throw new TripServiceError(`Cannot unassign vehicle or driver while trip is '${trip.status}'.`, 400);
+        }
+      }
+
+      const vehicleChanging = fields.vehicle_id !== undefined && fields.vehicle_id !== trip.vehicle_id;
+      const driverChanging = fields.driver_id !== undefined && fields.driver_id !== trip.driver_id;
+
+      // Deterministic lock ordering on vehicle rows (ascending ID) to prevent deadlocks
+      const vehicleIdsToLock = [];
+      if (vehicleChanging && trip.vehicle_id && trip.status === 'Dispatched') {
+        vehicleIdsToLock.push(trip.vehicle_id);
+      }
+      if (vehicleChanging && fields.vehicle_id) {
+        vehicleIdsToLock.push(fields.vehicle_id);
+      }
+      vehicleIdsToLock.sort((a, b) => a - b);
+
+      let newVehicle = null;
+      for (const vid of vehicleIdsToLock) {
+        const anyVehicle = await query('SELECT organization_id, status, registration_number FROM vehicles WHERE id = $1', [vid]);
+        if (anyVehicle.rows.length === 0) throw new TripServiceError('Vehicle not found.', 404);
+        if (anyVehicle.rows[0].organization_id !== user.organization_id) {
+          throw new TripServiceError('Vehicle belongs to another organization.', 400);
+        }
+        const lockedVeh = await Vehicle.findByIdForUpdate(client, vid, user.organization_id);
+        if (vid === fields.vehicle_id) {
+          newVehicle = lockedVeh;
+        }
+      }
+
+      // If new vehicle is being assigned, verify status is Available
+      if (vehicleChanging && fields.vehicle_id) {
+        if (!newVehicle) {
+          const anyVehicle = await query('SELECT organization_id, status, registration_number FROM vehicles WHERE id = $1', [fields.vehicle_id]);
+          if (anyVehicle.rows.length === 0) throw new TripServiceError('Vehicle not found.', 404);
+          if (anyVehicle.rows[0].organization_id !== user.organization_id) {
+            throw new TripServiceError('Vehicle belongs to another organization.', 400);
+          }
+          newVehicle = await Vehicle.findByIdForUpdate(client, fields.vehicle_id, user.organization_id);
+        }
+        if (newVehicle.status !== 'Available') {
+          throw new TripServiceError(`Vehicle is currently '${newVehicle.status}' and unavailable.`, 409);
+        }
+      }
+
+      // Deterministic lock ordering on driver rows (ascending ID) to prevent deadlocks
+      const driverIdsToLock = [];
+      if (driverChanging && trip.driver_id && trip.status === 'Dispatched') {
+        driverIdsToLock.push(trip.driver_id);
+      }
+      if (driverChanging && fields.driver_id) {
+        driverIdsToLock.push(fields.driver_id);
+      }
+      driverIdsToLock.sort((a, b) => a - b);
+
+      let newDriver = null;
+      for (const did of driverIdsToLock) {
+        const anyDriver = await query('SELECT organization_id, status, name FROM drivers WHERE id = $1', [did]);
+        if (anyDriver.rows.length === 0) throw new TripServiceError('Driver not found.', 404);
+        if (anyDriver.rows[0].organization_id !== user.organization_id) {
+          throw new TripServiceError('Driver belongs to another organization.', 400);
+        }
+        const lockedDrv = await Driver.findByIdForUpdate(client, did, user.organization_id);
+        if (did === fields.driver_id) {
+          newDriver = lockedDrv;
+        }
+      }
+
+      // If new driver is being assigned, verify status is Available
+      if (driverChanging && fields.driver_id) {
+        if (!newDriver) {
+          const anyDriver = await query('SELECT organization_id, status, name FROM drivers WHERE id = $1', [fields.driver_id]);
+          if (anyDriver.rows.length === 0) throw new TripServiceError('Driver not found.', 404);
+          if (anyDriver.rows[0].organization_id !== user.organization_id) {
+            throw new TripServiceError('Driver belongs to another organization.', 400);
+          }
+          newDriver = await Driver.findByIdForUpdate(client, fields.driver_id, user.organization_id);
+        }
+        if (newDriver.status !== 'Available') {
+          throw new TripServiceError(`Driver is currently '${newDriver.status}' and unavailable.`, 409);
+        }
+      }
+
+      // Double-booking collision check: if the trip is operational (Assigned or Dispatched),
+      // ensure the effective resources do not collide with another active trip
+      const targetVehicleId = fields.vehicle_id !== undefined ? fields.vehicle_id : trip.vehicle_id;
+      const targetDriverId = fields.driver_id !== undefined ? fields.driver_id : trip.driver_id;
+
+      if (isOperational) {
+        const collision = await Trip.findActiveCollision(client, {
+          organization_id: user.organization_id,
+          vehicle_id: targetVehicleId,
+          driver_id: targetDriverId,
+          excludeTripId: trip.id
+        });
+
+        if (collision) {
+          if (collision.vehicleCollision) {
+            const vehName = newVehicle ? newVehicle.registration_number : targetVehicleId;
+            throw new TripServiceError(
+              `Vehicle ${vehName} is already assigned to another active trip (Trip #${collision.vehicleCollision.id}).`,
+              409
+            );
+          }
+          if (collision.driverCollision) {
+            const drvName = newDriver ? newDriver.name : targetDriverId;
+            throw new TripServiceError(
+              `Driver ${drvName} is already assigned to another active trip (Trip #${collision.driverCollision.id}).`,
+              409
+            );
+          }
+        }
+      }
+
+      // If trip is Dispatched and resources are changing, atomically transfer resource statuses
+      if (trip.status === 'Dispatched') {
+        if (vehicleChanging && trip.vehicle_id) {
+          await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
+        }
+        if (vehicleChanging && fields.vehicle_id) {
+          await Vehicle.setStatusWithClient(client, fields.vehicle_id, 'On Trip', user.organization_id);
+        }
+        if (driverChanging && trip.driver_id) {
+          await Driver.releaseIfOnTrip(client, trip.driver_id, user.organization_id);
+        }
+        if (driverChanging && fields.driver_id) {
+          await Driver.setStatusWithClient(client, fields.driver_id, 'On Trip', user.organization_id);
+        }
+      }
+
+      const updated = await Trip.update(id, fields, user.organization_id, client);
+      if (!updated) {
+        throw new TripServiceError('Trip not found or belongs to another organization.', 404);
+      }
+
+      await client.query('COMMIT');
+      return await Trip.findById(id, user.organization_id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-    return await Trip.findById(id, user.organization_id);
   },
 
   /**
@@ -233,8 +358,8 @@ const tripService = {
         }
 
         // Lock vehicle row
-        const vehicle = await Vehicle.findByIdForUpdate(client, trip.vehicle_id);
-        if (!vehicle || vehicle.organization_id !== user.organization_id) {
+        const vehicle = await Vehicle.findByIdForUpdate(client, trip.vehicle_id, user.organization_id);
+        if (!vehicle) {
           throw new TripServiceError('Assigned vehicle not found or belongs to another organization.', 404);
         }
 
@@ -260,9 +385,32 @@ const tripService = {
           }
         }
 
+        // Double-booking collision check: ensure neither resource is reserved by another active trip
+        const collision = await Trip.findActiveCollision(client, {
+          organization_id: user.organization_id,
+          vehicle_id: trip.vehicle_id,
+          driver_id: trip.driver_id,
+          excludeTripId: trip.id
+        });
+
+        if (collision) {
+          if (collision.vehicleCollision) {
+            throw new TripServiceError(
+              `Vehicle ${vehicle.registration_number} is already assigned to another active trip (Trip #${collision.vehicleCollision.id}).`,
+              409
+            );
+          }
+          if (collision.driverCollision) {
+            throw new TripServiceError(
+              `Driver ${driver.name} is already assigned to another active trip (Trip #${collision.driverCollision.id}).`,
+              409
+            );
+          }
+        }
+
         // If dispatching, atomically mark assets as 'On Trip'
         if (nextStatus === 'Dispatched') {
-          await Vehicle.setStatusWithClient(client, trip.vehicle_id, 'On Trip');
+          await Vehicle.setStatusWithClient(client, trip.vehicle_id, 'On Trip', user.organization_id);
           await Driver.setStatusWithClient(client, trip.driver_id, 'On Trip', user.organization_id);
         }
       }
@@ -277,7 +425,7 @@ const tripService = {
         }
 
         if (trip.vehicle_id) {
-          await Vehicle.releaseIfOnTrip(client, trip.vehicle_id);
+          await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
         }
         if (trip.driver_id) {
           await Driver.releaseIfOnTrip(client, trip.driver_id, user.organization_id);
@@ -287,7 +435,7 @@ const tripService = {
       // 6. If cancelling, conditionally restore fleet availability
       if (nextStatus === 'Cancelled') {
         if (trip.vehicle_id) {
-          await Vehicle.releaseIfOnTrip(client, trip.vehicle_id);
+          await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
         }
         if (trip.driver_id) {
           await Driver.releaseIfOnTrip(client, trip.driver_id, user.organization_id);
