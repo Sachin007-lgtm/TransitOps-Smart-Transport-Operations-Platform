@@ -1,28 +1,74 @@
 const validate = require('../middleware/validate');
 
+const normalizeOrigin = (req, res, next) => {
+  if (!req.body.origin && req.body.source) {
+    req.body.origin = req.body.source;
+  }
+  next();
+};
+
 const createTripSchema = {
-  source: { required: true, type: 'string' },
+  origin: { required: true, type: 'string' },
   destination: { required: true, type: 'string' },
-  vehicle_id: { required: true, type: 'integer', positive: true },
-  driver_id: { required: true, type: 'integer', positive: true },
-  cargo_weight: { required: true, type: 'number', positive: true },
-  planned_distance: { required: true, type: 'number', positive: true },
-  revenue: { required: false, type: 'number', positive: true }
+  planned_route: { required: true, type: 'string' },
+  start_time: { required: true, type: 'date' },
+  expected_arrival: {
+    required: true,
+    type: 'date',
+    custom: (val, body) => {
+      if (body.start_time && new Date(val) <= new Date(body.start_time)) {
+        return 'expected_arrival must be after start_time.';
+      }
+      return null;
+    }
+  },
+  vehicle_id: { required: false, type: 'integer', positive: true },
+  driver_id: { required: false, type: 'integer', positive: true },
+  external_party_name: { required: false, type: 'string' },
+  external_party_type: { required: false, type: 'enum', enum: ['CUSTOMER', 'AGENCY'] },
+  cargo_weight: { required: false, type: 'number' },
+  planned_distance: { required: false, type: 'number' },
+  revenue: { required: false, type: 'number' },
+  status: { required: false, type: 'enum', enum: ['Draft', 'Planned'] }
 };
 
 const updateTripSchema = {
-  source: { required: false, type: 'string' },
+  origin: { required: false, type: 'string' },
   destination: { required: false, type: 'string' },
+  planned_route: { required: false, type: 'string' },
+  start_time: { required: false, type: 'date' },
+  expected_arrival: {
+    required: false,
+    type: 'date',
+    custom: (val, body) => {
+      if (body.start_time && new Date(val) <= new Date(body.start_time)) {
+        return 'expected_arrival must be after start_time.';
+      }
+      return null;
+    }
+  },
   vehicle_id: { required: false, type: 'integer', positive: true },
   driver_id: { required: false, type: 'integer', positive: true },
-  cargo_weight: { required: false, type: 'number', positive: true },
-  planned_distance: { required: false, type: 'number', positive: true },
-  actual_distance: { required: false, type: 'number', positive: true },
-  revenue: { required: false, type: 'number', positive: true },
-  status: { required: false, type: 'enum', enum: ['Draft', 'Dispatched', 'Completed', 'Cancelled'] }
+  external_party_name: { required: false, type: 'string' },
+  external_party_type: { required: false, type: 'enum', enum: ['CUSTOMER', 'AGENCY'] },
+  cargo_weight: { required: false, type: 'number' },
+  planned_distance: { required: false, type: 'number' },
+  actual_distance: { required: false, type: 'number' },
+  revenue: { required: false, type: 'number' }
+};
+
+const updateTripStatusSchema = {
+  status: {
+    required: true,
+    type: 'enum',
+    enum: ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed', 'Cancelled']
+  },
+  actual_arrival: { required: false, type: 'date' },
+  actual_distance: { required: false, type: 'number' }
 };
 
 module.exports = {
-  validateCreateTrip: validate(createTripSchema),
-  validateUpdateTrip: validate(updateTripSchema)
+  validateCreateTrip: [normalizeOrigin, validate(createTripSchema)],
+  validateUpdateTrip: [normalizeOrigin, validate(updateTripSchema)],
+  validateUpdateTripStatus: [validate(updateTripStatusSchema)]
 };

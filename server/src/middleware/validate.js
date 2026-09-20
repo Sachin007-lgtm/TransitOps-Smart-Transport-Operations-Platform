@@ -27,8 +27,18 @@ const validate = (schema) => {
           }
         } else if (rules.type === 'string' && typeof val !== 'string') {
           errors.push(`${key} must be a string.`);
+        } else if (rules.type === 'date') {
+          const d = new Date(val);
+          if (isNaN(d.getTime())) {
+            errors.push(`${key} must be a valid date.`);
+          }
         } else if (rules.type === 'enum' && Array.isArray(rules.enum) && !rules.enum.includes(val)) {
           errors.push(`${key} must be one of: ${rules.enum.join(', ')}.`);
+        }
+        
+        if (typeof rules.custom === 'function') {
+          const customErr = rules.custom(val, req.body);
+          if (customErr) errors.push(customErr);
         }
       }
     }

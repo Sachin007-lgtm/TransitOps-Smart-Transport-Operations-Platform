@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "db:migrate": "node src/database/migrate.js"
+    "db:migrate": "node src/database/migrate.js",
+    "test": "node --test test/**/*.test.js"
   },
   "keywords": [
     "express",

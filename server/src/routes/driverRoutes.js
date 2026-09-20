@@ -1,6 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, updateDriverStatus } = require('../controllers/driverController');
+const authenticate = require('../middleware/authenticate');
+const {
+  getAllDrivers,
+  getDriverById,
+  createDriver,
+  updateDriver,
+  deleteDriver,
+  updateDriverStatus
+} = require('../controllers/driverController');
+
+// All driver endpoints require valid JWT authentication with tenant context
+router.use(authenticate);
 
 router.get('/', getAllDrivers);
 router.get('/:id', getDriverById);
