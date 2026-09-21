@@ -1,107 +1,81 @@
-const Driver = require('../models/driverModel');
+const { driverService, DriverServiceError } = require('../services/driverService');
+const asyncWrapper = require('../utils/asyncWrapper');
+const apiResponse = require('../utils/apiResponse');
+
+const handleError = (res, err) => {
+  if (err instanceof DriverServiceError) {
+    return apiResponse.error(res, err.message, err.statusCode);
+  }
+  console.error('Unexpected Driver Error:', err);
+  return apiResponse.error(res, err.message || 'Internal server error', 500);
+};
 
 // GET /api/drivers - Scoped strictly to authenticated user's organization
-const getAllDrivers = async (req, res, next) => {
+const getAllDrivers = asyncWrapper(async (req, res) => {
   try {
-    const { status, license_category } = req.query;
-    const orgId = req.user.organization_id;
-    const drivers = await Driver.findAll({ status, license_category, organization_id: orgId });
-    res.json({ success: true, data: drivers });
+    const drivers = await driverService.listDrivers(req.query, req.user);
+    return apiResponse.success(res, drivers, 'Drivers retrieved successfully.');
   } catch (err) {
-    next(err);
+    return handleError(res, err);
   }
-};
+});
 
 // GET /api/drivers/:id - Scoped strictly to authenticated user's organization
-const getDriverById = async (req, res, next) => {
+const getDriverById = asyncWrapper(async (req, res) => {
   try {
-    const orgId = req.user.organization_id;
-    const driver = await Driver.findById(req.params.id, orgId);
-    if (!driver) return res.status(404).json({ success: false, error: 'Driver not found' });
-    res.json({ success: true, data: driver });
+    const driver = await driverService.getDriverById(req.params.id, req.user);
+    return apiResponse.success(res, driver, 'Driver retrieved successfully.');
   } catch (err) {
-    next(err);
+    return handleError(res, err);
   }
-};
+});
 
 // POST /api/drivers - organization_id is derived exclusively from req.user.organization_id
-const createDriver = async (req, res, next) => {
+const createDriver = asyncWrapper(async (req, res) => {
   try {
-    const { license_number } = req.body;
-    const orgId = req.user.organization_id;
-
-    const existing = await Driver.findByLicense(license_number);
-    if (existing) {
-      return res.status(409).json({ success: false, error: 'License number already exists' });
-    }
-
-    // Explicitly enforce authenticated organization context, ignoring any client-provided organization_id
-    const driverPayload = {
-      ...req.body,
-      organization_id: orgId
-    };
-
-    const driver = await Driver.create(driverPayload);
-    res.status(201).json({ success: true, data: driver });
+    const driver = await driverService.createDriver(req.body, req.user);
+    return apiResponse.success(res, driver, 'Driver created successfully.', 201);
   } catch (err) {
-    next(err);
+    return handleError(res, err);
   }
-};
+});
 
 // PUT /api/drivers/:id - Scoped strictly to authenticated user's organization
-const updateDriver = async (req, res, next) => {
+const updateDriver = asyncWrapper(async (req, res) => {
   try {
-    const { license_number } = req.body;
-    const orgId = req.user.organization_id;
-
-    if (license_number) {
-      const existing = await Driver.findByLicense(license_number, req.params.id);
-      if (existing) {
-        return res.status(409).json({ success: false, error: 'License number already in use' });
-      }
-    }
-
-    const driver = await Driver.update(req.params.id, req.body, orgId);
-    if (!driver) return res.status(404).json({ success: false, error: 'Driver not found' });
-    res.json({ success: true, data: driver });
+    const updated = await driverService.updateDriver(req.params.id, req.body, req.user);
+    return apiResponse.success(res, updated, 'Driver updated successfully.');
   } catch (err) {
-    next(err);
+    return handleError(res, err);
   }
-};
+});
 
 // DELETE /api/drivers/:id - Scoped strictly to authenticated user's organization
-const deleteDriver = async (req, res, next) => {
+const deleteDriver = asyncWrapper(async (req, res) => {
   try {
-    const orgId = req.user.organization_id;
-    const existing = await Driver.findById(req.params.id, orgId);
-    if (!existing) return res.status(404).json({ success: false, error: 'Driver not found' });
-    if (existing.status === 'On Trip') {
-      return res.status(400).json({ success: false, error: 'Cannot delete a driver currently On Trip' });
-    }
-
-    const driver = await Driver.delete(req.params.id, orgId);
-    res.json({ success: true, data: driver });
+    const deleted = await driverService.deleteDriver(req.params.id, req.user);
+    return apiResponse.success(res, deleted, 'Driver deleted successfully.');
   } catch (err) {
-    next(err);
+    return handleError(res, err);
   }
-};
+});
 
 // PATCH /api/drivers/:id/status - Scoped strictly to authenticated user's organization
-const updateDriverStatus = async (req, res, next) => {
+const updateDriverStatus = asyncWrapper(async (req, res) => {
   try {
     const { status } = req.body;
-    const orgId = req.user.organization_id;
-    const allowed = ['Available', 'On Trip', 'Off Duty', 'Suspended'];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ success: false, error: `Status must be one of: ${allowed.join(', ')}` });
-    }
-
-    const driver = await Driver.setStatus(req.params.id, status, orgId);
-    if (!driver) return res.status(404).json({ success: false, error: 'Driver not found' });
-    res.json({ success: true, data: driver });
+    const updated = await driverService.updateDriverStatus(req.params.id, status, req.user);
+    return apiResponse.success(res, updated, `Driver status updated to '${updated.status}'.`);
   } catch (err) {
-    next(err);
+    return handleError(res, err);
   }
-};
+});
 
-module.exports = { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, updateDriverStatus };
+module.exports = {
+  getAllDrivers,
+  getDriverById,
+  createDriver,
+  updateDriver,
+  deleteDriver,
+  updateDriverStatus
+};

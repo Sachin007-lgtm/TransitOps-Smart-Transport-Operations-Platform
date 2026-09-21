@@ -139,6 +139,15 @@ export default function TripDispatcher() {
     return drivers.find(d => Number(d.id) === Number(id));
   };
 
+  const isLicenseExpired = (dateStr) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d < today;
+  };
+
   // Calculate actively assigned resources in frontend for quick feedback
   const activeTrips = trips.filter(t => ['Assigned', 'Dispatched'].includes(t.status));
   const activeVehicleIds = activeTrips.map(t => Number(t.vehicle_id)).filter(Boolean);
@@ -174,6 +183,20 @@ export default function TripDispatcher() {
 
     setIsSubmitting(true);
     setConflictError(null);
+
+    if (driverId) {
+      const chosenDriver = getDriverById(driverId);
+      if (chosenDriver && isLicenseExpired(chosenDriver.license_expiry_date)) {
+        setIsSubmitting(false);
+        showToast(`Cannot assign ${chosenDriver.name}: driver license is expired.`);
+        return;
+      }
+      if (chosenDriver && chosenDriver.status !== 'Available') {
+        setIsSubmitting(false);
+        showToast(`Cannot assign ${chosenDriver.name}: driver is currently '${chosenDriver.status}'.`);
+        return;
+      }
+    }
 
     const payload = {
       origin: origin.trim(),
@@ -253,6 +276,16 @@ export default function TripDispatcher() {
       return;
     }
 
+    const chosenDriver = getDriverById(dId);
+    if (chosenDriver && isLicenseExpired(chosenDriver.license_expiry_date)) {
+      alert(`Cannot assign ${chosenDriver.name}: driver license is expired.`);
+      return;
+    }
+    if (chosenDriver && chosenDriver.status !== 'Available') {
+      alert(`Cannot assign ${chosenDriver.name}: driver is currently '${chosenDriver.status}'.`);
+      return;
+    }
+
     setIsModalSubmitting(true);
     setConflictError(null);
 
@@ -316,6 +349,16 @@ export default function TripDispatcher() {
     const { trip, vehicleId: vId, driverId: dId } = reassignModal;
     if (!trip || !vId || !dId) {
       alert('Please select both a vehicle and a driver for reassignment.');
+      return;
+    }
+
+    const chosenDriver = getDriverById(dId);
+    if (chosenDriver && isLicenseExpired(chosenDriver.license_expiry_date)) {
+      alert(`Cannot reassign to ${chosenDriver.name}: driver license is expired.`);
+      return;
+    }
+    if (chosenDriver && chosenDriver.status !== 'Available') {
+      alert(`Cannot reassign to ${chosenDriver.name}: driver is currently '${chosenDriver.status}'.`);
       return;
     }
 
@@ -661,9 +704,11 @@ export default function TripDispatcher() {
                   <option value="">Unassigned</option>
                   {drivers.map(d => {
                     const isActive = activeDriverIds.includes(d.id);
+                    const expired = isLicenseExpired(d.license_expiry_date);
+                    const isUnavailable = d.status !== 'Available' || expired;
                     return (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.license_number}) [{d.status}{isActive ? ' / Assigned' : ''}]
+                      <option key={d.id} value={d.id} disabled={isUnavailable}>
+                        {d.name} ({d.license_number}) [{d.status}{expired ? ' / EXPIRED' : ''}{isActive ? ' / Assigned' : ''}]
                       </option>
                     );
                   })}
@@ -1105,9 +1150,11 @@ export default function TripDispatcher() {
                   <option value="">Choose driver...</option>
                   {drivers.map(d => {
                     const isBusy = activeDriverIds.includes(d.id);
+                    const expired = isLicenseExpired(d.license_expiry_date);
+                    const isUnavailable = d.status !== 'Available' || expired || isBusy;
                     return (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.license_number}) [{d.status}{isBusy ? ' - ACTIVE' : ''}]
+                      <option key={d.id} value={d.id} disabled={isUnavailable}>
+                        {d.name} ({d.license_number}) [{d.status}{expired ? ' / EXPIRED' : ''}{isBusy ? ' - ACTIVE' : ''}]
                       </option>
                     );
                   })}
@@ -1177,11 +1224,16 @@ export default function TripDispatcher() {
                   onChange={e => setReassignModal({ ...reassignModal, driverId: e.target.value })}
                 >
                   <option value="">Choose driver...</option>
-                  {drivers.map(d => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.license_number}) [{d.status}]
-                    </option>
-                  ))}
+                  {drivers.map(d => {
+                    const isBusy = activeDriverIds.includes(d.id);
+                    const expired = isLicenseExpired(d.license_expiry_date);
+                    const isUnavailable = d.status !== 'Available' || expired || isBusy;
+                    return (
+                      <option key={d.id} value={d.id} disabled={isUnavailable}>
+                        {d.name} ({d.license_number}) [{d.status}{expired ? ' / EXPIRED' : ''}{isBusy ? ' - ACTIVE' : ''}]
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>

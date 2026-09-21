@@ -10,6 +10,7 @@ const apiResponse = {
     return res.status(statusCode).json({
       success: false,
       message,
+      error: message,
       errors
     });
   }

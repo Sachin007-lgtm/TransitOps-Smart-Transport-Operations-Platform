@@ -19,6 +19,15 @@ const VALID_TRANSITIONS = {
   Cancelled: []
 };
 
+function isExpired(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d < today;
+}
+
 const tripService = {
   /**
    * Create a new trip scoped strictly to the authenticated user's organization.
@@ -61,7 +70,7 @@ const tripService = {
 
     // Validate driver if provided
     if (driver_id) {
-      const anyDriver = await query('SELECT organization_id, status, name FROM drivers WHERE id = $1', [driver_id]);
+      const anyDriver = await query('SELECT organization_id, status, name, license_expiry_date FROM drivers WHERE id = $1', [driver_id]);
       if (anyDriver.rows.length === 0) {
         throw new TripServiceError(`Driver with ID ${driver_id} not found.`, 404);
       }
@@ -73,6 +82,12 @@ const tripService = {
         throw new TripServiceError(
           `Driver ${driver.name} is currently '${driver.status}' and unavailable for assignment.`,
           409
+        );
+      }
+      if (isExpired(driver.license_expiry_date)) {
+        throw new TripServiceError(
+          `Driver ${driver.name}'s license is expired. Cannot assign trips.`,
+          400
         );
       }
     }
@@ -253,6 +268,9 @@ const tripService = {
         if (newDriver.status !== 'Available') {
           throw new TripServiceError(`Driver is currently '${newDriver.status}' and unavailable.`, 409);
         }
+        if (isExpired(newDriver.license_expiry_date)) {
+          throw new TripServiceError(`Driver ${newDriver.name || ''}'s license is expired. Cannot assign trips.`, 400);
+        }
       }
 
       // Double-booking collision check: if the trip is operational (Assigned or Dispatched),
@@ -381,6 +399,12 @@ const tripService = {
             throw new TripServiceError(
               `Driver ${driver.name} is currently '${driver.status}' and unavailable.`,
               409
+            );
+          }
+          if (isExpired(driver.license_expiry_date)) {
+            throw new TripServiceError(
+              `Driver ${driver.name}'s license is expired. Cannot assign trips.`,
+              400
             );
           }
         }

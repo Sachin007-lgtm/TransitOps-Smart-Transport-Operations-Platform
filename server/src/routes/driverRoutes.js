@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/authenticate');
 const {
+  validateCreateDriver,
+  validateUpdateDriver,
+  validateDriverStatus
+} = require('../validators/driverValidator');
+const {
   getAllDrivers,
   getDriverById,
   createDriver,
@@ -15,9 +20,9 @@ router.use(authenticate);
 
 router.get('/', getAllDrivers);
 router.get('/:id', getDriverById);
-router.post('/', createDriver);
-router.put('/:id', updateDriver);
+router.post('/', validateCreateDriver, createDriver);
+router.put('/:id', validateUpdateDriver, updateDriver);
 router.delete('/:id', deleteDriver);
-router.patch('/:id/status', updateDriverStatus);
+router.patch('/:id/status', validateDriverStatus, updateDriverStatus);
 
 module.exports = router;

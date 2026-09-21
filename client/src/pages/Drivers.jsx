@@ -100,12 +100,23 @@ export default function Drivers() {
 
   const handleStatusChange = async (driverId, newStatusOption, isExpired, e) => {
     e.stopPropagation();
+    const currentDriver = drivers.find(d => d.id === driverId);
+
+    if (currentDriver?.status === 'On Trip' && newStatusOption.label !== 'On Trip') {
+      const optionEl = e.currentTarget;
+      optionEl.classList.add('shake');
+      setTimeout(() => optionEl.classList.remove('shake'), 500);
+      const evt = new CustomEvent('app-toast', { detail: `Blocked — ${currentDriver.name} is currently On Trip. Complete the trip to release driver.`, type: 'error' });
+      window.dispatchEvent(evt);
+      return;
+    }
+
     if (isExpired && (newStatusOption.label === 'Available' || newStatusOption.label === 'On Trip')) {
       const optionEl = e.currentTarget;
       optionEl.classList.add('shake');
       setTimeout(() => optionEl.classList.remove('shake'), 500);
 
-      const driverName = drivers.find(d => d.id === driverId)?.name;
+      const driverName = currentDriver?.name || 'Driver';
       const evt = new CustomEvent('app-toast', { detail: `Blocked — ${driverName}'s license is expired, cannot assign trips.`, type: 'error' });
       window.dispatchEvent(evt);
       return;
@@ -113,9 +124,9 @@ export default function Drivers() {
 
     try {
       const dbStatusValue = newStatusOption.label === 'On Trip' ? 'On Trip' : newStatusOption.label;
-      await apiRequest('PUT', `/drivers/${driverId}`, { status: dbStatusValue });
+      await apiRequest('PATCH', `/drivers/${driverId}/status`, { status: dbStatusValue });
       
-      const dName = drivers.find(d => d.id === driverId)?.name || 'Driver';
+      const dName = currentDriver?.name || 'Driver';
       const evt = new CustomEvent('app-toast', { detail: `${dName} set to ${newStatusOption.label}` });
       window.dispatchEvent(evt);
       
@@ -133,6 +144,19 @@ export default function Drivers() {
     // Strict mandatory field validation
     if (!formData.name.trim() || !formData.license.trim() || !formData.expiry.trim() || !formData.contact.trim()) {
       const evt = new CustomEvent('app-toast', { detail: 'All fields marked with * are required.', type: 'error' });
+      window.dispatchEvent(evt);
+      return;
+    }
+
+    const phoneDigits = formData.contact.replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+      const evt = new CustomEvent('app-toast', { detail: 'Please enter a valid 10-digit contact number.', type: 'error' });
+      window.dispatchEvent(evt);
+      return;
+    }
+
+    if (isLicenseExpired(formData.expiry) && ['Available', 'On Trip'].includes(formData.status || 'Available')) {
+      const evt = new CustomEvent('app-toast', { detail: 'Cannot set initial status to Available or On Trip with an expired license.', type: 'error' });
       window.dispatchEvent(evt);
       return;
     }
@@ -194,6 +218,19 @@ export default function Drivers() {
     
     if (!editFormData.name.trim() || !editFormData.license.trim() || !editFormData.expiry.trim() || !editFormData.contact.trim()) {
       const evt = new CustomEvent('app-toast', { detail: 'All fields marked with * are required.', type: 'error' });
+      window.dispatchEvent(evt);
+      return;
+    }
+
+    const editPhoneDigits = editFormData.contact.replace(/\D/g, '');
+    if (editPhoneDigits.length < 10) {
+      const evt = new CustomEvent('app-toast', { detail: 'Please enter a valid 10-digit contact number.', type: 'error' });
+      window.dispatchEvent(evt);
+      return;
+    }
+
+    if (isLicenseExpired(editFormData.expiry) && ['Available', 'On Trip'].includes(editFormData.status)) {
+      const evt = new CustomEvent('app-toast', { detail: 'Cannot set status to Available or On Trip when license is expired.', type: 'error' });
       window.dispatchEvent(evt);
       return;
     }
