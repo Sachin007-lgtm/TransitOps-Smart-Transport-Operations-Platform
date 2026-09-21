@@ -247,8 +247,8 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
       await query("DELETE FROM organizations WHERE id = $1", [orgB]);
       assert.fail('Expected deleting organization with active driver to fail RESTRICT check');
     } catch (err) {
-      // PostgreSQL error code 23503 = foreign_key_violation
-      assert.equal(err.code, '23503');
+      // PostgreSQL error code 23503 = foreign_key_violation, 23001 = restrict_violation (PostgreSQL 18+)
+      assert.ok(['23503', '23001'].includes(err.code), `Expected 23503 or 23001, got ${err.code}`);
     }
   });
 

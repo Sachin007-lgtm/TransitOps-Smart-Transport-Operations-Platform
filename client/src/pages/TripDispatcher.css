@@ -56,9 +56,10 @@
 }
 
 .stepper-line-fill.step-0 { width: 0%; }
-.stepper-line-fill.step-1 { width: 33.33%; }
-.stepper-line-fill.step-2 { width: 66.66%; }
-.stepper-line-fill.step-3 { width: 100%; }
+.stepper-line-fill.step-1 { width: 25%; }
+.stepper-line-fill.step-2 { width: 50%; }
+.stepper-line-fill.step-3 { width: 75%; }
+.stepper-line-fill.step-4 { width: 100%; }
 .stepper-line-fill.cancelled { background: var(--red); width: 100%; }
 
 .step-nodes {
@@ -354,3 +355,204 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Status Pills */
+.pill-amber { background-color: rgba(224, 138, 30, 0.14); color: var(--amber); }
+.pill-purple { background-color: rgba(106, 90, 205, 0.14); color: var(--indigo); }
+
+/* Conflict / Alert Banner */
+.conflict-banner {
+  background-color: var(--red-bg);
+  border: 1px solid rgba(224, 71, 63, 0.35);
+  border-left: 4px solid var(--red);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  animation: shake 0.45s ease-in-out;
+}
+
+.conflict-icon {
+  color: var(--red);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.conflict-content {
+  flex: 1;
+}
+
+.conflict-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.conflict-badge {
+  background-color: var(--red);
+  color: #ffffff;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+
+.conflict-msg {
+  font-size: 0.8rem;
+  color: var(--text);
+  margin-top: 0.35rem;
+  line-height: 1.4;
+}
+
+.conflict-close {
+  background: none;
+  border: none;
+  color: var(--sub);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.conflict-close:hover {
+  color: var(--text);
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Modal Dialogs */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(20, 15, 25, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-dialog {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--line);
+  background-color: var(--bg);
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: var(--sub);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.modal-close-btn:hover {
+  color: var(--text);
+  background-color: var(--bg);
+}
+
+/* Filter pills on Live Board */
+.filter-tabs {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.filter-tab {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.725rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--sub);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.filter-tab:hover {
+  border-color: var(--plum-1);
+  color: var(--text);
+}
+
+.filter-tab.active {
+  background: var(--plum-1);
+  border-color: var(--plum-1);
+  color: #ffffff;
+}
+
+/* Status dots & badges */
+.org-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background-color: rgba(122, 74, 99, 0.1);
+  color: var(--plum-1);
+  border: 1px solid rgba(122, 74, 99, 0.2);
+}
+
+.asset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+

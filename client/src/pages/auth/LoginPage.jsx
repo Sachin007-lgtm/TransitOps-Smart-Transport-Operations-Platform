@@ -96,7 +96,15 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setTimeout(() => {
+      const roleTokens = {
+        'Fleet Manager': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTAxLCJlbWFpbCI6Im1hbmFnZXJAdHJhbnNpdG9wcy5jb20iLCJyb2xlIjoiRmxlZXQgTWFuYWdlciIsIm9yZ2FuaXphdGlvbl9pZCI6Im9yZy0xIiwiaWF0IjoxNzg5OTk3OTc3LCJleHAiOjE3OTI1ODk5Nzd9.WV1hrBJzgoS7HRZE824vcn9yZ3-DeYMhGOyO96WmKhg',
+        'Dispatcher': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTAyLCJlbWFpbCI6ImRpc3BhdGNoZXJAdHJhbnNpdG9wcy5jb20iLCJyb2xlIjoiRGlzcGF0Y2hlciIsIm9yZ2FuaXphdGlvbl9pZCI6Im9yZy0xIiwiaWF0IjoxNzg5OTk3OTc3LCJleHAiOjE3OTI1ODk5Nzd9.kZhsOR1cu4eBFAtlYj3-xKOlbTxW4Cu6y1xcpmLwaX4',
+        'Driver': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTAzLCJlbWFpbCI6ImRyaXZlckB0cmFuc2l0b3BzLmNvbSIsInJvbGUiOiJEcml2ZXIiLCJkcml2ZXJfaWQiOjEsIm9yZ2FuaXphdGlvbl9pZCI6Im9yZy0xIiwiaWF0IjoxNzg5OTk3OTc3LCJleHAiOjE3OTI1ODk5Nzd9.13HyPRF6jOoLl-iKcScP4VQuIGO01092v6OV-gIMaFQ'
+      };
+      const token = roleTokens[role.id] || roleTokens['Dispatcher'];
       localStorage.setItem('userRole', role.id);
+      localStorage.setItem('token', token);
+      localStorage.setItem('organization_id', 'org-1');
       navigate('/');
     }, 1500);
   };
