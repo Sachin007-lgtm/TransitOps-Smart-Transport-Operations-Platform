@@ -11,12 +11,16 @@ const Vehicle = {
    * Return all vehicles strictly scoped by organization_id with optional filters
    * and dynamically computed trips_count from Completed trips.
    */
-  findAll: async ({ status, type, region, organization_id } = {}) => {
+  findAll: async ({ status, type, region, sub_category, size, organization_id } = {}) => {
     assertOrganizationId(organization_id, 'findAll');
 
     let sql = `
       SELECT v.*,
-             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_count
+             v.registration_number AS number_plate,
+             COALESCE(v.sub_category, v.region, 'Standard') AS size,
+             v.odometer AS distance_covered,
+             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_count,
+             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_completed
       FROM vehicles v
       WHERE v.organization_id = $1
     `;
@@ -35,6 +39,12 @@ const Vehicle = {
       sql += ` AND v.region = $${idx++}`;
       values.push(region);
     }
+    const resolvedSize = sub_category || size;
+    if (resolvedSize) {
+      sql += ` AND (v.sub_category = $${idx} OR v.region = $${idx})`;
+      values.push(resolvedSize);
+      idx++;
+    }
 
     sql += ' ORDER BY v.created_at DESC';
     const result = await query(sql, values);
@@ -50,7 +60,11 @@ const Vehicle = {
 
     const result = await query(`
       SELECT v.*,
-             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_count
+             v.registration_number AS number_plate,
+             COALESCE(v.sub_category, v.region, 'Standard') AS size,
+             v.odometer AS distance_covered,
+             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_count,
+             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_completed
       FROM vehicles v
       WHERE v.id = $1 AND v.organization_id = $2
     `, [id, organization_id]);
@@ -66,7 +80,11 @@ const Vehicle = {
 
     const result = await client.query(`
       SELECT v.*,
-             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_count
+             v.registration_number AS number_plate,
+             COALESCE(v.sub_category, v.region, 'Standard') AS size,
+             v.odometer AS distance_covered,
+             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_count,
+             COALESCE((SELECT COUNT(*) FROM trips t WHERE t.vehicle_id = v.id AND t.organization_id = v.organization_id AND t.status = 'Completed'), 0)::int AS trips_completed
       FROM vehicles v
       WHERE v.id = $1 AND v.organization_id = $2
     `, [id, organization_id]);
@@ -113,11 +131,16 @@ const Vehicle = {
    */
   create: async ({
     registration_number,
+    numberPlate,
+    number_plate,
     name,
     type,
     sub_category = null,
-    max_load_capacity,
+    size = null,
+    max_load_capacity = 1000.00,
     odometer = 0.00,
+    distanceCovered = null,
+    distance_covered = null,
     acquisition_cost = 0.00,
     status = 'Available',
     region = null,
@@ -125,23 +148,34 @@ const Vehicle = {
   }) => {
     assertOrganizationId(organization_id, 'create');
 
+    const regNum = (registration_number || numberPlate || number_plate || name || '').trim().toUpperCase();
+    const resolvedName = (name || regNum).trim();
+    const resolvedSize = sub_category || size || region || 'Standard';
+    const resolvedOdometer = parseFloat(odometer ?? distanceCovered ?? distance_covered ?? 0) || 0.00;
+    const resolvedCapacity = parseFloat(max_load_capacity) || 1000.00;
+
     const sql = `
       INSERT INTO vehicles (
         registration_number, name, type, sub_category, max_load_capacity,
         odometer, acquisition_cost, status, region, organization_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING *;
+      RETURNING *,
+        registration_number AS number_plate,
+        COALESCE(sub_category, region, 'Standard') AS size,
+        odometer AS distance_covered,
+        0 AS trips_count,
+        0 AS trips_completed;
     `;
     const values = [
-      registration_number,
-      name,
+      regNum,
+      resolvedName,
       type,
-      sub_category,
-      max_load_capacity,
-      odometer,
+      resolvedSize,
+      resolvedCapacity,
+      resolvedOdometer,
       acquisition_cost,
       status,
-      region,
+      region || resolvedSize,
       organization_id
     ];
     const result = await query(sql, values);
@@ -153,6 +187,23 @@ const Vehicle = {
    */
   update: async (id, fields, organization_id) => {
     assertOrganizationId(organization_id, 'update');
+
+    const normalizedFields = { ...fields };
+    if (fields.number_plate !== undefined && fields.registration_number === undefined) {
+      normalizedFields.registration_number = fields.number_plate;
+    }
+    if (fields.numberPlate !== undefined && fields.registration_number === undefined) {
+      normalizedFields.registration_number = fields.numberPlate;
+    }
+    if (fields.size !== undefined && fields.sub_category === undefined) {
+      normalizedFields.sub_category = fields.size;
+    }
+    if (fields.distance_covered !== undefined && fields.odometer === undefined) {
+      normalizedFields.odometer = fields.distance_covered;
+    }
+    if (fields.distanceCovered !== undefined && fields.odometer === undefined) {
+      normalizedFields.odometer = fields.distanceCovered;
+    }
 
     const allowedFields = [
       'registration_number',
@@ -170,9 +221,9 @@ const Vehicle = {
     let idx = 1;
 
     for (const key of allowedFields) {
-      if (fields[key] !== undefined) {
+      if (normalizedFields[key] !== undefined) {
         setClause.push(`${key} = $${idx++}`);
-        values.push(fields[key]);
+        values.push(normalizedFields[key]);
       }
     }
 
@@ -187,7 +238,10 @@ const Vehicle = {
       UPDATE vehicles
       SET ${setClause.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${idParam} AND organization_id = $${orgParam}
-      RETURNING *;
+      RETURNING *,
+        registration_number AS number_plate,
+        COALESCE(sub_category, region, 'Standard') AS size,
+        odometer AS distance_covered;
     `;
     const result = await query(sql, values);
     return result.rows[0];
@@ -213,7 +267,13 @@ const Vehicle = {
     assertOrganizationId(organization_id, 'setStatus');
 
     const result = await query(
-      'UPDATE vehicles SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND organization_id = $3 RETURNING *',
+      `UPDATE vehicles 
+       SET status = $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $2 AND organization_id = $3 
+       RETURNING *,
+         registration_number AS number_plate,
+         COALESCE(sub_category, region, 'Standard') AS size,
+         odometer AS distance_covered`,
       [status, id, organization_id]
     );
     return result.rows[0];
@@ -226,7 +286,13 @@ const Vehicle = {
     assertOrganizationId(organization_id, 'setStatusWithClient');
 
     const result = await client.query(
-      'UPDATE vehicles SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND organization_id = $3 RETURNING *',
+      `UPDATE vehicles 
+       SET status = $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $2 AND organization_id = $3 
+       RETURNING *,
+         registration_number AS number_plate,
+         COALESCE(sub_category, region, 'Standard') AS size,
+         odometer AS distance_covered`,
       [status, id, organization_id]
     );
     return result.rows[0];
@@ -243,8 +309,32 @@ const Vehicle = {
       `UPDATE vehicles 
        SET status = 'Available', updated_at = CURRENT_TIMESTAMP 
        WHERE id = $1 AND organization_id = $2 AND status = 'On Trip' 
-       RETURNING *`,
+       RETURNING *,
+         registration_number AS number_plate,
+         COALESCE(sub_category, region, 'Standard') AS size,
+         odometer AS distance_covered`,
       [id, organization_id]
+    );
+    return result.rows[0];
+  },
+
+  /**
+   * Atomically increment a vehicle's odometer (lifetime distance) by completed trip distance.
+   */
+  incrementOdometer: async (client, id, distance, organization_id) => {
+    assertOrganizationId(organization_id, 'incrementOdometer');
+    const distNum = parseFloat(distance) || 0;
+    if (distNum <= 0) return null;
+
+    const result = await client.query(
+      `UPDATE vehicles 
+       SET odometer = odometer + $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $2 AND organization_id = $3 
+       RETURNING *,
+         registration_number AS number_plate,
+         COALESCE(sub_category, region, 'Standard') AS size,
+         odometer AS distance_covered`,
+      [distNum, id, organization_id]
     );
     return result.rows[0];
   }

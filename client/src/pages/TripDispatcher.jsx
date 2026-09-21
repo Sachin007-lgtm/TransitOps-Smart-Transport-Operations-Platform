@@ -26,6 +26,7 @@ export default function TripDispatcher() {
   // Trips & Drivers State from Backend API
   const [trips, setTrips] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState(SEEDED_VEHICLES);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -63,15 +64,16 @@ export default function TripDispatcher() {
   const [completeModal, setCompleteModal] = useState({ open: false, trip: null, actualDistance: '', actualArrival: '' });
   const [isModalSubmitting, setIsModalSubmitting] = useState(false);
 
-  // Fetch Trips & Drivers from Backend
+  // Fetch Trips, Drivers & Vehicles from Backend
   const loadData = async (silent = false) => {
     if (!silent) setIsLoading(true);
     else setIsRefreshing(true);
     try {
       setGeneralError(null);
-      const [tripsRes, driversRes] = await Promise.all([
+      const [tripsRes, driversRes, vehiclesRes] = await Promise.all([
         apiRequest('GET', '/trips'),
-        apiRequest('GET', '/drivers').catch(() => ({ data: [] }))
+        apiRequest('GET', '/drivers').catch(() => ({ data: [] })),
+        apiRequest('GET', '/vehicles').catch(() => ({ data: [] }))
       ]);
 
       const loadedTrips = tripsRes.data || [];
@@ -79,6 +81,10 @@ export default function TripDispatcher() {
 
       if (driversRes && driversRes.data) {
         setDrivers(driversRes.data);
+      }
+
+      if (vehiclesRes && vehiclesRes.data && vehiclesRes.data.length > 0) {
+        setVehicles(vehiclesRes.data);
       }
 
       if (loadedTrips.length > 0) {
@@ -125,7 +131,7 @@ export default function TripDispatcher() {
   // Helper: Find vehicle & driver by ID
   const getVehicleById = (id) => {
     if (!id) return null;
-    return SEEDED_VEHICLES.find(v => Number(v.id) === Number(id));
+    return vehicles.find(v => Number(v.id) === Number(id)) || SEEDED_VEHICLES.find(v => Number(v.id) === Number(id));
   };
 
   const getDriverById = (id) => {
@@ -627,11 +633,11 @@ export default function TripDispatcher() {
                   onChange={e => setVehicleId(e.target.value)}
                 >
                   <option value="">Unassigned</option>
-                  {SEEDED_VEHICLES.map(v => {
+                  {vehicles.map(v => {
                     const isActive = activeVehicleIds.includes(v.id);
                     return (
                       <option key={v.id} value={v.id}>
-                        {v.name} ({v.registration_number}) — {v.max_load_capacity}kg [{v.status}{isActive ? ' / Assigned' : ''}]
+                        {v.name || v.registration_number} ({v.registration_number || v.number_plate}) — {v.max_load_capacity}kg [{v.status}{isActive ? ' / Assigned' : ''}]
                       </option>
                     );
                   })}
@@ -1078,11 +1084,11 @@ export default function TripDispatcher() {
                   onChange={e => setAssignModal({ ...assignModal, vehicleId: e.target.value })}
                 >
                   <option value="">Choose vehicle...</option>
-                  {SEEDED_VEHICLES.map(v => {
+                  {vehicles.map(v => {
                     const isBusy = activeVehicleIds.includes(v.id);
                     return (
                       <option key={v.id} value={v.id}>
-                        {v.name} ({v.registration_number}) — {v.max_load_capacity}kg [{v.status}{isBusy ? ' - ACTIVE' : ''}]
+                        {v.name || v.registration_number} ({v.registration_number || v.number_plate}) — {v.max_load_capacity}kg [{v.status}{isBusy ? ' - ACTIVE' : ''}]
                       </option>
                     );
                   })}
@@ -1155,9 +1161,9 @@ export default function TripDispatcher() {
                   onChange={e => setReassignModal({ ...reassignModal, vehicleId: e.target.value })}
                 >
                   <option value="">Choose vehicle...</option>
-                  {SEEDED_VEHICLES.map(v => (
+                  {vehicles.map(v => (
                     <option key={v.id} value={v.id}>
-                      {v.name} ({v.registration_number}) — {v.max_load_capacity}kg [{v.status}]
+                      {v.name || v.registration_number} ({v.registration_number || v.number_plate}) — {v.max_load_capacity}kg [{v.status}]
                     </option>
                   ))}
                 </select>

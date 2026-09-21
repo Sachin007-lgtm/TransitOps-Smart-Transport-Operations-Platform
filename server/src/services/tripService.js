@@ -426,6 +426,10 @@ const tripService = {
 
         if (trip.vehicle_id) {
           await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
+          const distanceToLog = parseFloat(actual_distance ?? trip.planned_distance ?? 0);
+          if (distanceToLog > 0) {
+            await Vehicle.incrementOdometer(client, trip.vehicle_id, distanceToLog, user.organization_id);
+          }
         }
         if (trip.driver_id) {
           await Driver.releaseIfOnTrip(client, trip.driver_id, user.organization_id);
