@@ -71,6 +71,15 @@ const updateDriverStatus = asyncWrapper(async (req, res) => {
   }
 });
 
+const resetDriverPassword = asyncWrapper(async (req, res) => {
+  try {
+    const result = await driverService.resetDriverPassword(req.params.id, req.user);
+    return apiResponse.success(res, result, 'Temporary driver password generated.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 module.exports = {
   getAllDrivers,
   getDriverById,
@@ -78,4 +87,5 @@ module.exports = {
   updateDriver,
   deleteDriver,
   updateDriverStatus
+  ,resetDriverPassword
 };

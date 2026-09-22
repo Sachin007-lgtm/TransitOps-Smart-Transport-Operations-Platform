@@ -14,9 +14,10 @@ const Driver = {
     assertOrganizationId(organization_id, 'findAll');
 
     let sql = `
-      SELECT d.*, 
+      SELECT d.*, u.id AS user_id, u.must_change_password, u.temporary_password_encrypted,
              COALESCE((SELECT COUNT(*) FROM trips t WHERE t.driver_id = d.id AND t.status = 'Completed'), 0)::int AS trips_count
       FROM drivers d
+      LEFT JOIN users u ON u.driver_id = d.id AND u.organization_id = d.organization_id
       WHERE d.organization_id = $1
     `;
     const values = [organization_id];
@@ -43,9 +44,10 @@ const Driver = {
     assertOrganizationId(organization_id, 'findById');
 
     const result = await query(`
-      SELECT d.*, 
+      SELECT d.*, u.id AS user_id, u.must_change_password, u.temporary_password_encrypted,
              COALESCE((SELECT COUNT(*) FROM trips t WHERE t.driver_id = d.id AND t.status = 'Completed'), 0)::int AS trips_count
-      FROM drivers d 
+      FROM drivers d
+      LEFT JOIN users u ON u.driver_id = d.id AND u.organization_id = d.organization_id
       WHERE d.id = $1 AND d.organization_id = $2
     `, [id, organization_id]);
     return result.rows[0];
@@ -113,7 +115,7 @@ const Driver = {
     safety_score = 100,
     status = 'Available',
     organization_id
-  }) => {
+  }, client = { query }) => {
     assertOrganizationId(organization_id, 'create');
 
     const sql = `
@@ -121,7 +123,7 @@ const Driver = {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *;
     `;
-    const result = await query(sql, [name, license_number, license_category, license_expiry_date, contact_number, safety_score, status, organization_id]);
+    const result = await client.query(sql, [name, license_number, license_category, license_expiry_date, contact_number, safety_score, status, organization_id]);
     return result.rows[0];
   },
 

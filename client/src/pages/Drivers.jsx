@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Check, ChevronDown, Lock, ShieldCheck, Edit2, Trash2 } from 'lucide-react';
+import { Plus, Check, ChevronDown, Lock, ShieldCheck, Edit2, Trash2, KeyRound } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import './Drivers.css';
@@ -185,6 +185,10 @@ export default function Drivers() {
       
       setIsModalOpen(false);
       setFormData({ name: '', license: '', expiry: '', contact: '', status: 'Available' });
+
+      if (res.data?.temporary_password) {
+        window.alert(`Temporary password for ${formData.name}:\n\n${res.data.temporary_password}\n\nThe driver must change it after signing in.`);
+      }
       
       const newId = res.data.id;
       setNewDriverHighlighted(newId);
@@ -281,6 +285,20 @@ export default function Drivers() {
     }
   };
 
+  const handleResetDriverPassword = async (driver) => {
+    try {
+      const response = await apiRequest('POST', `/drivers/${driver.id}/reset-password`);
+      const temporaryPassword = response.data?.temporary_password;
+      if (temporaryPassword) {
+        window.alert(`Temporary password for ${driver.name}:\n\n${temporaryPassword}\n\nThe driver must change it after signing in.`);
+      }
+      loadDrivers();
+    } catch (err) {
+      const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to reset driver password', type: 'error' });
+      window.dispatchEvent(evt);
+    }
+  };
+
   // Filter Data
   const filteredDrivers = drivers.filter(d => {
     let matchesSearch = true;
@@ -347,6 +365,7 @@ export default function Drivers() {
                 <th>License no.</th>
                 <th>Driver Licence Expiry</th>
                 <th>Contact</th>
+                <th>App access</th>
                 <th className="text-center">Trips Count</th>
                 <th>Status</th>
                 <th className="text-right pr-6">Actions</th>
@@ -355,7 +374,7 @@ export default function Drivers() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-12 text-muted">Loading driver roster...</td>
+                  <td colSpan="8" className="text-center py-12 text-muted">Loading driver roster...</td>
                 </tr>
               ) : filteredDrivers.map((d, index) => {
                 const sColor = getStatusColor(d.status);
@@ -386,6 +405,15 @@ export default function Drivers() {
                     </td>
                     <td className="mono text-xs">
                       {d.contact_number ? (d.contact_number.startsWith('+91') ? d.contact_number : `+91 ${d.contact_number}`) : ''}
+                    </td>
+                    <td className="mono text-xs">
+                      {d.temporary_password ? (
+                        <span className="driver-temp-password" title="Temporary password; hidden after the driver changes it">
+                          {d.temporary_password}
+                        </span>
+                      ) : (
+                        <span className="text-muted">Password changed</span>
+                      )}
                     </td>
                     <td className="text-center">
                       <span className="pill pill-indigo mono text-xs font-semibold px-3 py-1">
@@ -430,6 +458,14 @@ export default function Drivers() {
                       <div className="flex items-center justify-end gap-2">
                         <button 
                           className="btn-icon text-muted hover:text-primary" 
+                          title="Generate temporary password"
+                          onClick={(e) => { e.stopPropagation(); handleResetDriverPassword(d); }}
+                          style={{ padding: '0.4rem', borderRadius: '6px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                        >
+                          <KeyRound size={15} />
+                        </button>
+                        <button 
+                          className="btn-icon text-muted hover:text-primary" 
                           title="Edit Driver"
                           onClick={(e) => { e.stopPropagation(); handleOpenEditModal(d); }}
                           style={{ padding: '0.4rem', borderRadius: '6px', background: 'transparent', border: 'none', cursor: 'pointer' }}
@@ -451,7 +487,7 @@ export default function Drivers() {
               })}
               {!loading && filteredDrivers.length === 0 && (
                 <tr>
-                  <td colSpan="7" className="text-center py-8 text-muted text-sm">No drivers found matching criteria.</td>
+                  <td colSpan="8" className="text-center py-8 text-muted text-sm">No drivers found matching criteria.</td>
                 </tr>
               )}
             </tbody>
