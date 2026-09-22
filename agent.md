@@ -22,6 +22,27 @@ No other top-level route gets built. Specifically:
 
 ---
 
+## Auth & Roles
+
+Two roles only. No public self-signup for either — both identities are created from the manager side. **Platform split: Manager = web app only. Driver = Android APK only — no web login exists for drivers.**
+
+**Manager (web)**
+- [ ] 🟢 One manager identity (or a few), created by admin/onboarding
+- [ ] 🟢 Full access to all 5 pages, web only
+- [ ] 🟡 Support multiple manager accounts if more than one person needs full access
+
+**Driver (Android APK only)**
+- [ ] 🟢 Auto-created the moment a driver profile is added on the Drivers page (web side) — system generates a login ID + password at that point
+- [ ] 🟢 Credentials shown once to the manager (copy/share action) to hand to the driver
+- [ ] 🟢 Driver logs into the APK only: own assigned trip(s), trip status-update actions, POD upload — nothing else
+- [ ] 🟡 Manager can reset/regenerate a driver's password
+- [ ] 🟡 Driver can view their own document expiry, earnings/advances (read-only) in the APK
+- [ ] ⚪ Any further driver self-service (profile edits, leave requests, etc.)
+
+**Rule:** driver accounts are 1:1 with driver profiles — deactivating a driver profile deactivates the login.
+
+---
+
 ## What changes vs. the current codebase
 
 The current build has 8 separate pages (`Dashboard`, `Vehicles`, `Drivers`, `TripDispatcher`, `Maintenance`, `FuelExpenses`, `Analytics`, `Settings`). Three of these get merged, not deleted outright — migrate their logic, then retire the standalone route.
@@ -34,7 +55,7 @@ The current build has 8 separate pages (`Dashboard`, `Vehicles`, `Drivers`, `Tri
 | `Vehicles.jsx`, `Drivers.jsx`, `TripDispatcher.jsx`, `Dashboard.jsx` | Keep as-is, extend in place per the checklist below. |
 | `Settings.jsx` | Leave untouched for now. |
 
-Compliance (license expiry, document expiry, service-due) is **not a page** — it's a rule layer that already partly exists (license expiry guard in Drivers/Trips, alerts card on Dashboard). Keep it that way: checks live where the data lives (Fleet, Drivers), results surface as alerts on Dashboard.
+**Decision: no separate Compliance page.** Vehicle documents live on the Fleet vehicle profile; driver documents live on the Driver profile — that's where the upload/edit action belongs, and a separate page would just duplicate the same data. Compliance is a rule layer, not a page: it watches expiry dates on those two profiles and pushes results into the Dashboard alerts card. If that alert list ever grows too long to scan, add a "View all" link off Dashboard — do not add a new top-level nav item for it.
 
 ---
 
@@ -61,12 +82,14 @@ Compliance (license expiry, document expiry, service-due) is **not a page** — 
 - [ ] 🟢 Driver table: name, license, expiry, contact, status, safety score — keep existing validations (expiry blocks status change, license uniqueness, phone format)
 - [ ] 🟢 Status set: Available / On Trip / Off Duty / Suspended
 - [ ] 🟡 Driver history: past trips, earnings, advances
+- [ ] 🟢 Driver document upload/expiry lives on this same profile (RC-equivalent: license doc) — feeds Dashboard alerts, no separate Compliance page
 
 ### 4. Trips (`TripDispatcher.jsx`)
 - [ ] 🟢 Keep existing lifecycle: Draft → Planned → Assigned → Dispatched → Completed
 - [ ] 🟢 Keep existing guards: cargo capacity, license expiry, driver availability, double-booking conflict
 - [ ] 🟡 **Expense entry per trip (merged in from Fuel & Expenses):** toll, other, maintenance-linked cost
 - [ ] 🟡 Revenue + actual cost → profit per trip, pushed to Billing on completion
+- [ ] 🟢 Driver-side (APK): status update actions + POD upload on their assigned trip
 
 ### 5. Billing *(new page)*
 - [ ] 🟢 Invoice generation per trip/customer
@@ -79,6 +102,16 @@ Compliance (license expiry, document expiry, service-due) is **not a page** — 
 
 ---
 
+## Deferred / not building yet
+
+- [ ] ⚪ GPS live tracking page
+- [ ] ⚪ 3rd-party truck-location access (API/webhook to partners)
+- [ ] ⚪ Separate Compliance page
+- [ ] ⚪ Standalone Maintenance / Fuel / Analytics pages (merged elsewhere — see above)
+- [ ] ⚪ Multi-branch support
+
+---
+
 ## Rules for the agent
 
 1. Don't create a new top-level route without it being explicitly listed above.
@@ -86,3 +119,6 @@ Compliance (license expiry, document expiry, service-due) is **not a page** — 
 3. Don't touch `/settings` unless asked.
 4. Don't build third-party API/webhook access, GST e-way bill workflows, or multi-branch support — these are explicitly deferred.
 5. When in doubt about which page a feature belongs on, ask rather than guess.
+6. Don't build a separate Compliance page — document upload/expiry lives on Fleet and Driver profiles; alerts surface on Dashboard.
+7. Driver login creation is triggered by adding a driver profile, not a separate signup flow. Don't build public self-signup for either role.
+8. Never build a web login/view for drivers — driver access is APK-only. The web app (all 5 pages) is manager-only.
