@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const colors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
   const styles = createStyles(colors);
   const { isRestoring, isSigningIn, signIn, user } = useAuth();
-  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -36,23 +36,23 @@ export default function HomeScreen() {
   }
 
   async function handleSubmit() {
-    const normalizedEmail = email.trim();
+    const normalizedPhone = phoneNumber.trim();
 
     setError('');
 
-    if (!normalizedEmail || !password.trim()) {
-      setError('Enter your email and password to continue.');
+    if (!normalizedPhone || !password.trim()) {
+      setError('Enter your phone number and password to continue.');
       return;
     }
 
-    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
-      setError('Enter a valid work email address.');
+    if (normalizedPhone.replace(/\D/g, '').length < 7) {
+      setError('Enter a valid phone number.');
       return;
     }
 
     try {
-      await signIn(normalizedEmail, password);
-      router.replace('/dashboard');
+      const signedInUser = await signIn(normalizedPhone, password);
+      router.replace(signedInUser.must_change_password ? ('/change-password' as never) : '/dashboard');
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -80,20 +80,20 @@ export default function HomeScreen() {
 
             <View style={styles.form}>
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Work email</Text>
+              <Text style={styles.label}>Phone number</Text>
               <TextInput
                 autoCapitalize="none"
-                autoComplete="email"
+                autoComplete="tel"
                 autoCorrect={false}
-                accessibilityLabel="Work email"
-                keyboardType="email-address"
-                onChangeText={setEmail}
+                accessibilityLabel="Phone number"
+                keyboardType="phone-pad"
+                onChangeText={setPhoneNumber}
                 onSubmitEditing={() => passwordInput.current?.focus()}
-                placeholder="you@company.com"
+                placeholder="+91 9876543210"
                 placeholderTextColor={colors.textSecondary}
                 returnKeyType="next"
                 style={styles.input}
-                value={email}
+                value={phoneNumber}
               />
             </View>
 

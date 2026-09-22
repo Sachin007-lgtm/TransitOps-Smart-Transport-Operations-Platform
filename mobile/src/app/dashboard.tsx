@@ -2,11 +2,42 @@ import { Redirect, router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useEffect, useState } from 'react';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { DriverNav } from '@/components/driver/DriverNav';
+import { getTrips, Trip } from '@/features/trips/tripsApi';
 
 export default function DashboardScreen() {
-  const { isRestoring, user, signOut } = useAuth();
+  const { isRestoring, token, user, signOut } = useAuth();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [tripError, setTripError] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+
+    let isMounted = true;
+    setIsLoadingTrips(true);
+    setTripError('');
+
+    getTrips(token)
+      .then((loadedTrips) => {
+        if (isMounted) setTrips(loadedTrips);
+      })
+      .catch((error) => {
+        if (isMounted) {
+          setTripError(error instanceof Error ? error.message : 'Unable to load trips.');
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingTrips(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
 
   if (isRestoring) {
     return null;
@@ -15,6 +46,11 @@ export default function DashboardScreen() {
   if (!user) {
     return <Redirect href="/" />;
   }
+
+  const activeTrip = trips.find((trip) => trip.status === 'Dispatched' || trip.status === 'Assigned');
+  const upcomingTrips = trips.filter((trip) =>
+    trip.status === 'Draft' || trip.status === 'Planned' || trip.status === 'Assigned',
+  ).length;
 
   async function handleSignOut() {
     await signOut();
@@ -41,16 +77,20 @@ export default function DashboardScreen() {
 
         <View style={styles.assignmentCard}>
           <Text style={styles.cardEyebrow}>TODAY'S ASSIGNMENT</Text>
-          <Text style={styles.assignmentTitle}>No trip assigned yet</Text>
+          <Text style={styles.assignmentTitle}>
+            {activeTrip ? `${activeTrip.origin} to ${activeTrip.destination}` : 'No trip assigned yet'}
+          </Text>
           <Text style={styles.assignmentDescription}>
-            Your dispatcher will add an assignment here when your schedule is ready.
+            {activeTrip
+              ? `Status: ${activeTrip.status}${activeTrip.vehicle_registration ? ` · ${activeTrip.vehicle_registration}` : ''}`
+              : tripError || 'Your dispatcher will add an assignment here when your schedule is ready.'}
           </Text>
         </View>
 
         <Text style={styles.sectionTitle}>Quick access</Text>
         <View style={styles.quickRow}>
           <View style={styles.quickCard}>
-            <Text style={styles.quickValue}>0</Text>
+            <Text style={styles.quickValue}>{isLoadingTrips ? '--' : upcomingTrips}</Text>
             <Text style={styles.quickLabel}>UPCOMING TRIPS</Text>
           </View>
           <View style={styles.quickCard}>

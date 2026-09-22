@@ -2,14 +2,15 @@ import * as SecureStore from 'expo-secure-store';
 import { createContext, PropsWithChildren, useContext, useEffect, useState } from 'react';
 
 import { ApiError } from '@/utils/api';
-import { AuthUser, getCurrentUser, login } from '@/features/auth/authApi';
+import { AuthUser, changePassword, getCurrentUser, login } from '@/features/auth/authApi';
 
 type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   isSigningIn: boolean;
   isRestoring: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (phoneNumber: string, password: string) => Promise<AuthUser>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -61,17 +62,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     void restoreSession();
   }, []);
 
-  async function signIn(email: string, password: string) {
+  async function signIn(phoneNumber: string, password: string) {
     setIsSigningIn(true);
 
     try {
-      const response = await login(email, password);
+      const response = await login(phoneNumber, password);
       setUser(response.data.user);
       setToken(response.data.token);
       await Promise.all([
         SecureStore.setItemAsync(TOKEN_KEY, response.data.token),
         SecureStore.setItemAsync(USER_KEY, JSON.stringify(response.data.user)),
       ]);
+      return response.data.user;
     } catch (error) {
       setUser(null);
       setToken(null);
@@ -79,6 +81,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
     } finally {
       setIsSigningIn(false);
     }
+  }
+
+  async function updatePassword(currentPassword: string, newPassword: string) {
+    if (!token) throw new Error('Your session has expired. Please sign in again.');
+    await changePassword(token, {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    const refreshedUser = await getCurrentUser(token);
+    setUser(refreshedUser);
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(refreshedUser));
   }
 
   async function signOut() {
@@ -91,7 +104,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, isSigningIn, isRestoring, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, token, isSigningIn, isRestoring, signIn, changePassword: updatePassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );

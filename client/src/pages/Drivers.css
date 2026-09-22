@@ -58,6 +58,16 @@
   flex-shrink: 0;
 }
 
+.driver-temp-password {
+  display: inline-block;
+  padding: 0.25rem 0.45rem;
+  border-radius: 4px;
+  color: var(--plum-3);
+  background: var(--amber-bg);
+  border: 1px solid rgba(224, 138, 30, 0.25);
+  user-select: text;
+}
+
 /* Category Pill (Indigo) */
 .pill-indigo {
   color: var(--indigo);

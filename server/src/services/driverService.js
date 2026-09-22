@@ -1,5 +1,8 @@
 const Driver = require('../models/driverModel');
-const { query } = require('../config/db');
+const { query, pool } = require('../config/db');
+const User = require('../models/userModel');
+const { encryptTemporaryPassword, generateTemporaryPassword, hashPassword, decryptTemporaryPassword } = require('../utils/credentials');
+const { normalizePhoneNumber } = require('../utils/phone');
 
 class DriverServiceError extends Error {
   constructor(message, statusCode = 400) {
@@ -16,6 +19,19 @@ function isDateExpired(dateStr) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return d < today;
+}
+
+function addManagerCredential(driver, user) {
+  if (!user || !user.temporary_password_encrypted) return driver;
+  return {
+    ...driver,
+    temporary_password: decryptTemporaryPassword(user.temporary_password_encrypted),
+    must_change_password: user.must_change_password
+  };
+}
+
+function canViewTemporaryPassword(user) {
+  return ['Fleet Manager', 'Dispatcher'].includes(user.role);
 }
 
 const driverService = {
@@ -41,7 +57,10 @@ const driverService = {
       );
     }
 
-    return drivers;
+    return Promise.all(drivers.map(async (driver) => {
+      const account = await User.findDriverAccount(driver.id, user.organization_id);
+      return canViewTemporaryPassword(user) ? addManagerCredential(driver, account) : driver;
+    }));
   },
 
   /**
@@ -52,7 +71,8 @@ const driverService = {
     if (!driver) {
       throw new DriverServiceError('Driver not found.', 404);
     }
-    return driver;
+    const account = await User.findDriverAccount(driver.id, user.organization_id);
+    return canViewTemporaryPassword(user) ? addManagerCredential(driver, account) : driver;
   },
 
   /**
@@ -83,18 +103,59 @@ const driverService = {
       );
     }
 
-    const driver = await Driver.create({
-      name: name.trim(),
-      license_number: license_number.trim(),
-      license_category,
-      license_expiry_date,
-      contact_number: contact_number.trim(),
-      safety_score,
-      status,
-      organization_id: user.organization_id
-    });
+    const phoneNumber = normalizePhoneNumber(contact_number);
+    if (!phoneNumber) throw new DriverServiceError('A valid phone number is required for driver login.', 400);
 
-    return await Driver.findById(driver.id, user.organization_id);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const driver = await Driver.create({
+        name: name.trim(),
+        license_number: license_number.trim(),
+        license_category,
+        license_expiry_date,
+        contact_number: phoneNumber,
+        safety_score,
+        status,
+        organization_id: user.organization_id
+      }, client);
+      const temporaryPassword = generateTemporaryPassword();
+      await User.createDriverAccount({
+        name: name.trim(),
+        phoneNumber,
+        passwordHash: await hashPassword(temporaryPassword),
+        temporaryPasswordEncrypted: encryptTemporaryPassword(temporaryPassword),
+        organizationId: user.organization_id,
+        driverId: driver.id
+      }, client);
+      await client.query('COMMIT');
+      const savedDriver = await Driver.findById(driver.id, user.organization_id);
+      return { ...savedDriver, temporary_password: temporaryPassword, must_change_password: true };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (error.code === '23505') throw new DriverServiceError('A driver account already exists for this phone number or license.', 409);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  resetDriverPassword: async (id, user) => {
+    const driver = await Driver.findById(id, user.organization_id);
+    if (!driver) throw new DriverServiceError('Driver not found.', 404);
+
+    const account = await User.findDriverAccount(id, user.organization_id);
+    if (!account) throw new DriverServiceError('Driver login account not found.', 404);
+
+    const temporaryPassword = generateTemporaryPassword();
+    const updated = await User.resetTemporaryPassword(
+      account.id,
+      await hashPassword(temporaryPassword),
+      encryptTemporaryPassword(temporaryPassword)
+    );
+    if (!updated) throw new DriverServiceError('Driver login account is inactive.', 400);
+
+    return { driver_id: id, temporary_password: temporaryPassword, must_change_password: true };
   },
 
   /**
@@ -135,7 +196,9 @@ const driverService = {
     if (updatePayload.contact_number) updatePayload.contact_number = updatePayload.contact_number.trim();
 
     await Driver.update(id, updatePayload, user.organization_id);
-    return await Driver.findById(id, user.organization_id);
+    const updatedDriver = await Driver.findById(id, user.organization_id);
+    const account = await User.findDriverAccount(id, user.organization_id);
+    return canViewTemporaryPassword(user) ? addManagerCredential(updatedDriver, account) : updatedDriver;
   },
 
   /**

@@ -42,6 +42,11 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
         typeof payload === 'string'
           ? payload
           : payload.message ?? payload.error ?? 'The request could not be completed.';
+
+      if (response.status === 404) {
+        throw new ApiError(`${message} Check that this server route is available.`, response.status);
+      }
+
       throw new ApiError(message, response.status);
     }
 
