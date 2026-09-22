@@ -33,6 +33,7 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
     tokenManagerB = createToken({ id: 802, email: 'mgrB@veh.com', role: 'Fleet Manager', organization_id: orgB });
 
     // Clean old test records
+    await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM trips WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM drivers WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM vehicles WHERE organization_id IN ($1, $2)", [orgA, orgB]);
@@ -48,6 +49,7 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
   });
 
   after(async () => {
+    await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM trips WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM drivers WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM vehicles WHERE organization_id IN ($1, $2)", [orgA, orgB]);

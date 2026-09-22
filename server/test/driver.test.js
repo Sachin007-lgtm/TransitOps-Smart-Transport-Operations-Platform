@@ -34,6 +34,7 @@ describe('TransitOps Driver Module Backend Tests', () => {
     tokenManagerB = createToken({ id: 902, email: 'mgrB@drv.com', role: 'Fleet Manager', organization_id: orgB });
 
     // Clean any prior records
+    await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM trips WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM drivers WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM vehicles WHERE organization_id IN ($1, $2)", [orgA, orgB]);
@@ -49,6 +50,7 @@ describe('TransitOps Driver Module Backend Tests', () => {
   });
 
   after(async () => {
+    await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM trips WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM drivers WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM vehicles WHERE organization_id IN ($1, $2)", [orgA, orgB]);
