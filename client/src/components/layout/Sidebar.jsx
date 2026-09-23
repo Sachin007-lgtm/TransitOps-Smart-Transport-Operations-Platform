@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { LayoutDashboard, Truck, Users, Map, Wrench, Droplet, BarChart2, Settings, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, Truck, Users, Map, Wrench, Droplet, BarChart2, Settings, ChevronLeft, IndianRupee } from 'lucide-react';
 import './Sidebar.css';
 
 export default function Sidebar() {
@@ -52,6 +52,11 @@ export default function Sidebar() {
         <NavLink to="/trips" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Map size={20} className="nav-icon" />
           <span className="nav-label">Trips</span>
+        </NavLink>
+
+        <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <IndianRupee size={20} className="nav-icon" />
+          <span className="nav-label">Billing</span>
         </NavLink>
 
         <NavLink to="/maintenance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>

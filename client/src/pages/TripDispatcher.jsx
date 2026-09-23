@@ -242,7 +242,14 @@ export default function TripDispatcher() {
   const [driverId,        setDriverId]        = useState('');
   const [cargoWeight,     setCargoWeight]      = useState('');
   const [plannedDistance, setPlannedDistance]  = useState('');
-  const [revenue,         setRevenue]          = useState('');
+  const [revenue,         setRevenue]         = useState('');
+  // Billing fields: which customer this trip is billed to (matched to a
+  // company so the trip can be composed into that company's bill), the fare
+  // already received up front, and how the rate was quoted.
+  const [company,         setCompany]         = useState('');
+  const [advanceReceived, setAdvanceReceived] = useState('');
+  const [rateBasis,       setRateBasis]       = useState('');
+  const [companyOptions,  setCompanyOptions]  = useState([]);
   const [startTime,       setStartTime]        = useState('');
   const [expectedArrival, setExpectedArrival]  = useState('');
   const [initialStatus,   setInitialStatus]    = useState('Draft');
@@ -263,15 +270,20 @@ export default function TripDispatcher() {
     if (!silent) setIsLoading(true); else setIsRefreshing(true);
     try {
       setGeneralError(null);
-      const [tripsRes, driversRes, vehiclesRes] = await Promise.all([
+      const [tripsRes, driversRes, vehiclesRes, companiesRes] = await Promise.all([
         apiRequest('GET', '/trips'),
         apiRequest('GET', '/drivers').catch(() => ({ data: [] })),
-        apiRequest('GET', '/vehicles').catch(() => ({ data: [] }))
+        apiRequest('GET', '/vehicles').catch(() => ({ data: [] })),
+        // Customers registered for billing — used to suggest names so the same
+        // company is not entered twice under different spellings. Absence is
+        // tolerated: the field stays free text.
+        apiRequest('GET', '/billing/companies').catch(() => ({ data: [] }))
       ]);
       const loaded = tripsRes.data || [];
       setTrips(loaded);
       if (driversRes?.data)              setDrivers(driversRes.data);
       if (vehiclesRes?.data?.length > 0) setVehicles(vehiclesRes.data);
+      if (companiesRes?.data?.length > 0) setCompanyOptions(companiesRes.data.map(c => c.name));
       if (loaded.length > 0 && !selectedTripId) {
         setSelectedTripId(loaded[0].id);
       }
@@ -637,6 +649,9 @@ export default function TripDispatcher() {
       setCargoWeight(editingTrip.cargo_weight || '');
       setPlannedDistance(editingTrip.planned_distance || '');
       setRevenue(editingTrip.revenue || '');
+      setCompany(editingTrip.external_party_name || '');
+      setAdvanceReceived(editingTrip.advance_received || '');
+      setRateBasis(editingTrip.rate_basis || '');
       setInitialStatus(editingTrip.status || 'Draft');
     }
   }, [editingTrip]);
@@ -645,6 +660,7 @@ export default function TripDispatcher() {
     originAC.clear(); destAC.clear();
     setVehicleId(''); setDriverId(''); setCargoWeight('');
     setPlannedDistance(''); setRevenue(''); setInitialStatus('Draft');
+    setCompany(''); setAdvanceReceived(''); setRateBasis('');
     setConflictError(null);
     setEditingTrip(null);
     setDrawerOpen(false);
@@ -679,7 +695,13 @@ export default function TripDispatcher() {
       driver_id:       driverId  ? Number(driverId)  : null,
       cargo_weight:    weightNum  > 0 ? weightNum  : null,
       planned_distance: distanceNum > 0 ? distanceNum : null,
-      revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null
+      revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null,
+      // Billing: the customer name links this trip to a company, and the fare
+      // is what a generated bill charges for it.
+      external_party_name: company.trim() || undefined,
+      external_party_type: company.trim() ? 'CUSTOMER' : undefined,
+      advance_received: parseFloat(advanceReceived) > 0 ? parseFloat(advanceReceived) : 0,
+      rate_basis:       rateBasis.trim() || undefined
     };
 
     try {
@@ -835,6 +857,20 @@ export default function TripDispatcher() {
                     <span>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'ETA Pending'}</span>
                   </div>
 
+                  {/* Billing line: who this trip is billed to, the fare, and
+                      whether it has already been put on a bill. */}
+                  {(t.external_party_name || parseFloat(t.revenue) > 0) && (
+                    <div className="tc-billing-row" title="Customer / fare / billing status">
+                      <span className="tc-billing-company">{t.external_party_name || 'No customer set'}</span>
+                      <span className="tc-billing-fare">
+                        {parseFloat(t.revenue) > 0 ? `₹${Number(t.revenue).toLocaleString('en-IN')}` : 'No fare'}
+                      </span>
+                      <span className={`tc-billing-tag ${t.billing_status === 'Billed' ? 'billed' : ''}`}>
+                        {t.billing_status === 'Billed' ? 'Billed' : 'Unbilled'}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="tc-progress-wrap">
                     <span className="tc-start-dot" />
                     <div className="tc-progress-track">
@@ -952,6 +988,39 @@ export default function TripDispatcher() {
                 <div className="field-wrap">
                   <label className="field-label">Planned Distance (km)</label>
                   <input type="number" className="field-input" value={plannedDistance} onChange={e => setPlannedDistance(e.target.value)} placeholder="45" />
+                </div>
+              </div>
+
+              {/* Billing details: the customer named here decides which bill
+                  this trip lands on, and the fare is what that bill charges. */}
+              <div className="form-row-2">
+                <div className="field-wrap">
+                  <label className="field-label">Company (customer billed)</label>
+                  <input
+                    className="field-input"
+                    list="trip-company-options"
+                    value={company}
+                    onChange={e => setCompany(e.target.value)}
+                    placeholder="e.g. Sharma Logistics"
+                  />
+                  <datalist id="trip-company-options">
+                    {companyOptions.map(name => <option key={name} value={name} />)}
+                  </datalist>
+                </div>
+                <div className="field-wrap">
+                  <label className="field-label">Fare (₹)</label>
+                  <input type="number" className="field-input" value={revenue} onChange={e => setRevenue(e.target.value)} placeholder="25000" />
+                </div>
+              </div>
+
+              <div className="form-row-2">
+                <div className="field-wrap">
+                  <label className="field-label">Advance received (₹)</label>
+                  <input type="number" className="field-input" value={advanceReceived} onChange={e => setAdvanceReceived(e.target.value)} placeholder="0" />
+                </div>
+                <div className="field-wrap">
+                  <label className="field-label">Rate basis</label>
+                  <input className="field-input" value={rateBasis} onChange={e => setRateBasis(e.target.value)} placeholder="per trip / per tonne" />
                 </div>
               </div>
 

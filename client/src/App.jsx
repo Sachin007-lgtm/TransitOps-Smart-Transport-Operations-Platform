@@ -8,6 +8,7 @@ import LoginPage from './pages/auth/LoginPage';
 import { GlobalSearchProvider } from './contexts/GlobalSearchContext';
 
 import TripDispatcher from './pages/TripDispatcher';
+import Billing from './pages/Billing';
 import Maintenance from './pages/Maintenance';
 import FuelExpenses from './pages/FuelExpenses';
 import Analytics from './pages/Analytics';
@@ -73,6 +74,7 @@ function App() {
             <Route path="vehicles" element={<Vehicles />} />
             <Route path="drivers" element={<Drivers />} />
             <Route path="trips" element={<TripDispatcher />} />
+            <Route path="billing" element={<Billing />} />
             <Route path="maintenance" element={<Maintenance />} />
             <Route path="fuel" element={<FuelExpenses />} />
             <Route path="analytics" element={<Analytics />} />

@@ -331,6 +331,49 @@
   padding-top: 6px;
 }
 
+/* Billing line on a trip card: customer, fare, and whether it is already on a bill */
+.tc-billing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--bg-app);
+  font-size: 11px;
+}
+
+.tc-billing-company {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tc-billing-fare {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.tc-billing-tag {
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.tc-billing-tag.billed {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
 /* Route Progress Bar (matching reference mockup!) */
 .tc-progress-wrap {
   display: flex;
