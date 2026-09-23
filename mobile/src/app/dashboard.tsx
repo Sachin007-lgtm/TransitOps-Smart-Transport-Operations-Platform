@@ -75,8 +75,22 @@ export default function DashboardScreen() {
           <Text style={styles.statusText}>You're ready for today's work</Text>
         </View>
 
-        <View style={styles.assignmentCard}>
-          <Text style={styles.cardEyebrow}>TODAY'S ASSIGNMENT</Text>
+        <Pressable
+          accessibilityRole={activeTrip ? 'button' : undefined}
+          onPress={() => {
+            if (activeTrip) {
+              router.push(`/trip/${activeTrip.id}` as any);
+            }
+          }}
+          style={({ pressed }) => [
+            styles.assignmentCard,
+            activeTrip && pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+          ]}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={styles.cardEyebrow}>TODAY'S ASSIGNMENT</Text>
+            {activeTrip ? <Text style={{ color: '#F09A1B', fontSize: 12, fontWeight: '700' }}>Open Trip →</Text> : null}
+          </View>
           <Text style={styles.assignmentTitle}>
             {activeTrip ? `${activeTrip.origin} to ${activeTrip.destination}` : 'No trip assigned yet'}
           </Text>
@@ -85,7 +99,7 @@ export default function DashboardScreen() {
               ? `Status: ${activeTrip.status}${activeTrip.vehicle_registration ? ` · ${activeTrip.vehicle_registration}` : ''}`
               : tripError || 'Your dispatcher will add an assignment here when your schedule is ready.'}
           </Text>
-        </View>
+        </Pressable>
 
         <Text style={styles.sectionTitle}>Quick access</Text>
         <View style={styles.quickRow}>

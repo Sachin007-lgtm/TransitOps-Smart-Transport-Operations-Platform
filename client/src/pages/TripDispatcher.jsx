@@ -3,7 +3,7 @@ import {
   Search, MapPin, Navigation, X, Check, Activity, FileText,
   CheckCircle2, User, Truck, Info, FileWarning,
   ChevronDown, ChevronUp, Eye, EyeOff, AlertTriangle, RefreshCw, Trash2,
-  DollarSign, Building2, ShieldAlert, Plus,
+  DollarSign, Building2, ShieldAlert, Plus, Radio,
   ArrowRight, Route, Package, SlidersHorizontal, Map as MapIcon, Edit2,
   Phone, MessageSquare, ExternalLink, Calendar, Clock, BarChart2
 } from 'lucide-react';
@@ -738,10 +738,21 @@ export default function TripDispatcher() {
               <span className="tl-sub-label">Your Order</span>
               <h2 className="tl-title">Tracking list</h2>
             </div>
-            <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
-              <Plus size={16} />
-              <span>New</span>
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="tl-new-btn"
+                style={{ background: '#e6f7ef', color: '#22a06b', borderColor: 'rgba(34, 160, 107, 0.3)' }}
+                onClick={() => window.location.href = '/live-map'}
+                title="View Live GPS Fleet Map"
+              >
+                <Radio size={14} />
+                <span>Live Map</span>
+              </button>
+              <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
+                <Plus size={16} />
+                <span>New</span>
+              </button>
+            </div>
           </div>
 
           <div className="tl-search-wrap">

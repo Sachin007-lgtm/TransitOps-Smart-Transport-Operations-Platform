@@ -52,7 +52,7 @@ router.route('/:id')
 
 router.route('/:id/status')
   .patch(
-    authorize(['Fleet Manager', 'Dispatcher']),
+    authorize(['Fleet Manager', 'Dispatcher', 'Driver']),
     validateUpdateTripStatus,
     updateTripStatus
   );

@@ -411,6 +411,8 @@ export default function Drivers() {
                         <span className="driver-temp-password" title="Temporary password; hidden after the driver changes it">
                           {d.temporary_password}
                         </span>
+                      ) : d.temporary_password_unavailable ? (
+                        <span className="text-muted">Password unavailable - reset</span>
                       ) : (
                         <span className="text-muted">Password changed</span>
                       )}
