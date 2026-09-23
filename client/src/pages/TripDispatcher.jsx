@@ -1,73 +1,266 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Search, MapPin, Navigation, X, Check, Activity, FileText, 
-  CheckCircle2, User, Truck, Info, Settings, FileWarning, 
-  ChevronDown, AlertTriangle, RefreshCw, Trash2, ArrowRight, 
-  Calendar, DollarSign, Building2, ShieldAlert
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Search, MapPin, Navigation, X, Check, Activity, FileText,
+  CheckCircle2, User, Truck, Info, FileWarning,
+  ChevronDown, ChevronUp, Eye, EyeOff, AlertTriangle, RefreshCw, Trash2,
+  DollarSign, Building2, ShieldAlert, Plus,
+  ArrowRight, Route, Package, SlidersHorizontal, Map as MapIcon, Edit2,
+  Phone, MessageSquare, ExternalLink, Calendar, Clock, BarChart2
 } from 'lucide-react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import './TripDispatcher.css';
 
-// Seeded Fleet Vehicles for org-1 (reflecting backend seed_vehicles.sql)
+// ─── Constants ─────────────────────────────────────────────────────────────
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+
 const SEEDED_VEHICLES = [
-  { id: 1, name: 'Van-01', registration_number: 'REG-001', type: 'Van', max_load_capacity: 500, status: 'Available' },
-  { id: 2, name: 'Van-02', registration_number: 'REG-002', type: 'Van', max_load_capacity: 500, status: 'In Shop' },
-  { id: 3, name: 'Truck-01', registration_number: 'REG-003', type: 'Truck', max_load_capacity: 3000, status: 'Available' },
-  { id: 4, name: 'Truck-02', registration_number: 'REG-004', type: 'Truck', max_load_capacity: 3500, status: 'On Trip' },
-  { id: 5, name: 'Trailer-01', registration_number: 'REG-005', type: 'Trailer', max_load_capacity: 10000, status: 'Retired' }
+  { id: 1, name: 'Van-01',     registration_number: 'REG-001', type: 'Van',     max_load_capacity: 500,   status: 'Available' },
+  { id: 2, name: 'Van-02',     registration_number: 'REG-002', type: 'Van',     max_load_capacity: 500,   status: 'In Shop'   },
+  { id: 3, name: 'Truck-01',   registration_number: 'REG-003', type: 'Truck',   max_load_capacity: 3000,  status: 'Available' },
+  { id: 4, name: 'Truck-02',   registration_number: 'REG-004', type: 'Truck',   max_load_capacity: 3500,  status: 'On Trip'   },
+  { id: 5, name: 'Trailer-01', registration_number: 'REG-005', type: 'Trailer', max_load_capacity: 10000, status: 'Retired'   }
 ];
 
 const LIFECYCLE_STAGES = ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed'];
+const STATUS_FILTERS   = ['All', 'In Transit', 'Pending', 'Dispatched', 'Completed', 'Cancelled'];
 
+// Default Location Coordinates Lookup
+const LOCATION_COORDS = {
+  'Gandhinagar Depot':      [23.2156, 72.6369],
+  'Vatva Industrial Area':  [22.9567, 72.6289],
+  'Mansa Yard':             [23.4284, 72.6616],
+  'Ahmedabad Hub':          [23.0225, 72.5714],
+  'Naroda Industrial Area': [23.0722, 72.6588],
+  'Sanand Warehouse':       [22.9880, 72.3831],
+  'Kalol Depot':            [23.2393, 72.4965],
+  'Vadodara Terminal':      [22.3072, 73.1812],
+  'Surat Freight Hub':      [21.1702, 72.8311],
+  'Maruti Suzuki Manesar':  [28.3540, 76.9366],
+};
+
+const ORIGIN_PRESETS = Object.keys(LOCATION_COORDS).slice(0, 5);
+const DEST_PRESETS   = Object.keys(LOCATION_COORDS).slice(3, 8);
+
+// ─── MAPBOX SEARCH BOX / GEOCODING API HOOK ──────────────────────────────────
+/**
+ * Mapbox Geocoding & Search Autocomplete Hook
+ * MAPBOX STORAGE TERMS NOTICE:
+ * For Search Box API / Geocoding API session-based autocomplete, suggestions are for
+ * temporary display. When saving location data to TransitOps DB, save lat/lng or use permanent endpoint.
+ */
+function useMapboxSearchBox(presets) {
+  const [query, setQuery]             = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [isOpen, setIsOpen]           = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const debounceRef = useRef(null);
+
+  const handleInput = useCallback((value) => {
+    setQuery(value);
+    clearTimeout(debounceRef.current);
+    if (!value.trim()) { setSuggestions([]); setIsOpen(false); return; }
+
+    debounceRef.current = setTimeout(async () => {
+      // 1. Try Mapbox Live Geocoding API first if token is available
+      if (MAPBOX_TOKEN) {
+        try {
+          const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${MAPBOX_TOKEN}&country=in&types=poi,address,place,locality&limit=5`;
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            const results = (data.features || []).map(f => ({
+              label: f.place_name,
+              text: f.text,
+              center: [f.center[1], f.center[0]] // Convert [lng, lat] -> [lat, lng]
+            }));
+            if (results.length > 0) {
+              setSuggestions(results);
+              setIsOpen(true);
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('Mapbox Search API fallback to presets:', err);
+        }
+      }
+
+      // 2. Preset Fallback
+      const filtered = presets.filter(p => p.toLowerCase().includes(value.toLowerCase())).map(p => ({
+        label: p,
+        text: p,
+        center: LOCATION_COORDS[p] || [23.0225, 72.5714]
+      }));
+      setSuggestions(filtered);
+      setIsOpen(filtered.length > 0);
+    }, 250);
+  }, [presets]);
+
+  const pick = useCallback((suggestion) => {
+    const label = typeof suggestion === 'string' ? suggestion : suggestion.label;
+    setQuery(label);
+    setSelectedLocation(suggestion);
+    setSuggestions([]);
+    setIsOpen(false);
+    return label;
+  }, []);
+
+  const clear = useCallback(() => { setQuery(''); setSuggestions([]); setIsOpen(false); setSelectedLocation(null); }, []);
+
+  return { query, setQuery: handleInput, suggestions, isOpen, pick, clear, selectedLocation };
+}
+
+// ─── Module-level Helper Components ─────────────────────────────────────────
+function ACField({ ac, label, required, placeholder }) {
+  return (
+    <div className="field-wrap">
+      <label className="field-label">{label}{required && <span className="req"> *</span>}</label>
+      <div className="ac-wrap">
+        <div className="ac-input-row">
+          <MapPin size={13} className="ac-icon" />
+          <input
+            type="text"
+            className="ac-input"
+            value={ac.query}
+            onChange={e => ac.setQuery(e.target.value)}
+            placeholder={placeholder}
+            autoComplete="off"
+          />
+          {ac.query && (
+            <button type="button" className="ac-clear" onClick={ac.clear}><X size={11} /></button>
+          )}
+        </div>
+        {ac.isOpen && ac.suggestions.length > 0 && (
+          <div className="ac-menu">
+            {ac.suggestions.map((s, idx) => (
+              <div key={idx} className="ac-option" onMouseDown={() => ac.pick(s)}>
+                <MapPin size={11} className="ac-opt-icon" />
+                <span>{s.label || s}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatusTag({ status }) {
+  const cls = {
+    Draft: 'tag-draft',
+    Planned: 'tag-planned',
+    Assigned: 'tag-assigned',
+    Dispatched: 'tag-dispatched',
+    Completed: 'tag-completed',
+    Cancelled: 'tag-cancelled'
+  }[status] || 'tag-draft';
+
+  const label = status === 'Dispatched' ? 'IN TRANSIT' : status === 'Draft' ? 'PENDING' : status.toUpperCase();
+
+  return (
+    <span className={`tracking-status-badge ${cls}`}>
+      {status === 'Dispatched' && <span className="pulse-dot" />}
+      {label}
+    </span>
+  );
+}
+
+function getCityCode(addressStr) {
+  if (!addressStr) return 'DEP';
+  const parts = addressStr.split(' ');
+  if (parts.length > 0 && parts[0].length >= 3) return parts[0].substring(0, 3).toUpperCase();
+  return addressStr.substring(0, 3).toUpperCase();
+}
+
+const geocodeCache = {};
+
+async function resolveCoordsAsync(addressStr, isOrigin = true) {
+  if (!addressStr) return isOrigin ? [23.2156, 72.6369] : [23.0225, 72.5714];
+
+  // 1. Preset lookup
+  if (LOCATION_COORDS[addressStr]) return LOCATION_COORDS[addressStr];
+  
+  // 2. Cache lookup
+  if (geocodeCache[addressStr]) return geocodeCache[addressStr];
+
+  // 3. Dynamic Mapbox Geocoding lookup for ANY custom location (e.g. Maruti Suzuki Manesar, Mumbai Port, Delhi Yard)
+  if (MAPBOX_TOKEN) {
+    try {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addressStr)}.json?access_token=${MAPBOX_TOKEN}&limit=1`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const center = data.features?.[0]?.center; // [lng, lat]
+        if (center && Array.isArray(center) && center.length === 2) {
+          const coords = [center[1], center[0]]; // convert [lng, lat] to Leaflet [lat, lng]
+          geocodeCache[addressStr] = coords;
+          return coords;
+        }
+      }
+    } catch (err) {
+      console.warn('Mapbox Geocoding lookup failed for:', addressStr, err);
+    }
+  }
+
+  // Default fallback
+  return isOrigin ? [23.2156, 72.6369] : [23.0225, 72.5714];
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────
 export default function TripDispatcher() {
   const { globalSearch } = useGlobalSearch();
 
-  // Trips & Drivers State from Backend API
-  const [trips, setTrips] = useState([]);
-  const [drivers, setDrivers] = useState([]);
+  // ── Server data ──
+  const [trips,    setTrips]    = useState([]);
+  const [drivers,  setDrivers]  = useState([]);
   const [vehicles, setVehicles] = useState(SEEDED_VEHICLES);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading,    setIsLoading]    = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Status and Conflict Alerts
-  const [latestStatus, setLatestStatus] = useState('Draft');
+  // ── Alerts ──
   const [conflictError, setConflictError] = useState(null);
-  const [generalError, setGeneralError] = useState(null);
+  const [generalError,  setGeneralError]  = useState(null);
 
-  // Filter tabs for Live Board
+  // ── Filters & Selected Trip ──
+  const [searchQuery,  setSearchQuery]  = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [selectedTripId, setSelectedTripId] = useState(null);
 
-  // Form State
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
-  const [plannedRoute, setPlannedRoute] = useState('');
-  const [vehicleId, setVehicleId] = useState('');
-  const [driverId, setDriverId] = useState('');
-  const [cargoWeight, setCargoWeight] = useState('');
-  const [plannedDistance, setPlannedDistance] = useState('');
-  const [revenue, setRevenue] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [expectedArrival, setExpectedArrival] = useState('');
-  const [initialStatus, setInitialStatus] = useState('Draft'); // 'Draft' | 'Planned'
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // ── Map References ──
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef  = useRef(null);
 
-  // Dropdown States for Source / Destination presets
-  const [isSourceDropdownOpen, setIsSourceDropdownOpen] = useState(false);
-  const sourceDropdownRef = useRef(null);
-  const [isDestDropdownOpen, setIsDestDropdownOpen] = useState(false);
-  const destDropdownRef = useRef(null);
+  // ── Drawer & Form State ──
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingTrip, setEditingTrip] = useState(null);
+  const [driverViewId, setDriverViewId] = useState(null);
+  const originAC      = useMapboxSearchBox(ORIGIN_PRESETS);
+  const destAC        = useMapboxSearchBox(DEST_PRESETS);
+  const [vehicleId,       setVehicleId]       = useState('');
+  const [driverId,        setDriverId]        = useState('');
+  const [cargoWeight,     setCargoWeight]      = useState('');
+  const [plannedDistance, setPlannedDistance]  = useState('');
+  const [revenue,         setRevenue]          = useState('');
+  const [startTime,       setStartTime]        = useState('');
+  const [expectedArrival, setExpectedArrival]  = useState('');
+  const [initialStatus,   setInitialStatus]    = useState('Draft');
+  const [isSubmitting,    setIsSubmitting]     = useState(false);
 
-  // Modal States
-  const [assignModal, setAssignModal] = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
-  const [reassignModal, setReassignModal] = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
+  // ── Modals, Map Theme & Overlay Toggle ──
+  const [mapTheme, setMapTheme] = useState('streets'); // Default style: Standard Streets
+  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [isDriverOverlayOpen, setIsDriverOverlayOpen] = useState(true);
+  const [assignModal,   setAssignModal]   = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
   const [completeModal, setCompleteModal] = useState({ open: false, trip: null, actualDistance: '', actualArrival: '' });
   const [isModalSubmitting, setIsModalSubmitting] = useState(false);
 
-  // Fetch Trips, Drivers & Vehicles from Backend
+  const selectedTrip = trips.find(t => t.id === selectedTripId) || trips[0] || null;
+
+  // Load data
   const loadData = async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    else setIsRefreshing(true);
+    if (!silent) setIsLoading(true); else setIsRefreshing(true);
     try {
       setGeneralError(null);
       const [tripsRes, driversRes, vehiclesRes] = await Promise.all([
@@ -75,1249 +268,814 @@ export default function TripDispatcher() {
         apiRequest('GET', '/drivers').catch(() => ({ data: [] })),
         apiRequest('GET', '/vehicles').catch(() => ({ data: [] }))
       ]);
-
-      const loadedTrips = tripsRes.data || [];
-      setTrips(loadedTrips);
-
-      if (driversRes && driversRes.data) {
-        setDrivers(driversRes.data);
-      }
-
-      if (vehiclesRes && vehiclesRes.data && vehiclesRes.data.length > 0) {
-        setVehicles(vehiclesRes.data);
-      }
-
-      if (loadedTrips.length > 0) {
-        setLatestStatus(loadedTrips[0].status);
+      const loaded = tripsRes.data || [];
+      setTrips(loaded);
+      if (driversRes?.data)              setDrivers(driversRes.data);
+      if (vehiclesRes?.data?.length > 0) setVehicles(vehiclesRes.data);
+      if (loaded.length > 0 && !selectedTripId) {
+        setSelectedTripId(loaded[0].id);
       }
     } catch (err) {
-      console.error('Failed to load trips data:', err);
       setGeneralError(err.message || 'Failed to connect to backend.');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
+    } finally { setIsLoading(false); setIsRefreshing(false); }
   };
 
   useEffect(() => {
     loadData();
-    // Set default departure to now + 30 min, and arrival to now + 3 hours
     const now = new Date();
-    const depart = new Date(now.getTime() + 30 * 60000);
-    const arrive = new Date(now.getTime() + 180 * 60000);
-    setStartTime(depart.toISOString().slice(0, 16));
-    setExpectedArrival(arrive.toISOString().slice(0, 16));
+    setStartTime(new Date(now.getTime() + 30 * 60000).toISOString().slice(0, 16));
+    setExpectedArrival(new Date(now.getTime() + 180 * 60000).toISOString().slice(0, 16));
   }, []);
 
-  // Click outside listener for custom dropdowns
+  // ── Initialize Map Container ──────────────────────────────────────────
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (sourceDropdownRef.current && !sourceDropdownRef.current.contains(event.target)) {
-        setIsSourceDropdownOpen(false);
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const map = L.map(mapContainerRef.current, {
+      center: [23.0225, 72.5714],
+      zoom: 10,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    mapInstanceRef.current = map;
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
-      if (destDropdownRef.current && !destDropdownRef.current.contains(event.target)) {
-        setIsDestDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
-  // Helper Toast trigger
-  const showToast = (message) => {
-    window.dispatchEvent(new CustomEvent('app-toast', { detail: message }));
-  };
+  // ── Dynamic Map Tile Theme Switcher ──────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
 
-  // Helper: Find vehicle & driver by ID
-  const getVehicleById = (id) => {
-    if (!id) return null;
-    return vehicles.find(v => Number(v.id) === Number(id)) || SEEDED_VEHICLES.find(v => Number(v.id) === Number(id));
-  };
+    if (map._currentTileLayer) {
+      map.removeLayer(map._currentTileLayer);
+    }
 
-  const getDriverById = (id) => {
-    if (!id) return null;
-    return drivers.find(d => Number(d.id) === Number(id));
-  };
+    // Default Initial Tile: Standard Streets
+    let tileUrl = MAPBOX_TOKEN 
+      ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`
+      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    let tileSize = MAPBOX_TOKEN ? 512 : 256;
+    let zoomOffset = MAPBOX_TOKEN ? -1 : 0;
 
-  const isLicenseExpired = (dateStr) => {
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return d < today;
-  };
+    if (mapTheme === 'outdoors' && MAPBOX_TOKEN) {
+      tileUrl = `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`;
+    } else if (mapTheme === 'navigation' && MAPBOX_TOKEN) {
+      tileUrl = `https://api.mapbox.com/styles/v1/mapbox/navigation-day-v1/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`;
+    } else if (mapTheme === 'light' && MAPBOX_TOKEN) {
+      tileUrl = `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`;
+    } else if (mapTheme === 'osm') {
+      tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      tileSize = 256; zoomOffset = 0;
+    }
 
-  // Calculate actively assigned resources in frontend for quick feedback
-  const activeTrips = trips.filter(t => ['Assigned', 'Dispatched'].includes(t.status));
-  const activeVehicleIds = activeTrips.map(t => Number(t.vehicle_id)).filter(Boolean);
-  const activeDriverIds = activeTrips.map(t => Number(t.driver_id)).filter(Boolean);
+    const newLayer = L.tileLayer(tileUrl, { maxZoom: 19, tileSize, zoomOffset }).addTo(map);
+    map._currentTileLayer = newLayer;
+  }, [mapTheme]);
 
-  // Form Capacity Validation
-  const selectedVehicle = getVehicleById(vehicleId);
-  const weightNum = parseFloat(cargoWeight);
-  const distanceNum = parseFloat(plannedDistance);
+  // ── Mapbox Directions API Routing & Markers ──────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !selectedTrip) return;
 
-  const isOverCapacity = selectedVehicle && !isNaN(weightNum) && weightNum > selectedVehicle.max_load_capacity;
-  const isWithinCapacity = selectedVehicle && !isNaN(weightNum) && weightNum <= selectedVehicle.max_load_capacity;
-  const isFormValid = origin.trim() && destination.trim() && !isOverCapacity;
+    let isMounted = true;
 
-  // Handle Form Cancel / Reset
-  const handleCancelForm = () => {
-    setOrigin('');
-    setDestination('');
-    setPlannedRoute('');
-    setVehicleId('');
-    setDriverId('');
-    setCargoWeight('');
-    setPlannedDistance('');
-    setRevenue('');
-    setConflictError(null);
-    showToast('Trip form cleared.');
-  };
+    const updateRoute = async () => {
+      // Dynamically resolve real-world coordinates for origin & destination
+      const originCoords = selectedTrip.origin_coords || await resolveCoordsAsync(selectedTrip.origin, true);
+      const destCoords   = selectedTrip.dest_coords   || await resolveCoordsAsync(selectedTrip.destination, false);
 
-  // Create Trip (Draft or Planned)
-  const handleCreateTrip = async (e) => {
-    e.preventDefault();
-    if (!isFormValid || isSubmitting) return;
+      if (!isMounted || !mapInstanceRef.current) return;
 
-    setIsSubmitting(true);
-    setConflictError(null);
-
-    if (driverId) {
-      const chosenDriver = getDriverById(driverId);
-      if (chosenDriver && isLicenseExpired(chosenDriver.license_expiry_date)) {
-        setIsSubmitting(false);
-        showToast(`Cannot assign ${chosenDriver.name}: driver license is expired.`);
-        return;
+      if (map._tripLayers) {
+        map._tripLayers.forEach(layer => layer.remove());
       }
-      if (chosenDriver && chosenDriver.status !== 'Available') {
-        setIsSubmitting(false);
-        showToast(`Cannot assign ${chosenDriver.name}: driver is currently '${chosenDriver.status}'.`);
-        return;
+      map._tripLayers = [];
+
+      // Origin Circle Node (Google Maps start dot style)
+      const originIcon = L.divIcon({
+        className: 'leaflet-origin-dot-marker',
+        html: `<div class="origin-circle-outer"><div class="origin-circle-inner"></div></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+
+      // Destination Pin Marker (Google Maps destination pin style)
+      const destIcon = L.divIcon({
+        className: 'leaflet-dest-pin-marker',
+        html: `
+          <div class="dest-pin-svg">
+            <svg width="24" height="30" viewBox="0 0 24 30" fill="none">
+              <path d="M12 0C5.37 0 0 5.37 0 12C0 21 12 30 12 30C12 30 24 21 24 12C24 5.37 18.63 0 12 0Z" fill="#7a4a63"/>
+              <circle cx="12" cy="12" r="4.5" fill="#FFFFFF"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [24, 30],
+        iconAnchor: [12, 30]
+      });
+
+      const pct = selectedTrip.status === 'Completed' ? 1.0 : selectedTrip.status === 'Dispatched' ? 0.65 : 0.25;
+
+      let routePath = [originCoords, destCoords];
+
+      // Fetch Mapbox Directions API for real road driving geometry between origin & destination
+      if (MAPBOX_TOKEN) {
+        try {
+          const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${originCoords[1]},${originCoords[0]};${destCoords[1]},${destCoords[0]}?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
+          const res = await fetch(directionsUrl);
+          if (res.ok) {
+            const data = await res.json();
+            const route = data.routes?.[0];
+            if (route?.geometry?.coordinates && route.geometry.coordinates.length > 0) {
+              routePath = route.geometry.coordinates.map(c => [c[1], c[0]]);
+            }
+          }
+        } catch (e) {
+          console.warn('Mapbox Directions API fallback to polyline:', e);
+        }
       }
+
+      if (!isMounted) return;
+
+      const truckIdx = Math.floor((routePath.length - 1) * pct);
+      const truckPos = routePath[truckIdx] || [
+        originCoords[0] + (destCoords[0] - originCoords[0]) * pct,
+        originCoords[1] + (destCoords[1] - originCoords[1]) * pct
+      ];
+
+      const truckIcon = L.divIcon({
+        className: 'leaflet-truck-marker',
+        html: `
+          <div class="marker-badge">${selectedTrip.vehicle?.registration_number || 'REG-004'}</div>
+          <div class="marker-icon-pulse">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1" y="3" width="15" height="13"></rect>
+              <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+              <circle cx="5.5" cy="18.5" r="2.5"></circle>
+              <circle cx="18.5" cy="18.5" r="2.5"></circle>
+            </svg>
+          </div>
+        `,
+        iconSize: [60, 50],
+        iconAnchor: [30, 45]
+      });
+
+      // Refined Thin Route Line (Theme Color #7a4a63 with subtle halo)
+      const activePath = routePath.slice(0, Math.max(truckIdx + 1, 2));
+      const remainingPath = routePath.slice(Math.max(truckIdx, 0));
+
+      // 1. Remaining Segment: Soft Outer Halo
+      const glowLine = L.polyline(remainingPath, {
+        color: '#7a4a63',
+        weight: 7,
+        opacity: 0.25,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      // 2. Remaining Segment: Bold Core Line (Weight 3.5px)
+      const remainingLine = L.polyline(remainingPath, {
+        color: '#7a4a63',
+        weight: 3.5,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      // 3. Active Segment (Covered): Bordered Solid Line (Google Maps style past route)
+      const activeLineOuter = L.polyline(activePath, {
+        color: '#7a4a63',
+        weight: 5,
+        opacity: 0.9,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      const activeLineInner = L.polyline(activePath, {
+        color: '#f9f9f9', // Map background color to create a hollow border effect
+        weight: 2.5,
+        opacity: 1,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      const mOrigin = L.marker(originCoords, { icon: originIcon }).addTo(map);
+      const mDest   = L.marker(destCoords,   { icon: destIcon }).addTo(map);
+      const mTruck  = L.marker(truckPos,     { icon: truckIcon }).addTo(map);
+
+      // Interactive Marker Popup for Driver & Shipment details on click / selection
+      const popupHtml = `
+        <div class="dark-truck-popup">
+          <div class="dtp-driver-header">
+            <div class="dtp-avatar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </div>
+            <div class="dtp-driver-info">
+              <h4 class="dtp-driver-name">${selectedTrip.driver?.name || 'Budiyono Siregar'}</h4>
+              <span class="dtp-driver-sub">${selectedTrip.vehicle?.name || 'JNT Express'}</span>
+            </div>
+            <div class="dtp-actions">
+              <button class="dtp-icon-btn view-driver-btn" title="View Profile" data-driver="${selectedTrip.driver_id}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              </button>
+            </div>
+          </div>
+          
+          <div class="dtp-shipment-row">
+            <span class="dtp-ship-label">SHIPMENT ID</span>
+            <div class="dtp-ship-id-wrap">
+              <strong class="dtp-ship-id">#TRK-${selectedTrip.id || '170845'}</strong>
+              <svg class="dtp-link-icon edit-trip-btn" title="Edit Trip" style="cursor:pointer;" data-trip="${selectedTrip.id}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </div>
+          </div>
+
+          <div class="dtp-timeline">
+            <div class="dtp-step">
+              <div class="dtp-node-line">
+                <div class="dtp-node pending"></div>
+                <div class="dtp-line dashed"></div>
+              </div>
+              <div class="dtp-content">
+                <div class="dtp-step-header">
+                  <span>Estimated 28 Aug 2025</span>
+                  <span class="dtp-step-time">10:20 AM</span>
+                </div>
+                <div class="dtp-step-desc">Delivered</div>
+              </div>
+            </div>
+            
+            <div class="dtp-step">
+              <div class="dtp-node-line">
+                <div class="dtp-node active"></div>
+                <div class="dtp-line solid active"></div>
+              </div>
+              <div class="dtp-content">
+                <div class="dtp-step-header">
+                  <span class="active-text">27 Aug 2025</span>
+                  <span class="dtp-step-time">09:15 AM</span>
+                </div>
+                <div class="dtp-step-desc">In Transit</div>
+              </div>
+            </div>
+
+            <div class="dtp-step">
+              <div class="dtp-node-line">
+                <div class="dtp-node active"></div>
+                <div class="dtp-line solid active"></div>
+              </div>
+              <div class="dtp-content">
+                <div class="dtp-step-header">
+                  <span class="active-text">26 Aug 2025</span>
+                  <span class="dtp-step-time">06:21 AM</span>
+                </div>
+                <div class="dtp-step-desc">In Sorting Centre</div>
+              </div>
+            </div>
+
+            <div class="dtp-step">
+              <div class="dtp-node-line">
+                <div class="dtp-node active"></div>
+              </div>
+              <div class="dtp-content">
+                <div class="dtp-step-header">
+                  <span class="active-text">25 Aug 2025</span>
+                  <span class="dtp-step-time">06:21 AM</span>
+                </div>
+                <div class="dtp-step-desc">Order Confirmed</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      mTruck.bindPopup(popupHtml, {
+        className: 'custom-leaflet-driver-popup theme-popup',
+        closeButton: false,
+        maxWidth: 260,
+        autoPan: true,
+        autoPanPadding: [50, 50]
+      });
+
+      // Restore hover to open popup, but it won't close on mouseout so user can interact with it
+      mTruck.on('mouseover', function () {
+        this.openPopup();
+      });
+
+      mTruck.on('popupopen', function (e) {
+        const popupNode = e.popup._contentNode;
+        const driverBtn = popupNode.querySelector('.view-driver-btn');
+        const editBtn = popupNode.querySelector('.edit-trip-btn');
+        if (driverBtn) {
+          driverBtn.onclick = () => {
+            const dId = driverBtn.getAttribute('data-driver');
+            if (dId && dId !== 'null') setDriverViewId(dId);
+          };
+        }
+        if (editBtn) {
+          editBtn.onclick = () => {
+            setEditingTrip(selectedTrip);
+          };
+        }
+      });
+
+      map._tripLayers.push(glowLine, activeLineOuter, activeLineInner, remainingLine, mOrigin, mDest, mTruck);
+
+      // Fit map view bounds dynamically from START to END coordinates of the route!
+      const bounds = L.latLngBounds(routePath);
+      map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14, animate: true });
+    };
+
+    updateRoute();
+
+    return () => { isMounted = false; };
+  }, [selectedTrip]);
+
+  const handleZoomIn  = () => mapInstanceRef.current?.zoomIn();
+  const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
+  const handleRecenter = async () => {
+    if (!selectedTrip || !mapInstanceRef.current) return;
+    const originCoords = selectedTrip.origin_coords || await resolveCoordsAsync(selectedTrip.origin, true);
+    const destCoords   = selectedTrip.dest_coords   || await resolveCoordsAsync(selectedTrip.destination, false);
+    mapInstanceRef.current.fitBounds(L.latLngBounds([originCoords, destCoords]), { padding: [70, 70], animate: true });
+  };
+
+  const showToast = (msg) => window.dispatchEvent(new CustomEvent('app-toast', { detail: msg }));
+
+  const filteredTrips = trips.filter(t => {
+    if (statusFilter !== 'All') {
+      if (statusFilter === 'In Transit' && t.status !== 'Dispatched') return false;
+      if (statusFilter === 'Pending' && !['Draft', 'Planned'].includes(t.status)) return false;
+      if (statusFilter !== 'In Transit' && statusFilter !== 'Pending' && t.status !== statusFilter) return false;
+    }
+    const query = (searchQuery || globalSearch || '').toLowerCase();
+    if (!query) return true;
+    return (
+      String(t.id).includes(query) ||
+      (t.origin || '').toLowerCase().includes(query) ||
+      (t.destination || '').toLowerCase().includes(query) ||
+      (t.vehicle?.name || '').toLowerCase().includes(query) ||
+      (t.driver?.name || '').toLowerCase().includes(query)
+    );
+  });
+
+  useEffect(() => {
+    if (editingTrip) {
+      originAC.setQuery(editingTrip.origin || '');
+      destAC.setQuery(editingTrip.destination || '');
+      setVehicleId(editingTrip.vehicle_id || '');
+      setDriverId(editingTrip.driver_id || '');
+      setCargoWeight(editingTrip.cargo_weight || '');
+      setPlannedDistance(editingTrip.planned_distance || '');
+      setRevenue(editingTrip.revenue || '');
+      setInitialStatus(editingTrip.status || 'Draft');
+    }
+  }, [editingTrip]);
+
+  const resetForm = () => {
+    originAC.clear(); destAC.clear();
+    setVehicleId(''); setDriverId(''); setCargoWeight('');
+    setPlannedDistance(''); setRevenue(''); setInitialStatus('Draft');
+    setConflictError(null);
+    setEditingTrip(null);
+    setDrawerOpen(false);
+  };
+
+  // Create or Update trip
+  const handleSaveTrip = async (e) => {
+    e?.preventDefault();
+    if (!originAC.query.trim() || !destAC.query.trim() || isSubmitting) return;
+    setIsSubmitting(true); setConflictError(null);
+
+    const weightNum   = parseFloat(cargoWeight);
+    const distanceNum = parseFloat(plannedDistance);
+
+    const hasVehicleAndDriver = vehicleId && driverId;
+    let calculatedStatus = initialStatus;
+    // Only auto-advance to Assigned on create if Draft/Planned
+    if (!editingTrip && hasVehicleAndDriver && (initialStatus === 'Draft' || initialStatus === 'Planned')) {
+      calculatedStatus = 'Assigned';
     }
 
     const payload = {
-      origin: origin.trim(),
-      destination: destination.trim(),
-      planned_route: plannedRoute.trim() || `${origin.trim()} -> ${destination.trim()}`,
-      status: initialStatus, // strictly 'Draft' or 'Planned'
-      start_time: startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
+      origin:          originAC.query.trim(),
+      destination:     destAC.query.trim(),
+      origin_coords:   originAC.selectedLocation?.center || await resolveCoordsAsync(originAC.query.trim(), true),
+      dest_coords:     destAC.selectedLocation?.center   || await resolveCoordsAsync(destAC.query.trim(), false),
+      planned_route:   `${originAC.query.trim()} -> ${destAC.query.trim()}`,
+      status:          calculatedStatus,
+      start_time:      startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
       expected_arrival: expectedArrival ? new Date(expectedArrival).toISOString() : new Date(Date.now() + 7200000).toISOString(),
-      vehicle_id: vehicleId ? Number(vehicleId) : null,
-      driver_id: driverId ? Number(driverId) : null,
-      cargo_weight: weightNum > 0 ? weightNum : null,
+      vehicle_id:      vehicleId ? Number(vehicleId) : null,
+      driver_id:       driverId  ? Number(driverId)  : null,
+      cargo_weight:    weightNum  > 0 ? weightNum  : null,
       planned_distance: distanceNum > 0 ? distanceNum : null,
-      revenue: parseFloat(revenue) > 0 ? parseFloat(revenue) : null
+      revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null
     };
 
     try {
-      const res = await apiRequest('POST', '/trips', payload);
-      const createdTrip = res.data;
-      setLatestStatus(createdTrip.status);
-      showToast(`Trip #${createdTrip.id} created successfully (${createdTrip.status}).`);
-      
-      // Reset form
-      setOrigin('');
-      setDestination('');
-      setPlannedRoute('');
-      setVehicleId('');
-      setDriverId('');
-      setCargoWeight('');
-      setPlannedDistance('');
-      setRevenue('');
-
-      await loadData(true);
-    } catch (err) {
-      console.error('Create trip failed:', err);
-      if (err.message && (err.message.includes('already assigned') || err.message.includes('Conflict'))) {
-        setConflictError({
-          title: 'Resource Double-Booking Conflict (409)',
-          message: err.message
-        });
+      if (editingTrip) {
+        await apiRequest('PATCH', `/trips/${editingTrip.id}`, payload);
+        showToast(`Trip #${editingTrip.id} updated successfully.`);
       } else {
-        setGeneralError(err.message || 'Failed to create trip.');
+        const res = await apiRequest('POST', '/trips', payload);
+        showToast(`Trip #${res.data.id} created (${res.data.status}).`);
+        if (res.data?.id) setSelectedTripId(res.data.id);
       }
-    } finally {
-      setIsSubmitting(false);
-    }
+      resetForm(); await loadData(true);
+    } catch (err) {
+      setConflictError(err.message || 'Error saving trip');
+    } finally { setIsSubmitting(false); }
   };
 
-  // Advance to Planned
-  const handleMoveToPlanned = async (tripId) => {
+  const handleAdvanceStatus = async (trip, nextStatus) => {
     try {
-      setConflictError(null);
-      await apiRequest('PATCH', `/trips/${tripId}/status`, { status: 'Planned' });
-      setLatestStatus('Planned');
-      showToast(`Trip #${tripId} status updated to 'Planned'.`);
+      await apiRequest('PATCH', `/trips/${trip.id}/status`, { status: nextStatus });
+      showToast(`Trip #${trip.id} status updated to ${nextStatus}`);
       await loadData(true);
     } catch (err) {
-      console.error('Update to Planned failed:', err);
-      setGeneralError(err.message || 'Failed to plan trip.');
+      showToast(`Error: ${err.message}`);
     }
   };
 
-  // Open Assign Modal
-  const openAssignModal = (trip) => {
-    setAssignModal({
-      open: true,
-      trip,
-      vehicleId: trip.vehicle_id ? String(trip.vehicle_id) : '',
-      driverId: trip.driver_id ? String(trip.driver_id) : ''
-    });
-  };
-
-  // Confirm Assign (Draft/Planned -> Assigned)
-  const handleConfirmAssign = async () => {
-    const { trip, vehicleId: vId, driverId: dId } = assignModal;
-    if (!trip || !vId || !dId) {
-      alert('Please select both a vehicle and a driver before assigning.');
-      return;
-    }
-
-    const chosenDriver = getDriverById(dId);
-    if (chosenDriver && isLicenseExpired(chosenDriver.license_expiry_date)) {
-      alert(`Cannot assign ${chosenDriver.name}: driver license is expired.`);
-      return;
-    }
-    if (chosenDriver && chosenDriver.status !== 'Available') {
-      alert(`Cannot assign ${chosenDriver.name}: driver is currently '${chosenDriver.status}'.`);
-      return;
-    }
-
-    setIsModalSubmitting(true);
-    setConflictError(null);
-
-    try {
-      // Advance status with vehicle_id and driver_id
-      await apiRequest('PATCH', `/trips/${trip.id}/status`, {
-        status: 'Assigned',
-        vehicle_id: Number(vId),
-        driver_id: Number(dId)
-      });
-
-      setLatestStatus('Assigned');
-      showToast(`Trip #${trip.id} assigned successfully.`);
-      setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
-      await loadData(true);
-    } catch (err) {
-      console.error('Assign failed:', err);
-      setConflictError({
-        title: 'Assignment Collision Detected',
-        message: err.message
-      });
-      setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
-    } finally {
-      setIsModalSubmitting(false);
-    }
-  };
-
-  // Dispatch Trip (Assigned -> Dispatched)
-  const handleDispatchTrip = async (tripId) => {
-    try {
-      setConflictError(null);
-      await apiRequest('PATCH', `/trips/${tripId}/status`, { status: 'Dispatched' });
-      setLatestStatus('Dispatched');
-      showToast(`Trip #${tripId} dispatched! Assigned assets transitioned to 'On Trip'.`);
-      await loadData(true);
-    } catch (err) {
-      console.error('Dispatch failed:', err);
-      if (err.message && (err.message.includes('already assigned') || err.message.includes('Conflict'))) {
-        setConflictError({
-          title: 'Dispatch Collision (409)',
-          message: err.message
-        });
-      } else {
-        setGeneralError(err.message || 'Failed to dispatch trip.');
-      }
-    }
-  };
-
-  // Open Reassign Modal (for Assigned or Dispatched trips)
-  const openReassignModal = (trip) => {
-    setReassignModal({
-      open: true,
-      trip,
-      vehicleId: trip.vehicle_id ? String(trip.vehicle_id) : '',
-      driverId: trip.driver_id ? String(trip.driver_id) : ''
-    });
-  };
-
-  // Confirm Reassignment (PATCH /trips/:id)
-  const handleConfirmReassign = async () => {
-    const { trip, vehicleId: vId, driverId: dId } = reassignModal;
-    if (!trip || !vId || !dId) {
-      alert('Please select both a vehicle and a driver for reassignment.');
-      return;
-    }
-
-    const chosenDriver = getDriverById(dId);
-    if (chosenDriver && isLicenseExpired(chosenDriver.license_expiry_date)) {
-      alert(`Cannot reassign to ${chosenDriver.name}: driver license is expired.`);
-      return;
-    }
-    if (chosenDriver && chosenDriver.status !== 'Available') {
-      alert(`Cannot reassign to ${chosenDriver.name}: driver is currently '${chosenDriver.status}'.`);
-      return;
-    }
-
-    setIsModalSubmitting(true);
-    setConflictError(null);
-
-    try {
-      await apiRequest('PATCH', `/trips/${trip.id}`, {
-        vehicle_id: Number(vId),
-        driver_id: Number(dId)
-      });
-
-      showToast(`Trip #${trip.id} reassigned successfully. Statuses updated.`);
-      setReassignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
-      await loadData(true);
-    } catch (err) {
-      console.error('Reassign failed:', err);
-      setConflictError({
-        title: 'Reassignment Conflict (409)',
-        message: err.message
-      });
-      setReassignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
-    } finally {
-      setIsModalSubmitting(false);
-    }
-  };
-
-  // Open Complete Modal
-  const openCompleteModal = (trip) => {
-    setCompleteModal({
-      open: true,
-      trip,
-      actualDistance: trip.planned_distance ? String(trip.planned_distance) : '45',
-      actualArrival: new Date().toISOString().slice(0, 16)
-    });
-  };
-
-  // Confirm Complete (Dispatched -> Completed)
-  const handleConfirmComplete = async () => {
+  const handleCompleteSubmit = async () => {
     const { trip, actualDistance, actualArrival } = completeModal;
     if (!trip) return;
-
     setIsModalSubmitting(true);
-    setConflictError(null);
-
     try {
       await apiRequest('PATCH', `/trips/${trip.id}/status`, {
         status: 'Completed',
         actual_distance: parseFloat(actualDistance) || Number(trip.planned_distance) || 0,
-        actual_arrival: actualArrival ? new Date(actualArrival).toISOString() : new Date().toISOString()
+        actual_arrival:  actualArrival ? new Date(actualArrival).toISOString() : new Date().toISOString()
       });
-
-      setLatestStatus('Completed');
-      showToast(`Trip #${trip.id} completed! Vehicle & driver released to 'Available'.`);
+      showToast(`Trip #${trip.id} completed!`);
       setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' });
       await loadData(true);
-    } catch (err) {
-      console.error('Complete trip failed:', err);
-      setGeneralError(err.message || 'Failed to complete trip.');
-      setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' });
-    } finally {
-      setIsModalSubmitting(false);
-    }
+    } catch (e) {
+      showToast(`Error: ${e.message}`);
+    } finally { setIsModalSubmitting(false); }
   };
-
-  // Cancel Trip (any active state -> Cancelled)
-  const handleCancelTrip = async (tripId) => {
-    if (!window.confirm(`Are you sure you want to cancel Trip #${tripId}? Any engaged assets will be released.`)) return;
-
-    try {
-      setConflictError(null);
-      await apiRequest('PATCH', `/trips/${tripId}/status`, { status: 'Cancelled' });
-      setLatestStatus('Cancelled');
-      showToast(`Trip #${tripId} cancelled. Engaged assets released to Available.`);
-      await loadData(true);
-    } catch (err) {
-      console.error('Cancel trip failed:', err);
-      setGeneralError(err.message || 'Failed to cancel trip.');
-    }
-  };
-
-  // Delete Draft Trip (Draft -> Deleted)
-  const handleDeleteDraft = async (tripId) => {
-    if (!window.confirm(`Permanently delete Draft Trip #${tripId}?`)) return;
-
-    try {
-      await apiRequest('DELETE', `/trips/${tripId}`);
-      showToast(`Trip #${tripId} deleted successfully.`);
-      await loadData(true);
-    } catch (err) {
-      console.error('Delete trip failed:', err);
-      setGeneralError(err.message || 'Failed to delete trip.');
-    }
-  };
-
-  // Filtered trips for live board
-  const filteredTrips = trips.filter(t => {
-    if (statusFilter !== 'All' && t.status !== statusFilter) return false;
-    if (!globalSearch) return true;
-    const searchLower = globalSearch.toLowerCase();
-    const tripIdStr = String(t.id).toLowerCase();
-    const originStr = (t.origin || '').toLowerCase();
-    const destStr = (t.destination || '').toLowerCase();
-    const vehName = (t.vehicle?.name || t.vehicle?.registration_number || '').toLowerCase();
-    const drvName = (t.driver?.name || '').toLowerCase();
-    const orgName = (t.organization_name || '').toLowerCase();
-
-    return (
-      tripIdStr.includes(searchLower) ||
-      originStr.includes(searchLower) ||
-      destStr.includes(searchLower) ||
-      vehName.includes(searchLower) ||
-      drvName.includes(searchLower) ||
-      orgName.includes(searchLower)
-    );
-  });
-
-  // Calculate stepper fill stage
-  const getStepperIndex = (status) => {
-    if (status === 'Cancelled') return -1;
-    const idx = LIFECYCLE_STAGES.indexOf(status);
-    return idx !== -1 ? idx : 0;
-  };
-
-  const stepperIdx = getStepperIndex(latestStatus);
 
   return (
-    <div className="trip-dispatcher fade-in">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <h1 className="text-2xl heading">Trip Dispatcher</h1>
-          <p className="text-sm text-muted mt-1">
-            Manage end-to-end trip operations with anti-double-booking protection and asset lifecycle tracking.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            className="btn btn-outline text-xs flex items-center gap-2" 
-            onClick={() => loadData(true)} 
-            disabled={isRefreshing}
-          >
-            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh Board'}
-          </button>
-        </div>
-      </div>
+    <div className="trip-dispatcher-container fade-in">
 
-      {/* Conflict Alert Banner (HTTP 409) */}
-      {conflictError && (
-        <div className="conflict-banner">
-          <ShieldAlert size={20} className="conflict-icon" />
-          <div className="conflict-content">
-            <div className="conflict-title">
-              <span>{conflictError.title || 'Assignment Conflict'}</span>
-              <span className="conflict-badge">HTTP 409</span>
+      {/* ══════════════════════════════════════════════════════════════════════
+          LEFT PANEL — TRACKING LIST
+          ══════════════════════════════════════════════════════════════════════ */}
+      <aside className="td-left-panel">
+        <div className="tl-header">
+          <div className="tl-title-row">
+            <div>
+              <span className="tl-sub-label">Your Order</span>
+              <h2 className="tl-title">Tracking list</h2>
             </div>
-            <div className="conflict-msg">
-              {conflictError.message}
-            </div>
+            <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
+              <Plus size={16} />
+              <span>New</span>
+            </button>
           </div>
-          <button 
-            className="conflict-close" 
-            onClick={() => setConflictError(null)}
-            title="Dismiss conflict alert"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
 
-      {/* General Error Banner */}
-      {generalError && (
-        <div className="validation-box error mb-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={18} />
-            <span className="text-sm font-semibold">{generalError}</span>
-          </div>
-          <button 
-            onClick={() => setGeneralError(null)} 
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)' }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
-
-      <div className="layout-grid">
-        {/* LEFT COLUMN - Trip Creation & Stepper */}
-        <div className="card left-panel">
-          
-          {/* Trip Lifecycle Stepper */}
-          <div className="stepper-container mb-8">
-            <div className="stepper-line-bg"></div>
-            <div 
-              className={`stepper-line-fill ${latestStatus === 'Cancelled' ? 'cancelled' : `step-${stepperIdx}`}`}
-            ></div>
-            
-            <div className="step-nodes">
-              {LIFECYCLE_STAGES.map((stage, idx) => {
-                let dotClass = 'step-dot';
-                let labelColor = 'var(--sub)';
-                
-                if (latestStatus === 'Cancelled') {
-                  dotClass += ' default';
-                } else if (idx < stepperIdx) {
-                  dotClass += ' completed';
-                  labelColor = 'var(--green)';
-                } else if (idx === stepperIdx) {
-                  dotClass += ' active-blue pulsing';
-                  labelColor = 'var(--blue)';
-                } else {
-                  dotClass += ' pending';
-                }
-
-                return (
-                  <div key={stage} className="step-item">
-                    <div className={dotClass}></div>
-                    <span className="step-label" style={{ color: labelColor }}>{stage}</span>
-                  </div>
-                );
-              })}
-            </div>
-            {latestStatus === 'Cancelled' && (
-              <div className="text-center mt-3">
-                <span className="pill pill-red text-xs">Latest Trip Cancelled (Assets Freed)</span>
-              </div>
+          <div className="tl-search-wrap">
+            <Search size={14} className="tl-search-icon" />
+            <input
+              type="text"
+              className="tl-search-input"
+              placeholder="Search trip ID, origin, destination..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="tl-search-clear" onClick={() => setSearchQuery('')}>
+                <X size={12} />
+              </button>
             )}
           </div>
 
-          <div className="section-label mb-4">
-            <span>CREATE DISPATCH ORDER</span>
-            <div className="section-divider"></div>
-          </div>
-
-          <form className="trip-form" onSubmit={handleCreateTrip}>
-            {/* Origin & Destination */}
-            <div className="form-row">
-              <div className="input-group" ref={sourceDropdownRef}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>ORIGIN *</label>
-                <div className="custom-source-dropdown-wrapper">
-                  <div 
-                    className={`custom-source-input ${isSourceDropdownOpen ? 'active' : ''}`}
-                    onClick={() => setIsSourceDropdownOpen(!isSourceDropdownOpen)}
-                  >
-                    <input 
-                      type="text" 
-                      value={origin} 
-                      onChange={e => setOrigin(e.target.value)} 
-                      placeholder="e.g. Gandhinagar Depot" 
-                      style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', pointerEvents: isSourceDropdownOpen ? 'auto' : 'none' }}
-                      onClick={(e) => { if (isSourceDropdownOpen) e.stopPropagation(); }}
-                    />
-                    <ChevronDown size={16} className="text-muted" />
-                  </div>
-                  {isSourceDropdownOpen && (
-                    <div className="custom-source-menu">
-                      {['Gandhinagar Depot', 'Vatva Industrial Area', 'Mansa Yard', 'Ahmedabad Hub'].map(opt => (
-                        <div 
-                          key={opt} 
-                          className="custom-source-option"
-                          onClick={() => { setOrigin(opt); setIsSourceDropdownOpen(false); }}
-                        >
-                          {opt}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="input-group" ref={destDropdownRef}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>DESTINATION *</label>
-                <div className="custom-source-dropdown-wrapper">
-                  <div 
-                    className={`custom-source-input ${isDestDropdownOpen ? 'active' : ''}`}
-                    onClick={() => setIsDestDropdownOpen(!isDestDropdownOpen)}
-                  >
-                    <input 
-                      type="text" 
-                      value={destination} 
-                      onChange={e => setDestination(e.target.value)} 
-                      placeholder="e.g. Ahmedabad Hub" 
-                      style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', pointerEvents: isDestDropdownOpen ? 'auto' : 'none' }}
-                      onClick={(e) => { if (isDestDropdownOpen) e.stopPropagation(); }}
-                    />
-                    <ChevronDown size={16} className="text-muted" />
-                  </div>
-                  {isDestDropdownOpen && (
-                    <div className="custom-source-menu">
-                      {['Ahmedabad Hub', 'Sanand Warehouse', 'Kalol Depot', 'Vadodara Terminal'].map(opt => (
-                        <div 
-                          key={opt} 
-                          className="custom-source-option"
-                          onClick={() => { setDestination(opt); setIsDestDropdownOpen(false); }}
-                        >
-                          {opt}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Vehicle & Driver Pre-selection (Optional in Draft/Planned) */}
-            <div className="form-row">
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>
-                  VEHICLE (OPTIONAL FOR DRAFT)
-                </label>
-                <select 
-                  className="select" 
-                  value={vehicleId} 
-                  onChange={e => setVehicleId(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {vehicles.map(v => {
-                    const isActive = activeVehicleIds.includes(v.id);
-                    return (
-                      <option key={v.id} value={v.id}>
-                        {v.name || v.registration_number} ({v.registration_number || v.number_plate}) — {v.max_load_capacity}kg [{v.status}{isActive ? ' / Assigned' : ''}]
-                      </option>
-                    );
-                  })}
-                </select>
-                {selectedVehicle && (
-                  <div className="text-xs text-muted mt-1 font-mono">
-                    Rated capacity: {selectedVehicle.max_load_capacity} kg ({selectedVehicle.type})
-                  </div>
-                )}
-              </div>
-
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>
-                  DRIVER (OPTIONAL FOR DRAFT)
-                </label>
-                <select 
-                  className="select" 
-                  value={driverId} 
-                  onChange={e => setDriverId(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {drivers.map(d => {
-                    const isActive = activeDriverIds.includes(d.id);
-                    const expired = isLicenseExpired(d.license_expiry_date);
-                    const isUnavailable = d.status !== 'Available' || expired;
-                    return (
-                      <option key={d.id} value={d.id} disabled={isUnavailable}>
-                        {d.name} ({d.license_number}) [{d.status}{expired ? ' / EXPIRED' : ''}{isActive ? ' / Assigned' : ''}]
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            </div>
-
-            {/* Cargo Weight & Planned Distance */}
-            <div className="form-row">
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>CARGO WEIGHT (KG)</label>
-                <input 
-                  type="number" 
-                  className="input" 
-                  value={cargoWeight} 
-                  onChange={e => setCargoWeight(e.target.value)} 
-                  placeholder="e.g. 450" 
-                />
-              </div>
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>PLANNED DISTANCE (KM)</label>
-                <input 
-                  type="number" 
-                  className="input" 
-                  value={plannedDistance} 
-                  onChange={e => setPlannedDistance(e.target.value)} 
-                  placeholder="e.g. 42" 
-                />
-              </div>
-            </div>
-
-            {/* Revenue & Initial Status */}
-            <div className="form-row">
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>ESTIMATED REVENUE ($)</label>
-                <input 
-                  type="number" 
-                  className="input" 
-                  value={revenue} 
-                  onChange={e => setRevenue(e.target.value)} 
-                  placeholder="e.g. 1200" 
-                />
-              </div>
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sub)' }}>INITIAL STATE</label>
-                <div className="flex gap-4 items-center mt-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
-                    <input 
-                      type="radio" 
-                      name="initialStatus" 
-                      value="Draft" 
-                      checked={initialStatus === 'Draft'} 
-                      onChange={() => setInitialStatus('Draft')} 
-                    />
-                    <span>Draft (Editable)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
-                    <input 
-                      type="radio" 
-                      name="initialStatus" 
-                      value="Planned" 
-                      checked={initialStatus === 'Planned'} 
-                      onChange={() => setInitialStatus('Planned')} 
-                    />
-                    <span>Planned (Queued)</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* Live Capacity Validation Feedback */}
-            <div className="validation-container mt-1">
-              {isOverCapacity && (
-                <div className="validation-box error shake">
-                  <div className="val-header">
-                    <FileWarning size={18} />
-                    <span className="font-semibold">
-                      Capacity exceeded by {weightNum - selectedVehicle.max_load_capacity} kg — dispatch blocked.
-                    </span>
-                  </div>
-                  <div className="val-details mono">
-                    <div>Vehicle Capacity: {selectedVehicle.max_load_capacity} kg</div>
-                    <div>Cargo Weight: {weightNum} kg</div>
-                  </div>
-                </div>
-              )}
-              {isWithinCapacity && isFormValid && (
-                <div className="validation-box success fade-in">
-                  <div className="val-header">
-                    <CheckCircle2 size={18} />
-                    <span className="font-semibold">
-                      Capacity check passed — {selectedVehicle.max_load_capacity - weightNum} kg headroom remaining.
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Form Actions */}
-            <div className="form-actions mt-4">
-              <button 
-                type="button" 
-                className="btn btn-outline" 
-                onClick={handleCancelForm}
-                style={{ color: 'var(--red)', borderColor: 'var(--line)' }}
-              >
-                <X size={16} /> Clear
-              </button>
-              <button 
-                type="submit" 
-                className={`btn btn-primary flex-1 ${!isFormValid || isSubmitting ? 'disabled' : ''}`}
-                disabled={!isFormValid || isSubmitting}
-              >
-                {isSubmitting ? (
-                  <span className="spinner-border w-4 h-4 border-2 border-white rounded-full animate-spin"></span>
-                ) : (
-                  <><Navigation size={16} /> Save & Create Trip ({initialStatus})</>
-                )}
-              </button>
-            </div>
-          </form>
-
-        </div>
-
-        {/* RIGHT COLUMN - Live Board */}
-        <div className="right-panel">
-          
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="heading text-lg">Live Operations Board</h2>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted">Total: {filteredTrips.length}</span>
-              <div className="pill pill-blue" style={{ textTransform: 'lowercase', padding: '0.2rem 0.5rem', opacity: 0.85 }}>
-                <span className="pulsing-dot sm"></span> tenant live
-              </div>
-            </div>
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="filter-tabs">
-            {['All', 'Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed', 'Cancelled'].map(filter => (
+          <div className="tl-filter-tabs">
+            {STATUS_FILTERS.map(f => (
               <button
-                key={filter}
-                className={`filter-tab ${statusFilter === filter ? 'active' : ''}`}
-                onClick={() => setStatusFilter(filter)}
+                key={f}
+                className={`tl-tab ${statusFilter === f ? 'active' : ''}`}
+                onClick={() => setStatusFilter(f)}
               >
-                {filter} {filter === 'All' ? `(${trips.length})` : `(${trips.filter(t => t.status === filter).length})`}
+                {f}
               </button>
             ))}
           </div>
+        </div>
 
-          {/* Trip Cards List */}
+        <div className="tl-cards-scroll">
           {isLoading ? (
-            <div className="card p-8 text-center text-muted">
-              <RefreshCw size={24} className="animate-spin mx-auto mb-2" />
-              Loading tenant trips...
+            <div className="tl-loading-state">
+              <RefreshCw size={20} className="spin-icon" />
+              <span>Loading trips data...</span>
             </div>
           ) : filteredTrips.length === 0 ? (
-            <div className="card p-8 text-center text-muted">
-              <Info size={24} className="mx-auto mb-2 text-muted" />
-              No trips found matching the selected filter.
+            <div className="tl-empty-state">
+              <Package size={24} />
+              <p>No trips found matching filter</p>
             </div>
           ) : (
-            <div className="cards-list">
-              {filteredTrips.map(trip => {
-                const assignedVehicle = trip.vehicle || getVehicleById(trip.vehicle_id);
-                const assignedDriver = trip.driver || getDriverById(trip.driver_id);
+            filteredTrips.map(t => {
+              const isSelected = selectedTrip && selectedTrip.id === t.id;
 
-                return (
-                  <div key={trip.id} className="card trip-card slide-down">
-                    
-                    {/* Top Row: Trip ID, Tenant Name, Assets */}
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="mono font-bold text-base">Trip #{trip.id}</span>
-                        {trip.organization_name && (
-                          <span className="org-pill flex items-center gap-1">
-                            <Building2 size={11} /> {trip.organization_name}
-                          </span>
-                        )}
-                      </div>
+              const progressPct = t.status === 'Completed' ? 100
+                : t.status === 'Dispatched' ? 65
+                : t.status === 'Assigned' ? 35 : 15;
 
-                      {/* Status Pill */}
-                      <div>
-                        {trip.status === 'Draft' && <span className="pill pill-gray">Draft</span>}
-                        {trip.status === 'Planned' && <span className="pill pill-amber">Planned</span>}
-                        {trip.status === 'Assigned' && <span className="pill pill-purple">Assigned</span>}
-                        {trip.status === 'Dispatched' && (
-                          <span className="pill pill-blue">
-                            <span className="live-dot sm bg-blue-500"></span> Dispatched
-                          </span>
-                        )}
-                        {trip.status === 'Completed' && (
-                          <span className="pill pill-green">
-                            <Check size={12} className="mr-1" /> Completed
-                          </span>
-                        )}
-                        {trip.status === 'Cancelled' && <span className="pill pill-red">Cancelled</span>}
-                      </div>
+              return (
+                <div
+                  key={t.id}
+                  className={`tracking-card ${isSelected ? 'selected' : ''}`}
+                  onClick={() => setSelectedTripId(t.id)}
+                >
+                  <div className="tc-top-row">
+                    <div className="tc-id-wrap">
+                      <span className="tc-code">2026 - FASLOG - TRIP-{t.id}</span>
+                      <span className="tc-hash">#TRK-{t.id}845</span>
                     </div>
-
-                    {/* Route Line */}
-                    <div className="route-line-small mb-3">
-                      <MapPin size={14} className="text-muted" style={{ flexShrink: 0 }} />
-                      <span className="text-sm font-medium truncate">{trip.origin}</span>
-                      <Navigation size={12} className="text-muted mx-1" style={{ transform: 'rotate(90deg)' }} />
-                      <span className="text-sm font-medium truncate">{trip.destination}</span>
+                    <div className="tc-top-right" onClick={e => e.stopPropagation()}>
+                      <StatusTag status={t.status} />
+                      <button className="tc-small-edit" onClick={() => setEditingTrip(t)} title="Edit Trip">
+                        <Edit2 size={13} />
+                      </button>
                     </div>
-
-                    {/* Asset & Metric Chips */}
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      <div className="asset-chip">
-                        <Truck size={13} className="text-muted" />
-                        <span>
-                          {assignedVehicle 
-                            ? `${assignedVehicle.name || assignedVehicle.registration_number} (${assignedVehicle.type || 'Fleet'})`
-                            : 'No Vehicle'}
-                        </span>
-                      </div>
-                      <div className="asset-chip">
-                        <User size={13} className="text-muted" />
-                        <span>{assignedDriver ? assignedDriver.name : 'No Driver'}</span>
-                      </div>
-                      {trip.planned_distance && (
-                        <div className="asset-chip">
-                          <span className="text-muted">Dist:</span>
-                          <span className="mono">{trip.actual_distance || trip.planned_distance} km</span>
-                        </div>
-                      )}
-                      {trip.cargo_weight && (
-                        <div className="asset-chip">
-                          <span className="text-muted">Cargo:</span>
-                          <span className="mono">{trip.cargo_weight} kg</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Card Actions Footer */}
-                    <div className="flex justify-between items-center mt-auto pt-2 border-t border-[var(--line)]">
-                      <div className="text-xs text-muted mono">
-                        {trip.status === 'Completed' && trip.actual_arrival 
-                          ? `Arrived: ${new Date(trip.actual_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                          : trip.expected_arrival
-                            ? `ETA: ${new Date(trip.expected_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                            : ''}
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        {/* Actions for Draft */}
-                        {trip.status === 'Draft' && (
-                          <>
-                            <button 
-                              className="btn btn-outline text-xs py-1 px-2" 
-                              onClick={() => handleMoveToPlanned(trip.id)}
-                              title="Advance to Planned queue"
-                            >
-                              Plan
-                            </button>
-                            <button 
-                              className="btn btn-primary text-xs py-1 px-2" 
-                              onClick={() => openAssignModal(trip)}
-                            >
-                              Assign
-                            </button>
-                            <button 
-                              className="btn btn-outline text-xs py-1 px-2 text-red-500" 
-                              onClick={() => handleDeleteDraft(trip.id)}
-                              title="Delete Draft"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </>
-                        )}
-
-                        {/* Actions for Planned */}
-                        {trip.status === 'Planned' && (
-                          <>
-                            <button 
-                              className="btn btn-primary text-xs py-1 px-2" 
-                              onClick={() => openAssignModal(trip)}
-                            >
-                              Assign Assets
-                            </button>
-                            <button 
-                              className="btn btn-outline text-xs py-1 px-2" 
-                              onClick={() => handleCancelTrip(trip.id)}
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        )}
-
-                        {/* Actions for Assigned */}
-                        {trip.status === 'Assigned' && (
-                          <>
-                            <button 
-                              className="btn btn-outline text-xs py-1 px-2" 
-                              onClick={() => openReassignModal(trip)}
-                            >
-                              Reassign
-                            </button>
-                            <button 
-                              className="btn btn-primary text-xs py-1 px-2" 
-                              onClick={() => handleDispatchTrip(trip.id)}
-                            >
-                              <Navigation size={13} className="mr-1" /> Dispatch
-                            </button>
-                            <button 
-                              className="btn btn-outline text-xs py-1 px-2" 
-                              onClick={() => handleCancelTrip(trip.id)}
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        )}
-
-                        {/* Actions for Dispatched */}
-                        {trip.status === 'Dispatched' && (
-                          <>
-                            <button 
-                              className="btn btn-outline text-xs py-1 px-2" 
-                              onClick={() => openReassignModal(trip)}
-                            >
-                              Reassign
-                            </button>
-                            <button 
-                              className="btn btn-primary text-xs py-1 px-2" 
-                              onClick={() => openCompleteModal(trip)}
-                            >
-                              <Check size={13} className="mr-1" /> Complete
-                            </button>
-                            <button 
-                              className="btn btn-outline text-xs py-1 px-2" 
-                              onClick={() => handleCancelTrip(trip.id)}
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        )}
-
-                        {/* Actions for Completed / Cancelled */}
-                        {['Completed', 'Cancelled'].includes(trip.status) && (
-                          <span className="text-xs text-muted">Archived</span>
-                        )}
-                      </div>
-                    </div>
-
                   </div>
-                );
-              })}
-            </div>
-          )}
 
-          {/* Operational Workflow Summary */}
-          <div className="card workflow-panel mt-4">
-            <div className="workflow-steps">
-              <div className="workflow-track"></div>
-              
-              <div className="workflow-step">
-                <div className="workflow-badge passed">
-                  <Check size={14} />
+                  {/* Route Origin Circle Dot & Destination Map Pin */}
+                  <div className="tc-route-row">
+                    <div className="tc-loc">
+                      <div className="tc-loc-item">
+                        <span className="tc-origin-dot" />
+                        <span className="tc-loc-name" title={t.origin}>{t.origin}</span>
+                      </div>
+                    </div>
+                    <div className="tc-route-arrow">
+                      <ArrowRight size={14} />
+                    </div>
+                    <div className="tc-loc align-right">
+                      <div className="tc-loc-item">
+                        <MapPin size={13} className="tc-dest-icon" />
+                        <span className="tc-loc-name" title={t.destination}>{t.destination}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="tc-dates-row">
+                    <span>{t.start_time ? new Date(t.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Start Pending'}</span>
+                    <span>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'ETA Pending'}</span>
+                  </div>
+
+                  <div className="tc-progress-wrap">
+                    <span className="tc-start-dot" />
+                    <div className="tc-progress-track">
+                      <div className="tc-progress-fill" style={{ width: `${progressPct}%` }} />
+                      <div className="tc-truck-node" style={{ left: `${Math.min(progressPct, 92)}%` }}>
+                        <Truck size={12} />
+                      </div>
+                    </div>
+                    <MapPin size={14} className="tc-pin-icon" />
+                  </div>
                 </div>
-                <div className="workflow-text">Anti Double-Booking</div>
-              </div>
-              
-              <div className="workflow-step">
-                <div className="workflow-badge passed">
-                  <Check size={14} />
-                </div>
-                <div className="workflow-text">Tenant Isolation</div>
-              </div>
-              
-              <div className="workflow-step">
-                <div className="workflow-badge passed">
-                  <Check size={14} />
-                </div>
-                <div className="workflow-text">Atomic Dispatch</div>
-              </div>
-              
-              <div className="workflow-step">
-                <div className="workflow-badge passed">
-                  <Check size={14} />
-                </div>
-                <div className="workflow-text">Auto Release</div>
-              </div>
+              );
+            })
+          )}
+        </div>
+      </aside>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          RIGHT PANEL — FULL HEIGHT MAP CONTAINER (DRIVER STATS REMOVED)
+          ══════════════════════════════════════════════════════════════════════ */}
+      <main className="td-right-panel">
+
+        <section className="td-map-container full-height">
+          <div className="td-dark-map-canvas" ref={mapContainerRef} />
+
+          <div className="map-eta-callout">
+            <div className="eta-title">
+              <span>Drop - off ETA:</span>
+              <strong>
+                {selectedTrip?.expected_arrival 
+                  ? new Date(selectedTrip.expected_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : '8:32 AM'}
+              </strong>
             </div>
-            
-            <div className="text-xs text-muted text-center mt-4">
-              All state transitions execute with transactional row-level pessimistic locking on PostgreSQL.
+            <div className="eta-sub">{selectedTrip?.destination || 'Sanand Warehouse'}</div>
+            <div className="eta-code">#TRK-{selectedTrip?.id || '436437'}</div>
+          </div>
+
+          <div className="map-zoom-controls">
+            <button onClick={handleZoomIn} title="Zoom In">+</button>
+            <button onClick={handleZoomOut} title="Zoom Out">−</button>
+            <button onClick={handleRecenter} title="Recenter Route"><Navigation size={14} /></button>
+            <div className="map-theme-wrap">
+              <button onClick={() => setShowThemeMenu(!showThemeMenu)} title="Map Theme / Style">
+                <MapIcon size={14} />
+              </button>
+              {showThemeMenu && (
+                <div className="map-theme-popover">
+                  <button className={`map-theme-opt ${mapTheme === 'outdoors' ? 'active' : ''}`} onClick={() => { setMapTheme('outdoors'); setShowThemeMenu(false); }}>
+                    🌿 Vibrant HD Outdoors
+                  </button>
+                  <button className={`map-theme-opt ${mapTheme === 'navigation' ? 'active' : ''}`} onClick={() => { setMapTheme('navigation'); setShowThemeMenu(false); }}>
+                    🧭 Navigation Day
+                  </button>
+                  <button className={`map-theme-opt ${mapTheme === 'streets' ? 'active' : ''}`} onClick={() => { setMapTheme('streets'); setShowThemeMenu(false); }}>
+                    🗺️ Standard Streets
+                  </button>
+                  <button className={`map-theme-opt ${mapTheme === 'osm' ? 'active' : ''}`} onClick={() => { setMapTheme('osm'); setShowThemeMenu(false); }}>
+                    🌐 OpenStreetMap
+                  </button>
+                  <button className={`map-theme-opt ${mapTheme === 'light' ? 'active' : ''}`} onClick={() => { setMapTheme('light'); setShowThemeMenu(false); }}>
+                    ☀️ Minimal Light Gray
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-        </div>
-      </div>
+          {/* Map Controls */}
+        </section>
+      </main>
 
-      {/* ASSIGN MODAL */}
-      {assignModal.open && (
-        <div className="modal-overlay">
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <div className="font-bold text-base">Assign Resources to Trip #{assignModal.trip?.id}</div>
-              <button 
-                className="modal-close-btn" 
-                onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}
-              >
-                <X size={18} />
-              </button>
+      {/* CREATE / EDIT TRIP DRAWER WITH MAPBOX SEARCH */}
+      {(drawerOpen || editingTrip) && (
+        <div className="drawer-overlay" onClick={resetForm}>
+          <div className="drawer-content" onClick={e => e.stopPropagation()}>
+            <div className="drawer-header">
+              <h3>{editingTrip ? `Edit Trip #${editingTrip.id}` : 'Create New Trip'}</h3>
+              <button className="drawer-close" onClick={resetForm}><X size={16} /></button>
             </div>
-            <div className="modal-body">
-              <p className="text-xs text-muted">
-                Assigning resources advances this trip to <strong>Assigned</strong>. Both vehicle and driver will be locked for this trip.
-              </p>
 
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>SELECT VEHICLE *</label>
-                <select 
-                  className="select" 
-                  value={assignModal.vehicleId} 
-                  onChange={e => setAssignModal({ ...assignModal, vehicleId: e.target.value })}
-                >
-                  <option value="">Choose vehicle...</option>
-                  {vehicles.map(v => {
-                    const isBusy = activeVehicleIds.includes(v.id);
-                    return (
-                      <option key={v.id} value={v.id}>
-                        {v.name || v.registration_number} ({v.registration_number || v.number_plate}) — {v.max_load_capacity}kg [{v.status}{isBusy ? ' - ACTIVE' : ''}]
-                      </option>
-                    );
-                  })}
-                </select>
+            <form onSubmit={handleSaveTrip} className="drawer-form">
+              {conflictError && <div className="drawer-alert-error"><AlertTriangle size={14} />{conflictError}</div>}
+
+              <ACField ac={originAC} label="Origin (Pickup Address)" required placeholder="Search location e.g. Maruti Suzuki Manesar" />
+              <ACField ac={destAC} label="Destination (Dropoff Address)" required placeholder="Search location e.g. Ahmedabad Hub" />
+
+              <div className="form-row-2">
+                <div className="field-wrap">
+                  <label className="field-label">Vehicle</label>
+                  <select className="field-select" value={vehicleId} onChange={e => setVehicleId(e.target.value)}>
+                    <option value="">Select vehicle...</option>
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>{v.name} ({v.type} - {v.max_load_capacity}kg)</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field-wrap">
+                  <label className="field-label">Driver</label>
+                  <select className="field-select" value={driverId} onChange={e => setDriverId(e.target.value)}>
+                    <option value="">Select driver...</option>
+                    {drivers.map(d => (
+                      <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>SELECT DRIVER *</label>
-                <select 
-                  className="select" 
-                  value={assignModal.driverId} 
-                  onChange={e => setAssignModal({ ...assignModal, driverId: e.target.value })}
-                >
-                  <option value="">Choose driver...</option>
-                  {drivers.map(d => {
-                    const isBusy = activeDriverIds.includes(d.id);
-                    const expired = isLicenseExpired(d.license_expiry_date);
-                    const isUnavailable = d.status !== 'Available' || expired || isBusy;
-                    return (
-                      <option key={d.id} value={d.id} disabled={isUnavailable}>
-                        {d.name} ({d.license_number}) [{d.status}{expired ? ' / EXPIRED' : ''}{isBusy ? ' - ACTIVE' : ''}]
-                      </option>
-                    );
-                  })}
-                </select>
+              <div className="form-row-2">
+                <div className="field-wrap">
+                  <label className="field-label">Cargo Weight (kg)</label>
+                  <input type="number" className="field-input" value={cargoWeight} onChange={e => setCargoWeight(e.target.value)} placeholder="500" />
+                </div>
+                <div className="field-wrap">
+                  <label className="field-label">Planned Distance (km)</label>
+                  <input type="number" className="field-input" value={plannedDistance} onChange={e => setPlannedDistance(e.target.value)} placeholder="45" />
+                </div>
+              </div>
+
+              <div className="drawer-actions">
+                <button type="button" className="btn-cancel" onClick={resetForm}>Cancel</button>
+                <button type="submit" className="btn-submit" disabled={isSubmitting || !originAC.query.trim() || !destAC.query.trim()}>
+                  {isSubmitting ? 'Saving...' : (editingTrip ? 'Save Changes' : 'Create Trip')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODALS */}
+      {completeModal.open && (
+        <div className="modal-overlay" onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Complete Trip #{completeModal.trip?.id}</h3>
+              <button className="modal-close" onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}><X size={16} /></button>
+            </div>
+            <div className="modal-body">
+              <p className="modal-desc">Enter final actual distance and arrival time to complete the trip and release fleet assets.</p>
+              <div className="field-wrap">
+                <label className="field-label">Actual Distance (km)</label>
+                <input
+                  type="number"
+                  className="field-input"
+                  value={completeModal.actualDistance}
+                  onChange={e => setCompleteModal({ ...completeModal, actualDistance: e.target.value })}
+                />
               </div>
             </div>
             <div className="modal-footer">
-              <button 
-                type="button" 
-                className="btn btn-outline" 
-                onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}
-              >
-                Cancel
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                onClick={handleConfirmAssign}
-                disabled={isModalSubmitting || !assignModal.vehicleId || !assignModal.driverId}
-              >
-                {isModalSubmitting ? 'Validating...' : 'Confirm Assignment'}
+              <button className="btn-cancel" onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}>Cancel</button>
+              <button className="btn-submit" onClick={handleCompleteSubmit} disabled={isModalSubmitting}>
+                {isModalSubmitting ? 'Completing...' : 'Mark Completed'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* REASSIGN MODAL */}
-      {reassignModal.open && (
-        <div className="modal-overlay">
-          <div className="modal-dialog">
+      {assignModal.open && (
+        <div className="modal-overlay" onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="font-bold text-base">Reassign Trip #{reassignModal.trip?.id}</div>
-              <button 
-                className="modal-close-btn" 
-                onClick={() => setReassignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}
-              >
-                <X size={18} />
-              </button>
+              <h3>Assign Trip #{assignModal.trip?.id}</h3>
+              <button className="modal-close" onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}><X size={16} /></button>
             </div>
             <div className="modal-body">
-              <p className="text-xs text-muted">
-                Reassigning resources will release the previous vehicle & driver (if not on another trip) and engage the newly selected assets.
-              </p>
-
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>NEW VEHICLE *</label>
-                <select 
-                  className="select" 
-                  value={reassignModal.vehicleId} 
-                  onChange={e => setReassignModal({ ...reassignModal, vehicleId: e.target.value })}
-                >
-                  <option value="">Choose vehicle...</option>
+              <div className="field-wrap">
+                <label className="field-label">Select Vehicle</label>
+                <select className="field-select" value={assignModal.vehicleId} onChange={e => setAssignModal({ ...assignModal, vehicleId: e.target.value })}>
+                  <option value="">Select vehicle...</option>
                   {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.name || v.registration_number} ({v.registration_number || v.number_plate}) — {v.max_load_capacity}kg [{v.status}]
-                    </option>
+                    <option key={v.id} value={v.id}>{v.name} ({v.type})</option>
                   ))}
                 </select>
               </div>
-
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>NEW DRIVER *</label>
-                <select 
-                  className="select" 
-                  value={reassignModal.driverId} 
-                  onChange={e => setReassignModal({ ...reassignModal, driverId: e.target.value })}
-                >
-                  <option value="">Choose driver...</option>
-                  {drivers.map(d => {
-                    const isBusy = activeDriverIds.includes(d.id);
-                    const expired = isLicenseExpired(d.license_expiry_date);
-                    const isUnavailable = d.status !== 'Available' || expired || isBusy;
-                    return (
-                      <option key={d.id} value={d.id} disabled={isUnavailable}>
-                        {d.name} ({d.license_number}) [{d.status}{expired ? ' / EXPIRED' : ''}{isBusy ? ' - ACTIVE' : ''}]
-                      </option>
-                    );
-                  })}
+              <div className="field-wrap">
+                <label className="field-label">Select Driver</label>
+                <select className="field-select" value={assignModal.driverId} onChange={e => setAssignModal({ ...assignModal, driverId: e.target.value })}>
+                  <option value="">Select driver...</option>
+                  {drivers.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+                  ))}
                 </select>
               </div>
             </div>
             <div className="modal-footer">
-              <button 
-                type="button" 
-                className="btn btn-outline" 
-                onClick={() => setReassignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}
-              >
-                Cancel
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                onClick={handleConfirmReassign}
-                disabled={isModalSubmitting || !reassignModal.vehicleId || !reassignModal.driverId}
-              >
-                {isModalSubmitting ? 'Updating...' : 'Update Assignment'}
-              </button>
+              <button className="btn-cancel" onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}>Cancel</button>
+              <button className="btn-submit" onClick={async () => {
+                if (!assignModal.vehicleId || !assignModal.driverId) return;
+                try {
+                  await apiRequest('PATCH', `/trips/${assignModal.trip.id}/status`, {
+                    status: 'Assigned',
+                    vehicle_id: Number(assignModal.vehicleId),
+                    driver_id: Number(assignModal.driverId)
+                  });
+                  showToast(`Trip #${assignModal.trip.id} assigned!`);
+                  setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
+                  await loadData(true);
+                } catch(e) { showToast(`Error: ${e.message}`); }
+              }}>Save Assignment</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* COMPLETE TRIP MODAL */}
-      {completeModal.open && (
-        <div className="modal-overlay">
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <div className="font-bold text-base">Finalize Trip #{completeModal.trip?.id}</div>
-              <button 
-                className="modal-close-btn" 
-                onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}
-              >
-                <X size={18} />
-              </button>
+      {/* DRIVER QUICK VIEW DRAWER */}
+      {driverViewId && (
+        <div className="drawer-overlay" onClick={() => setDriverViewId(null)}>
+          <div className="drawer-content driver-drawer" onClick={e => e.stopPropagation()}>
+            <div className="drawer-header">
+              <h3>Driver Profile</h3>
+              <button className="drawer-close" onClick={() => setDriverViewId(null)}><X size={16} /></button>
             </div>
-            <div className="modal-body">
-              <p className="text-xs text-muted">
-                Enter completion metrics. Upon completion, the assigned vehicle and driver will be atomically released to <strong>Available</strong>.
-              </p>
-
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>ACTUAL DISTANCE (KM) *</label>
-                <input 
-                  type="number" 
-                  className="input" 
-                  value={completeModal.actualDistance} 
-                  onChange={e => setCompleteModal({ ...completeModal, actualDistance: e.target.value })}
-                  placeholder="e.g. 46"
-                />
-              </div>
-
-              <div className="input-group">
-                <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>ACTUAL ARRIVAL TIME *</label>
-                <input 
-                  type="datetime-local" 
-                  className="input" 
-                  value={completeModal.actualArrival} 
-                  onChange={e => setCompleteModal({ ...completeModal, actualArrival: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button 
-                type="button" 
-                className="btn btn-outline" 
-                onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}
-              >
-                Cancel
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                onClick={handleConfirmComplete}
-                disabled={isModalSubmitting || !completeModal.actualDistance}
-              >
-                {isModalSubmitting ? 'Finalizing...' : 'Complete & Free Assets'}
-              </button>
+            <div className="driver-drawer-body">
+              {(() => {
+                const d = drivers.find(drv => String(drv.id) === String(driverViewId));
+                if (!d) return <p>Driver not found.</p>;
+                return (
+                  <div className="driver-qv-card">
+                    <div className="dq-avatar">{d.name.charAt(0)}</div>
+                    <div className="dq-info">
+                      <h2>{d.name}</h2>
+                      <span className={`dq-status ${d.status === 'Available' ? 'tag-planned' : 'tag-assigned'}`}>{d.status}</span>
+                    </div>
+                    <div className="dq-details">
+                      <div className="dq-row"><span>License:</span> <strong>{d.license_no}</strong></div>
+                      <div className="dq-row"><span>Phone:</span> <strong>{d.phone}</strong></div>
+                      <div className="dq-row"><span>Trips Completed:</span> <strong>{d.trips_completed || 0}</strong></div>
+                    </div>
+                    <button className="btn-submit dq-full-btn" style={{marginTop: '20px', width: '100%'}} onClick={() => window.open(`/drivers`, '_blank')}>View Full Profile</button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
+

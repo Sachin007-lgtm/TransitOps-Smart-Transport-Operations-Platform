@@ -92,9 +92,9 @@ const tripService = {
       }
     }
 
-    if (status !== 'Draft' && status !== 'Planned') {
+    if (status !== 'Draft' && status !== 'Planned' && status !== 'Assigned') {
       throw new TripServiceError(
-        `Trips can only be created in 'Draft' or 'Planned' status. Advancing to '${status}' must follow the lifecycle via PATCH /api/trips/:id/status.`,
+        `Trips can only be created in 'Draft', 'Planned', or 'Assigned' status. Advancing to '${status}' must follow the lifecycle via PATCH /api/trips/:id/status.`,
         400
       );
     }

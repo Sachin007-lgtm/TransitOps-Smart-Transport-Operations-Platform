@@ -71,6 +71,11 @@
   padding: 0;
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: var(--font-primary);
   background-color: var(--bg-app);
@@ -197,11 +202,17 @@ body {
   transition: background-color 0.4s ease, color 0.4s ease;
 }
 
-.pill-green { background-color: rgba(40, 167, 69, 0.1); color: var(--status-green); }
-.pill-blue { background-color: rgba(0, 123, 255, 0.1); color: var(--status-blue); }
+.pill-green  { background-color: rgba(40, 167, 69, 0.1);  color: var(--status-green); }
+.pill-blue   { background-color: rgba(0, 123, 255, 0.1);  color: var(--status-blue); }
 .pill-orange { background-color: rgba(253, 126, 20, 0.1); color: var(--status-orange); }
-.pill-red { background-color: rgba(220, 53, 69, 0.1); color: var(--status-red); }
-.pill-gray { background-color: rgba(108, 117, 125, 0.1); color: var(--status-gray); }
+.pill-amber  { background-color: var(--amber-bg);          color: var(--amber); }
+.pill-purple { background-color: var(--indigo-bg);         color: var(--indigo); }
+.pill-red    { background-color: rgba(220, 53, 69, 0.1);   color: var(--status-red); }
+.pill-gray   { background-color: rgba(108, 117, 125, 0.1); color: var(--status-gray); }
+
+/* Spin animation for refresh icons */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.animate-spin { animation: spin 0.7s linear infinite; }
 
 /* Status morphing animations */
 .pill.morphing-to-blue {
@@ -423,5 +434,5 @@ tbody tr:hover { background-color: var(--bg-app); }
   display: flex; align-items: center; justify-content: space-between; padding: 0 2rem;
   box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
-.content-area { flex: 1; padding: 2rem; overflow-y: auto; }
+.content-area { flex: 1; padding: 0; overflow: hidden; }
 

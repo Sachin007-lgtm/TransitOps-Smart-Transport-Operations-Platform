@@ -29,7 +29,7 @@ const createTripSchema = {
   cargo_weight: { required: false, type: 'number' },
   planned_distance: { required: false, type: 'number' },
   revenue: { required: false, type: 'number' },
-  status: { required: false, type: 'enum', enum: ['Draft', 'Planned'] }
+  status: { required: false, type: 'enum', enum: ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed', 'Cancelled'] }
 };
 
 const updateTripSchema = {
