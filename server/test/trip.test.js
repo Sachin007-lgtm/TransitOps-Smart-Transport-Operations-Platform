@@ -10,6 +10,20 @@ function createToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
+// A trip that names a customer is now attached to a company row (created on
+// first use, so trips of one customer can be composed into one bill), and
+// companies/bills reference organizations with ON DELETE RESTRICT. Teardown
+// therefore has to clear the billing tables before an organization can go.
+async function clearBillingRows() {
+  await query(
+    "DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('org-test-A', 'org-test-B'))"
+  );
+  await query("UPDATE trips SET bill_id = NULL WHERE organization_id IN ('org-test-A', 'org-test-B')");
+  await query("DELETE FROM bills WHERE organization_id IN ('org-test-A', 'org-test-B')");
+  await query("DELETE FROM companies WHERE organization_id IN ('org-test-A', 'org-test-B')");
+  await query("DELETE FROM bill_counters WHERE organization_id IN ('org-test-A', 'org-test-B')");
+}
+
 describe('TransitOps Trip Module Backend Tests', () => {
   let server;
   let baseUrl;
@@ -43,6 +57,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
     await query("DELETE FROM trips WHERE organization_id IN ('org-test-A', 'org-test-B')");
     await query("DELETE FROM vehicles WHERE organization_id IN ('org-test-A', 'org-test-B')");
     await query("DELETE FROM drivers WHERE organization_id IN ('org-test-A', 'org-test-B')");
+    await clearBillingRows();
     await query("DELETE FROM organizations WHERE id IN ('org-test-A', 'org-test-B')");
 
     // Ensure test organizations exist to satisfy referential integrity
@@ -126,6 +141,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
     await query("DELETE FROM trips WHERE organization_id IN ('org-test-A', 'org-test-B')");
     await query("DELETE FROM vehicles WHERE organization_id IN ('org-test-A', 'org-test-B')");
     await query("DELETE FROM drivers WHERE organization_id IN ('org-test-A', 'org-test-B')");
+    await clearBillingRows();
     await query("DELETE FROM organizations WHERE id IN ('org-test-A', 'org-test-B')");
     server.close();
   });
