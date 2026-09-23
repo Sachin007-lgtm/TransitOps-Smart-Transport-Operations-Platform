@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const tripRoutes = require('./tripRoutes');
+const billingRoutes = require('./billingRoutes');
 const driverRoutes = require('./driverRoutes');
 const authRoutes = require('./authRoutes');
 const vehicleRoutes = require('./vehicleRoutes');
@@ -12,6 +13,7 @@ const reportRoutes = require('./reportRoutes');
 const userRoutes = require('./userRoutes');
 
 router.use('/trips', tripRoutes);
+router.use('/billing', billingRoutes);
 router.use('/drivers', driverRoutes);
 router.use('/auth', authRoutes);
 router.use('/vehicles', vehicleRoutes);
