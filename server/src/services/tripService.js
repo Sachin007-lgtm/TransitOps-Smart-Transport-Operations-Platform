@@ -2,6 +2,7 @@ const { pool, query } = require('../config/db');
 const Trip = require('../models/tripModel');
 const Vehicle = require('../models/vehicleModel');
 const Driver = require('../models/driverModel');
+const Company = require('../models/companyModel');
 
 class TripServiceError extends Error {
   constructor(message, statusCode = 400) {
@@ -28,6 +29,48 @@ function isExpired(dateStr) {
   return d < today;
 }
 
+/**
+ * Derive the date a bill should show for a trip, from when it was dispatched.
+ * Read in the business's own timezone (IST): a 01:00 dispatch is that day's
+ * work, not the previous day's.
+ */
+function deriveTripDate(startTime) {
+  const d = startTime ? new Date(startTime) : new Date();
+  if (isNaN(d.getTime())) return null;
+  const IST_OFFSET_MS = 330 * 60 * 1000;
+  return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * Work out which company a trip is billed to.
+ *
+ * An explicit company_id wins, but it must belong to the caller's
+ * organization. Otherwise the customer name typed on the trip is matched to a
+ * company — created on first use — which is what turns "all trips of the same
+ * company" into a real grouping a bill can be composed from.
+ *
+ * @returns {Promise<number|null>} company id, or null when the trip names no customer
+ */
+async function resolveCompanyId({ company_id, external_party_name, organization_id, client = null }) {
+  if (company_id !== undefined && company_id !== null && company_id !== '') {
+    const found = await query('SELECT organization_id FROM companies WHERE id = $1', [company_id]);
+    if (found.rows.length === 0) {
+      throw new TripServiceError(`Company with ID ${company_id} not found.`, 404);
+    }
+    if (found.rows[0].organization_id !== organization_id) {
+      throw new TripServiceError('Company belongs to another organization.', 400);
+    }
+    return Number(company_id);
+  }
+
+  if (external_party_name && String(external_party_name).trim()) {
+    const company = await Company.findOrCreateByName(organization_id, external_party_name, client);
+    return company.id;
+  }
+
+  return null;
+}
+
 const tripService = {
   /**
    * Create a new trip scoped strictly to the authenticated user's organization.
@@ -47,7 +90,11 @@ const tripService = {
       revenue = 0.00,
       start_time,
       expected_arrival,
-      status = 'Draft'
+      status = 'Draft',
+      company_id,
+      trip_date,
+      advance_received = 0.00,
+      rate_basis
     } = tripData;
 
     // Validate vehicle if provided
@@ -113,7 +160,17 @@ const tripService = {
       revenue,
       start_time,
       expected_arrival,
-      status
+      status,
+      // Billing: the trip is attached to the customer's company row so it can
+      // be composed into that company's bill later.
+      company_id: await resolveCompanyId({
+        company_id,
+        external_party_name,
+        organization_id: orgId
+      }),
+      trip_date: trip_date || deriveTripDate(start_time),
+      advance_received,
+      rate_basis: rate_basis || null
     });
 
     return await Trip.findById(created.id, orgId);
@@ -149,7 +206,11 @@ const tripService = {
       driver_id: queryParams.driver_id ? Number(queryParams.driver_id) : undefined,
       external_party_type: queryParams.external_party_type,
       from_date: queryParams.from_date,
-      to_date: queryParams.to_date
+      to_date: queryParams.to_date,
+      // Billing filters: which customer's trips, and whether they are already
+      // on a bill. Used by the trips list and the billing screens.
+      company_id: queryParams.company_id ? Number(queryParams.company_id) : undefined,
+      billing_status: queryParams.billing_status
     };
 
     // Driver role restriction: can only list own trips
@@ -180,6 +241,23 @@ const tripService = {
 
       if (trip.status === 'Completed' || trip.status === 'Cancelled') {
         throw new TripServiceError(`Cannot modify a trip that is ${trip.status}.`, 400);
+      }
+
+      // A billed trip is snapshotted into its bill, so the figures the bill
+      // was composed from are frozen. Void the bill (which returns the trip to
+      // the unbilled pool) before restating them.
+      if (trip.billing_status === 'Billed') {
+        const frozen = ['revenue', 'advance_received', 'trip_date', 'company_id', 'external_party_name'];
+        const changed = frozen.filter(
+          (field) => fields[field] !== undefined && String(fields[field]) !== String(trip[field])
+        );
+        if (changed.length > 0) {
+          throw new TripServiceError(
+            `This trip is already on an issued bill, so ${changed.join(', ')} cannot be changed. ` +
+              `Void bill ${trip.bill_id} first if the bill was raised in error.`,
+            409
+          );
+        }
       }
 
       const isOperational = trip.status === 'Assigned' || trip.status === 'Dispatched';
@@ -320,11 +398,24 @@ const tripService = {
         }
       }
 
+      // Keep the trip pointed at the right company when its customer changes,
+      // and keep the billable date in step when the dispatch time moves.
+      if (fields.external_party_name !== undefined || fields.company_id !== undefined) {
+        fields.company_id = await resolveCompanyId({
+          company_id: fields.company_id,
+          external_party_name: fields.external_party_name,
+          organization_id: user.organization_id,
+          client
+        });
+      }
+      if (fields.start_time !== undefined && fields.trip_date === undefined) {
+        fields.trip_date = deriveTripDate(fields.start_time);
+      }
+
       const updated = await Trip.update(id, fields, user.organization_id, client);
       if (!updated) {
         throw new TripServiceError('Trip not found or belongs to another organization.', 404);
       }
-
       await client.query('COMMIT');
       return await Trip.findById(id, user.organization_id);
     } catch (err) {

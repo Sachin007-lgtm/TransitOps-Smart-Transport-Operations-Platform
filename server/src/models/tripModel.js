@@ -25,7 +25,14 @@ const Trip = {
     revenue = 0.00,
     start_time,
     expected_arrival,
-    status = 'Draft'
+    status = 'Draft',
+    // Billing fields: which customer this trip is billed to, the date the
+    // bill should show, the fare already received up front, and the basis the
+    // rate was quoted on (e.g. "per trip", "per tonne").
+    company_id = null,
+    trip_date = null,
+    advance_received = 0.00,
+    rate_basis = null
   }, client = null) => {
     assertOrganizationId(organization_id, 'create');
 
@@ -35,8 +42,9 @@ const Trip = {
         origin, destination, planned_route,
         vehicle_id, driver_id,
         cargo_weight, planned_distance, revenue,
-        start_time, expected_arrival, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        start_time, expected_arrival, status,
+        company_id, trip_date, advance_received, rate_basis
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING *;
     `;
     const values = [
@@ -53,7 +61,11 @@ const Trip = {
       revenue,
       start_time,
       expected_arrival,
-      status
+      status,
+      company_id,
+      trip_date,
+      advance_received,
+      rate_basis
     ];
 
     const executor = client || { query };
@@ -171,7 +183,9 @@ const Trip = {
     driver_id,
     external_party_type,
     from_date,
-    to_date
+    to_date,
+    company_id,
+    billing_status
   } = {}) => {
     assertOrganizationId(organization_id, 'findAll');
 
@@ -179,6 +193,7 @@ const Trip = {
       SELECT t.*,
              t.origin AS source,
              o.name AS organization_name,
+             c.name AS company_name,
              v.name AS vehicle_name,
              v.registration_number AS vehicle_registration,
              v.type AS vehicle_type,
@@ -190,6 +205,7 @@ const Trip = {
              d.status AS driver_status
       FROM trips t
       LEFT JOIN organizations o ON t.organization_id = o.id
+      LEFT JOIN companies c ON t.company_id = c.id
       LEFT JOIN vehicles v ON t.vehicle_id = v.id
       LEFT JOIN drivers d ON t.driver_id = d.id
       WHERE t.organization_id = $1
@@ -215,6 +231,16 @@ const Trip = {
     if (external_party_type) {
       sql += ` AND t.external_party_type = $${paramIndex++}`;
       values.push(external_party_type);
+    }
+
+    if (company_id) {
+      sql += ` AND t.company_id = $${paramIndex++}`;
+      values.push(company_id);
+    }
+
+    if (billing_status) {
+      sql += ` AND t.billing_status = $${paramIndex++}`;
+      values.push(billing_status);
     }
 
     if (from_date) {
@@ -255,7 +281,14 @@ const Trip = {
       'start_time',
       'expected_arrival',
       'actual_arrival',
-      'status'
+      'status',
+      // Billing metadata. billing_status / bill_id are deliberately absent:
+      // they are owned by the billing module (only a generated bill may set
+      // them), so a trip edit can never forge a billed state.
+      'company_id',
+      'trip_date',
+      'advance_received',
+      'rate_basis'
     ];
 
     const setClause = [];
