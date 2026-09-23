@@ -17,8 +17,14 @@ export async function apiRequest(method, path, body = null) {
   const response = await fetch(`${API_URL}${path}`, options);
   
   if (response.status === 401) {
+    // The session is gone (expired token, or one signed with a different
+    // secret). Drop it, remember where the user was, and send them to sign in
+    // — login hands the page back instead of dumping them on the dashboard.
     localStorage.removeItem('token');
     localStorage.removeItem('userRole');
+    if (!window.location.pathname.startsWith('/login')) {
+      localStorage.setItem('redirectAfterLogin', window.location.pathname + window.location.search);
+    }
     window.location.href = '/login';
     throw new Error('Unauthorized');
   }

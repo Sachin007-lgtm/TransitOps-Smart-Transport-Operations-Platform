@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, ChevronDown, Shield, Truck, BarChart3, Users } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Eye, EyeOff, ChevronDown, Shield, Truck, BarChart3, Users, AlertCircle } from 'lucide-react';
+import { apiRequest } from '../../utils/api';
 import './LoginPage.css';
 
 // Custom Hook for count up
@@ -54,10 +55,12 @@ const rolesData = [
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [role, setRole] = useState(rolesData[1]); // Default Dispatcher
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
   
   const [taglineIdx, setTaglineIdx] = useState(0);
   const [fadeTagline, setFadeTagline] = useState(true);
@@ -92,21 +95,40 @@ export default function LoginPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    if (isLoading) return;
     setIsLoading(true);
-    setTimeout(() => {
-      const roleTokens = {
-        'Fleet Manager': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTAxLCJlbWFpbCI6Im1hbmFnZXJAdHJhbnNpdG9wcy5jb20iLCJyb2xlIjoiRmxlZXQgTWFuYWdlciIsIm9yZ2FuaXphdGlvbl9pZCI6Im9yZy0xIiwiaWF0IjoxNzg5OTk3OTc3LCJleHAiOjE3OTI1ODk5Nzd9.WV1hrBJzgoS7HRZE824vcn9yZ3-DeYMhGOyO96WmKhg',
-        'Dispatcher': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTAyLCJlbWFpbCI6ImRpc3BhdGNoZXJAdHJhbnNpdG9wcy5jb20iLCJyb2xlIjoiRGlzcGF0Y2hlciIsIm9yZ2FuaXphdGlvbl9pZCI6Im9yZy0xIiwiaWF0IjoxNzg5OTk3OTc3LCJleHAiOjE3OTI1ODk5Nzd9.kZhsOR1cu4eBFAtlYj3-xKOlbTxW4Cu6y1xcpmLwaX4',
-        'Driver': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTAzLCJlbWFpbCI6ImRyaXZlckB0cmFuc2l0b3BzLmNvbSIsInJvbGUiOiJEcml2ZXIiLCJkcml2ZXJfaWQiOjEsIm9yZ2FuaXphdGlvbl9pZCI6Im9yZy0xIiwiaWF0IjoxNzg5OTk3OTc3LCJleHAiOjE3OTI1ODk5Nzd9.13HyPRF6jOoLl-iKcScP4VQuIGO01092v6OV-gIMaFQ'
-      };
-      const token = roleTokens[role.id] || roleTokens['Dispatcher'];
-      localStorage.setItem('userRole', role.id);
+    setError('');
+
+    try {
+      // Real sign-in: the API issues the token and reports the account's role.
+      // The role picker above stays a presentation of what each role can do —
+      // access is decided by the account, not by this choice, so nobody can
+      // grant themselves more rights from the login screen.
+      const res = await apiRequest('POST', '/auth/login', {
+        email: email.trim(),
+        password
+      });
+      const { token, user } = res.data;
+
       localStorage.setItem('token', token);
-      localStorage.setItem('organization_id', 'org-1');
-      navigate('/');
-    }, 1500);
+      localStorage.setItem('userRole', user.role);
+      localStorage.setItem('organization_id', user.organization_id);
+      if (user.name) localStorage.setItem('userName', user.name);
+      if (user.email) localStorage.setItem('userEmail', user.email);
+
+      // Return the user to what they were actually trying to reach: the route
+      // guard's state first, then the path remembered by a 401 redirect.
+      const remembered = localStorage.getItem('redirectAfterLogin');
+      const target = location.state?.from?.pathname || remembered || '/';
+      localStorage.removeItem('redirectAfterLogin');
+      navigate(target === '/login' ? '/' : target, { replace: true });
+    } catch (err) {
+      setError(err.message || 'Sign in failed. Check your email and password.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -201,7 +223,7 @@ export default function LoginPage() {
             </div>
 
             <div className="input-group" style={{ position: 'relative' }} ref={dropdownRef}>
-              <label>ROLE (RBAC DEMO)</label>
+              <label>ROLE (RBAC DEMO — your account decides actual access)</label>
               <div className="custom-select-container">
                 <div 
                   className={`custom-select-trigger ${isDropdownOpen ? 'open' : ''}`}
@@ -243,6 +265,12 @@ export default function LoginPage() {
               </label>
               <a href="#" className="forgot-password">Forgot password?</a>
             </div>
+
+            {error && (
+              <div className="login-error" role="alert">
+                <AlertCircle size={15} /> {error}
+              </div>
+            )}
 
             <button type="submit" className="btn-amber" disabled={isLoading}>
               {isLoading ? (

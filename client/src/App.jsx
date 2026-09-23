@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Vehicles from './pages/Vehicles';
@@ -62,6 +62,21 @@ function GlobalToast() {
   );
 }
 
+// Every in-app route needs a session. Without this guard a signed-out visitor
+// renders the app shell, every page's API call answers 401, and the 401 handler
+// bounces them to the login screen — which is why navigating between pages felt
+// like being logged out. Sending them to /login directly also lets the login
+// screen hand back the page they asked for.
+function RequireAuth({ children }) {
+  const location = useLocation();
+
+  if (!localStorage.getItem('token')) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -69,7 +84,14 @@ function App() {
         <GlobalToast />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/" element={<AppLayout />}>
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                <AppLayout />
+              </RequireAuth>
+            }
+          >
             <Route index element={<Dashboard />} />
             <Route path="vehicles" element={<Vehicles />} />
             <Route path="drivers" element={<Drivers />} />
