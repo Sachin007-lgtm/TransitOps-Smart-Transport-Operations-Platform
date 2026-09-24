@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Bell, User, Settings, LogOut, ChevronRight, ShieldAlert, Wrench, FileWarning } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { useGlobalSearch } from '../../contexts/GlobalSearchContext';
 import './Header.css';
@@ -10,7 +10,15 @@ export default function Header() {
   const [openPopover, setOpenPopover] = useState(null); // 'bell' | 'user' | null
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
   const location = useLocation();
+  const navigate = useNavigate();
   const isDispatching = location.pathname === '/trips';
+
+  const handleLogout = () => {
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('token');
+    localStorage.removeItem('organization_id');
+    navigate('/login');
+  };
 
   const bellRef = useRef(null);
   const userRef = useRef(null);
@@ -92,12 +100,12 @@ export default function Header() {
         <div className="relative" ref={bellRef}>
           <button 
             className="btn-outline flex items-center justify-center relative" 
-            style={{ padding: '0.4rem', borderRadius: '50%', border: 'none', cursor: 'pointer' }}
+            style={{ padding: '0.4rem', borderRadius: '50%', border: 'none', cursor: 'pointer', position: 'relative' }}
             onClick={() => togglePopover('bell')}
           >
             <Bell size={20} className="text-muted" />
             {/* Unread Dot */}
-            <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--card)' }}></span>
+            <span style={{ position: 'absolute', top: '6px', right: '6px', width: '8px', height: '8px', background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--card)' }}></span>
           </button>
 
           {openPopover === 'bell' && (
@@ -163,13 +171,14 @@ export default function Header() {
                 </div>
               </div>
               <div className="border-t border-[var(--line)] py-1">
-                <div className="popover-item px-4 py-2 text-sm text-status-red flex items-center gap-2" onClick={handleUserAction}>
+                <div className="popover-item px-4 py-2 text-sm text-status-red flex items-center gap-2" onClick={handleLogout}>
                   <LogOut size={16} /> Sign out
                 </div>
               </div>
             </div>
           )}
         </div>
+
       </div>
 
       {/* Command Palette Overlay */}

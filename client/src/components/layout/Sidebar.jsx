@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
-import { NavLink, Link } from 'react-router-dom';
-import { LayoutDashboard, Truck, Users, Map, Radio, Wrench, Droplet, BarChart2, Settings, ChevronLeft } from 'lucide-react';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Truck, Users, Map, Radio, Wrench, Droplet, BarChart2, Settings, ChevronLeft, LogOut } from 'lucide-react';
 import './Sidebar.css';
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('token');
+    localStorage.removeItem('organization_id');
+    navigate('/login');
+  };
 
   const handleUnimplemented = (e, name) => {
     e.preventDefault();
@@ -78,6 +86,17 @@ export default function Sidebar() {
           <Settings size={20} className="nav-icon" />
           <span className="nav-label">Settings</span>
         </NavLink>
+
+        <div style={{ marginTop: 'auto' }}>
+          <button 
+            className="nav-item" 
+            onClick={handleLogout}
+            style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: '#ff6b6b' }}
+          >
+            <LogOut size={20} className="nav-icon" />
+            <span className="nav-label">Log Out</span>
+          </button>
+        </div>
       </nav>
     </aside>
   );
