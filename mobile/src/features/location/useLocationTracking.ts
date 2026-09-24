@@ -4,10 +4,13 @@ import {
   getLastBackgroundLocation,
   getLocationPermissions,
   requestLocationPermissions,
+  saveLastBackgroundLocation,
   startBackgroundLocationUpdates,
   stopBackgroundLocationUpdates,
   watchLocationUpdates,
 } from './locationService';
+import { sendLocationUpdate } from './locationApi';
+import { ApiError } from '@/utils/api';
 
 type UseLocationTrackingOptions = {
   tripId: number | string | null;
@@ -30,6 +33,7 @@ export function useLocationTracking({
   const [sendCount, setSendCount] = useState(0);
 
   const subscriptionRef = useRef<{ remove: () => void } | null>(null);
+  const isSendingRef = useRef(false);
 
   // Function for user to manually trigger permission prompt
   const requestPermission = useCallback(async (): Promise<boolean> => {
@@ -141,11 +145,19 @@ export function useLocationTracking({
         if (isCancelled) return;
         setPermissionStatus('granted');
 
-        await startBackgroundLocationUpdates(currentTripId, currentToken);
-        if (isCancelled) {
-          await stopBackgroundLocationUpdates();
-          return;
+        try {
+          await startBackgroundLocationUpdates(currentTripId, currentToken);
+        } catch (backgroundError) {
+          if (!isCancelled) {
+            setTrackingError(
+              backgroundError instanceof Error
+                ? `${backgroundError.message} Foreground sharing is still active.`
+                : 'Background sharing is unavailable. Foreground sharing is still active.'
+            );
+          }
         }
+
+        if (isCancelled) return;
 
         // Keep a foreground watcher for immediate driver-facing telemetry.
         // Uploading is owned by the background task to avoid duplicate points.
@@ -160,6 +172,43 @@ export function useLocationTracking({
               return;
             }
             setGpsQuality('good');
+
+            if (isSendingRef.current) return;
+            isSendingRef.current = true;
+            try {
+              const payload = {
+                trip_id: currentTripId,
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                accuracy: coords.accuracy,
+                speed: coords.speed,
+                heading: coords.heading,
+                altitude: coords.altitude,
+                captured_at: new Date(coords.timestamp).toISOString(),
+              };
+              await sendWithBoundedRetry(payload, currentToken, () => isCancelled);
+              if (!isCancelled) {
+                const sentAt = Date.now();
+                await saveLastBackgroundLocation({
+                  latitude: coords.latitude,
+                  longitude: coords.longitude,
+                  accuracy: coords.accuracy,
+                  timestamp: coords.timestamp,
+                  sentAt,
+                });
+                setLastSentAt(new Date(sentAt));
+                setSendCount((current) => current + 1);
+                setConnectionState('online');
+                setTrackingError(null);
+              }
+            } catch (sendError) {
+              if (!isCancelled) {
+                setConnectionState('offline');
+                setTrackingError(sendError instanceof Error ? sendError.message : 'Telemetry sync failed.');
+              }
+            } finally {
+              isSendingRef.current = false;
+            }
           },
           { timeInterval: 5000, distanceInterval: 5 }
         );
@@ -187,6 +236,7 @@ export function useLocationTracking({
         subscriptionRef.current.remove();
         subscriptionRef.current = null;
       }
+      isSendingRef.current = false;
       void stopBackgroundLocationUpdates();
       setIsTracking(false);
     };
@@ -203,4 +253,25 @@ export function useLocationTracking({
     sendCount,
     requestPermission,
   };
+}
+
+async function sendWithBoundedRetry(
+  payload: Parameters<typeof sendLocationUpdate>[0],
+  token: string,
+  isCancelled: () => boolean
+) {
+  const retryDelays = [1000, 3000];
+
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    if (isCancelled()) throw new Error('Location tracking stopped.');
+    try {
+      return await sendLocationUpdate(payload, token);
+    } catch (error) {
+      const isClientError = error instanceof ApiError && error.status >= 400 && error.status < 500;
+      if (isClientError || attempt === retryDelays.length) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+    }
+  }
+
+  throw new Error('Telemetry sync failed.');
 }
