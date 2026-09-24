@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Coordinates,
+  getLastBackgroundLocation,
   getLocationPermissions,
   requestLocationPermissions,
+  startBackgroundLocationUpdates,
+  stopBackgroundLocationUpdates,
   watchLocationUpdates,
 } from './locationService';
-import { sendLocationUpdate } from './locationApi';
-import { ApiError } from '@/utils/api';
 
 type UseLocationTrackingOptions = {
   tripId: number | string | null;
@@ -28,9 +29,7 @@ export function useLocationTracking({
   const [gpsQuality, setGpsQuality] = useState<'good' | 'poor'>('good');
   const [sendCount, setSendCount] = useState(0);
 
-  const isSendingRef = useRef(false);
   const subscriptionRef = useRef<{ remove: () => void } | null>(null);
-  const lastSentLocationRef = useRef<Coordinates | null>(null);
 
   // Function for user to manually trigger permission prompt
   const requestPermission = useCallback(async (): Promise<boolean> => {
@@ -74,6 +73,33 @@ export function useLocationTracking({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isTripActive || !tripId || !token) return undefined;
+
+    let isMounted = true;
+    const refreshLastSend = async () => {
+      const lastBackgroundLocation = await getLastBackgroundLocation();
+      if (!isMounted || !lastBackgroundLocation) return;
+      const lastSent = new Date(lastBackgroundLocation.sentAt);
+      setLastSentAt(lastSent);
+      setSendCount((current) => Math.max(current, 1));
+      if (Date.now() - lastSent.getTime() > 30000) {
+        setConnectionState('offline');
+        setTrackingError('GPS sync is stale. Checking the connection...');
+      } else {
+        setConnectionState('online');
+        setTrackingError(null);
+      }
+    };
+
+    void refreshLastSend();
+    const interval = setInterval(refreshLastSend, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isTripActive, tripId, token]);
+
   // Manage watcher lifecycle based on isTripActive, tripId, and token
   useEffect(() => {
     // If trip is not active or token/tripId is missing, stop tracking immediately
@@ -82,6 +108,7 @@ export function useLocationTracking({
         subscriptionRef.current.remove();
         subscriptionRef.current = null;
       }
+      void stopBackgroundLocationUpdates();
       setIsTracking(false);
       return;
     }
@@ -114,7 +141,14 @@ export function useLocationTracking({
         if (isCancelled) return;
         setPermissionStatus('granted');
 
-        // Watch location updates (every ~5 seconds or 5 meters)
+        await startBackgroundLocationUpdates(currentTripId, currentToken);
+        if (isCancelled) {
+          await stopBackgroundLocationUpdates();
+          return;
+        }
+
+        // Keep a foreground watcher for immediate driver-facing telemetry.
+        // Uploading is owned by the background task to avoid duplicate points.
         const sub = await watchLocationUpdates(
           async (coords) => {
             if (isCancelled) return;
@@ -126,50 +160,6 @@ export function useLocationTracking({
               return;
             }
             setGpsQuality('good');
-
-            const previousLocation = lastSentLocationRef.current;
-            if (previousLocation && distanceInMeters(previousLocation, coords) < 5) {
-              return;
-            }
-
-            // Bounded sending: only 1 in flight at a time
-            if (isSendingRef.current) {
-              return;
-            }
-
-            isSendingRef.current = true;
-            try {
-              await sendWithBoundedRetry(
-                {
-                  trip_id: currentTripId,
-                  latitude: coords.latitude,
-                  longitude: coords.longitude,
-                  accuracy: coords.accuracy,
-                  speed: coords.speed,
-                  heading: coords.heading,
-                  altitude: coords.altitude,
-                  captured_at: new Date(coords.timestamp).toISOString(),
-                },
-                currentToken,
-                () => isCancelled
-              );
-
-              if (!isCancelled) {
-                lastSentLocationRef.current = coords;
-                setLastSentAt(new Date());
-                setSendCount((prev) => prev + 1);
-                setConnectionState('online');
-                setTrackingError(null);
-              }
-            } catch (sendErr) {
-              if (!isCancelled) {
-                const msg = sendErr instanceof Error ? sendErr.message : 'Telemetry sync failed';
-                setConnectionState('offline');
-                setTrackingError(msg);
-              }
-            } finally {
-              isSendingRef.current = false;
-            }
           },
           { timeInterval: 5000, distanceInterval: 5 }
         );
@@ -193,11 +183,11 @@ export function useLocationTracking({
 
     return () => {
       isCancelled = true;
-      lastSentLocationRef.current = null;
       if (subscriptionRef.current) {
         subscriptionRef.current.remove();
         subscriptionRef.current = null;
       }
+      void stopBackgroundLocationUpdates();
       setIsTracking(false);
     };
   }, [isTripActive, tripId, token]);
@@ -213,41 +203,4 @@ export function useLocationTracking({
     sendCount,
     requestPermission,
   };
-}
-
-async function sendWithBoundedRetry(
-  payload: Parameters<typeof sendLocationUpdate>[0],
-  token: string,
-  isCancelled: () => boolean
-) {
-  const retryDelays = [1000, 3000];
-
-  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
-    if (isCancelled()) throw new Error('Location tracking stopped.');
-
-    try {
-      return await sendLocationUpdate(payload, token);
-    } catch (error) {
-      const isClientError = error instanceof ApiError && error.status >= 400 && error.status < 500;
-      const isLastAttempt = attempt === retryDelays.length;
-      if (isClientError || isLastAttempt) throw error;
-
-      await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
-    }
-  }
-
-  throw new Error('Telemetry sync failed.');
-}
-
-function distanceInMeters(first: Coordinates, second: Coordinates) {
-  const earthRadius = 6371000;
-  const latitudeDelta = ((second.latitude - first.latitude) * Math.PI) / 180;
-  const longitudeDelta = ((second.longitude - first.longitude) * Math.PI) / 180;
-  const firstLatitude = (first.latitude * Math.PI) / 180;
-  const secondLatitude = (second.latitude * Math.PI) / 180;
-  const value =
-    Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(firstLatitude) * Math.cos(secondLatitude) * Math.sin(longitudeDelta / 2) ** 2;
-
-  return 2 * earthRadius * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }

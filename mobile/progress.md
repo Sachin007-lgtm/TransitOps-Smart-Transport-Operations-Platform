@@ -60,7 +60,7 @@ Last updated: 2026-09-23
 - Dashboard shows active trip detection (`Dispatched` or `Assigned`) and upcoming trip count.
 - **GPS foreground tracking is implemented:** the mobile app requests foreground permission, watches active-trip coordinates, sends authenticated updates, and the server stores tenant-scoped vehicle locations.
 - **Trip detail and owner map paths are implemented:** drivers can start/end trips, and the web Live Map polls active locations and renders markers and breadcrumbs.
-- **Production GPS work remains pending:** background/killed-app continuity if required, app-restart recovery, GPS-disabled handling, backend rate limiting and retention cleanup, and real Android end-to-end verification.
+- **Production GPS work remains pending:** native background-task verification, GPS-disabled handling, backend rate limiting and retention cleanup, and real Android end-to-end verification.
 - A new EAS build is required after `expo-location` or native location configuration changes.
 - `mobile/.env` points to `http://10.7.22.144:5001/api` for LAN testing.
 - `npm run lint` is not usable (no ESLint config). Do not configure unless specifically needed.
@@ -74,7 +74,7 @@ Last updated: 2026-09-23
 2. **Completed:** mobile `expo-location` setup, permission-aware service, authenticated API client, tracking hook, trip detail lifecycle, and trips navigation.
 3. **Completed:** owner web Live Map with active-location polling, marker rendering, and trip breadcrumb retrieval.
 4. **Completed:** bounded retry/backoff for transient uploads, GPS-quality gating, and explicit driver offline/stale states without overlapping sends.
-5. **Pending:** decide and implement background/killed-app tracking if operations require continuity outside the foreground app.
+5. **Completed:** background location task, startup task registration, secure active-trip handoff, Android foreground-service configuration, one-time permission checks, and tracking cleanup on trip/session end.
 6. **Completed:** add server timestamp bounds and accuracy/speed/heading validation; rate limiting and location retention cleanup remain pending.
 7. **Pending:** run a new native EAS build and verify the complete flow on a real Android device.
 
@@ -316,7 +316,7 @@ Location collection should be limited to the operational purpose, active-trip wi
 
 ### Pending
 
-- Active-trip recovery after app restart and a product decision on background/killed-app tracking.
+- Native verification of background tracking after app minimize, screen lock, app restart, and force-stop behavior.
 - GPS-disabled and revoked-permission handling on a real Android device.
 - Backend rate limiting, retention policy, and cleanup job.
 - Native EAS rebuild and full mobile-to-server-to-owner acceptance test.

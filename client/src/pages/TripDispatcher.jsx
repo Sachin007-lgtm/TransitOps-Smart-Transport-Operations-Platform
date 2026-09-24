@@ -227,6 +227,7 @@ export default function TripDispatcher() {
   const [searchQuery,  setSearchQuery]  = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedTripId, setSelectedTripId] = useState(null);
+  const [selectedTripLocation, setSelectedTripLocation] = useState(null);
 
   // ── Map References ──
   const mapContainerRef = useRef(null);
@@ -286,6 +287,37 @@ export default function TripDispatcher() {
     setStartTime(new Date(now.getTime() + 30 * 60000).toISOString().slice(0, 16));
     setExpectedArrival(new Date(now.getTime() + 180 * 60000).toISOString().slice(0, 16));
   }, []);
+
+  // Keep the selected trip's marker tied to the latest authenticated GPS point.
+  useEffect(() => {
+    if (!selectedTripId) {
+      setSelectedTripLocation(null);
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    const loadSelectedTripLocation = async () => {
+      try {
+        const response = await apiRequest('GET', '/locations/active');
+        if (!isMounted) return;
+        const activeTrip = (response.data || []).find(
+          location => String(location.trip_id) === String(selectedTripId)
+        );
+        setSelectedTripLocation(activeTrip || null);
+      } catch (error) {
+        if (isMounted) setSelectedTripLocation(null);
+      }
+    };
+
+    loadSelectedTripLocation();
+    const interval = setInterval(loadSelectedTripLocation, 6000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [selectedTripId]);
 
   // ── Initialize Map Container ──────────────────────────────────────────
   useEffect(() => {
@@ -381,8 +413,6 @@ export default function TripDispatcher() {
         iconAnchor: [12, 30]
       });
 
-      const pct = selectedTrip.status === 'Completed' ? 1.0 : selectedTrip.status === 'Dispatched' ? 0.65 : 0.25;
-
       let routePath = [originCoords, destCoords];
 
       // Fetch Mapbox Directions API for real road driving geometry between origin & destination
@@ -404,16 +434,23 @@ export default function TripDispatcher() {
 
       if (!isMounted) return;
 
-      const truckIdx = Math.floor((routePath.length - 1) * pct);
-      const truckPos = routePath[truckIdx] || [
-        originCoords[0] + (destCoords[0] - originCoords[0]) * pct,
-        originCoords[1] + (destCoords[1] - originCoords[1]) * pct
-      ];
+      const liveLatitude = Number(selectedTripLocation?.latitude);
+      const liveLongitude = Number(selectedTripLocation?.longitude);
+      const hasLiveLocation = Number.isFinite(liveLatitude) && Number.isFinite(liveLongitude);
+      const truckIdx = hasLiveLocation
+        ? routePath.reduce((closestIndex, point, index) => {
+            const closestPoint = routePath[closestIndex];
+            const currentDistance = (point[0] - liveLatitude) ** 2 + (point[1] - liveLongitude) ** 2;
+            const closestDistance = (closestPoint[0] - liveLatitude) ** 2 + (closestPoint[1] - liveLongitude) ** 2;
+            return currentDistance < closestDistance ? index : closestIndex;
+          }, 0)
+        : -1;
+      const truckPos = hasLiveLocation ? [liveLatitude, liveLongitude] : null;
 
       const truckIcon = L.divIcon({
         className: 'leaflet-truck-marker',
         html: `
-          <div class="marker-badge">${selectedTrip.vehicle?.registration_number || 'REG-004'}</div>
+          <div class="marker-badge">${selectedTrip.vehicle?.registration_number || 'REG-004'}${hasLiveLocation ? ' · LIVE' : ''}</div>
           <div class="marker-icon-pulse">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="1" y="3" width="15" height="13"></rect>
@@ -428,8 +465,8 @@ export default function TripDispatcher() {
       });
 
       // Refined Thin Route Line (Theme Color #7a4a63 with subtle halo)
-      const activePath = routePath.slice(0, Math.max(truckIdx + 1, 2));
-      const remainingPath = routePath.slice(Math.max(truckIdx, 0));
+      const activePath = hasLiveLocation ? routePath.slice(0, Math.max(truckIdx + 1, 2)) : [];
+      const remainingPath = hasLiveLocation ? routePath.slice(Math.max(truckIdx, 0)) : routePath;
 
       // 1. Remaining Segment: Soft Outer Halo
       const glowLine = L.polyline(remainingPath, {
@@ -450,25 +487,25 @@ export default function TripDispatcher() {
       }).addTo(map);
 
       // 3. Active Segment (Covered): Bordered Solid Line (Google Maps style past route)
-      const activeLineOuter = L.polyline(activePath, {
+      const activeLineOuter = hasLiveLocation ? L.polyline(activePath, {
         color: '#7a4a63',
         weight: 5,
         opacity: 0.9,
         lineCap: 'round',
         lineJoin: 'round'
-      }).addTo(map);
+      }).addTo(map) : null;
 
-      const activeLineInner = L.polyline(activePath, {
-        color: '#f9f9f9', // Map background color to create a hollow border effect
+      const activeLineInner = hasLiveLocation ? L.polyline(activePath, {
+        color: '#f9f9f9',
         weight: 2.5,
         opacity: 1,
         lineCap: 'round',
         lineJoin: 'round'
-      }).addTo(map);
+      }).addTo(map) : null;
 
       const mOrigin = L.marker(originCoords, { icon: originIcon }).addTo(map);
       const mDest   = L.marker(destCoords,   { icon: destIcon }).addTo(map);
-      const mTruck  = L.marker(truckPos,     { icon: truckIcon }).addTo(map);
+      const mTruck  = hasLiveLocation ? L.marker(truckPos, { icon: truckIcon }).addTo(map) : null;
 
       // Interactive Marker Popup for Driver & Shipment details on click / selection
       const popupHtml = `
@@ -558,37 +595,46 @@ export default function TripDispatcher() {
         </div>
       `;
 
-      mTruck.bindPopup(popupHtml, {
-        className: 'custom-leaflet-driver-popup theme-popup',
-        closeButton: false,
-        maxWidth: 260,
-        autoPan: true,
-        autoPanPadding: [50, 50]
-      });
+      if (mTruck) {
+        mTruck.bindPopup(popupHtml, {
+          className: 'custom-leaflet-driver-popup theme-popup',
+          closeButton: false,
+          maxWidth: 260,
+          autoPan: true,
+          autoPanPadding: [50, 50]
+        });
 
-      // Restore hover to open popup, but it won't close on mouseout so user can interact with it
-      mTruck.on('mouseover', function () {
-        this.openPopup();
-      });
+        mTruck.on('mouseover', function () {
+          this.openPopup();
+        });
 
-      mTruck.on('popupopen', function (e) {
-        const popupNode = e.popup._contentNode;
-        const driverBtn = popupNode.querySelector('.view-driver-btn');
-        const editBtn = popupNode.querySelector('.edit-trip-btn');
-        if (driverBtn) {
-          driverBtn.onclick = () => {
-            const dId = driverBtn.getAttribute('data-driver');
-            if (dId && dId !== 'null') setDriverViewId(dId);
-          };
-        }
-        if (editBtn) {
-          editBtn.onclick = () => {
-            setEditingTrip(selectedTrip);
-          };
-        }
-      });
+        mTruck.on('popupopen', function (e) {
+          const popupNode = e.popup._contentNode;
+          const driverBtn = popupNode.querySelector('.view-driver-btn');
+          const editBtn = popupNode.querySelector('.edit-trip-btn');
+          if (driverBtn) {
+            driverBtn.onclick = () => {
+              const dId = driverBtn.getAttribute('data-driver');
+              if (dId && dId !== 'null') setDriverViewId(dId);
+            };
+          }
+          if (editBtn) {
+            editBtn.onclick = () => {
+              setEditingTrip(selectedTrip);
+            };
+          }
+        });
+      }
 
-      map._tripLayers.push(glowLine, activeLineOuter, activeLineInner, remainingLine, mOrigin, mDest, mTruck);
+      map._tripLayers.push(
+        glowLine,
+        ...(activeLineOuter ? [activeLineOuter] : []),
+        ...(activeLineInner ? [activeLineInner] : []),
+        remainingLine,
+        mOrigin,
+        mDest,
+        ...(mTruck ? [mTruck] : [])
+      );
 
       // Fit map view bounds dynamically from START to END coordinates of the route!
       const bounds = L.latLngBounds(routePath);
@@ -598,7 +644,7 @@ export default function TripDispatcher() {
     updateRoute();
 
     return () => { isMounted = false; };
-  }, [selectedTrip]);
+  }, [selectedTrip, selectedTripLocation]);
 
   const handleZoomIn  = () => mapInstanceRef.current?.zoomIn();
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
