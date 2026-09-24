@@ -550,26 +550,50 @@ describe('TransitOps Company Billing Backend Tests', () => {
     assert.match(res.json.message, /already on an issued bill/i);
   });
 
-  test('14. Voiding an unpaid bill returns its trips to the unbilled pool', async () => {
-    const res = await call('DELETE', `/bills/${bill2Id}`, { token: tokenManagerA });
+  test('14. Voiding an unpaid bill keeps it on record as Void and returns its trips', async () => {
+    const res = await call('DELETE', `/bills/${bill2Id}`, {
+      token: tokenManagerA,
+      body: { reason: 'Raised against the wrong customer' }
+    });
     assert.equal(res.status, 200);
 
     const trip = (await query('SELECT billing_status, bill_id FROM trips WHERE id = $1', [sharmaTripT3.id])).rows[0];
     assert.equal(trip.billing_status, 'Unbilled');
     assert.equal(trip.bill_id, null);
 
-    const gone = await call('GET', `/bills/${bill2Id}`, { token: tokenManagerA });
-    assert.equal(gone.status, 404);
+    // The document is NOT deleted: the number stays in the invoice series with
+    // when/why it was cancelled, and its lines remain as the record.
+    const kept = await call('GET', `/bills/${bill2Id}`, { token: tokenManagerA });
+    assert.equal(kept.status, 200);
+    assert.equal(kept.json.data.status, 'Void');
+    assert.equal(kept.json.data.bill_no, bill2No);
+    assert.equal(kept.json.data.void_reason, 'Raised against the wrong customer');
+    assert.ok(kept.json.data.voided_at, 'void timestamp recorded');
+    assert.equal(kept.json.data.remaining_balance, 0, 'a voided bill is not owed');
+    assert.equal(kept.json.data.items.length, 1, 'the snapshot of what it covered survives');
 
-    // And it can be billed again.
+    // A voided bill cannot be voided twice.
+    const twice = await call('DELETE', `/bills/${bill2Id}`, { token: tokenManagerA });
+    assert.equal(twice.status, 409);
+    assert.match(twice.json.message, /already voided/i);
+
+    // Voided bills must not appear as money owed by the customer. Bill 1 was
+    // settled earlier in this suite, so nothing is owed at this point — and the
+    // voided bill, though still on record, must not change that.
+    const companies = await call('GET', '/companies', { token: tokenManagerA });
+    const sharmaRow = companies.json.data.find((c) => c.id === sharmaCompanyId);
+    assert.equal(Number(sharmaRow.outstanding_balance), 0, 'a voided bill is not owed');
+    assert.equal(Number(sharmaRow.open_bill_count), 0, 'a voided bill is not an open bill');
+
+    // And the trips can be billed again — as a new number, never the voided one.
     const regenerate = await call('POST', '/bills', {
       token: tokenManagerA,
       body: { company_id: sharmaCompanyId, statuses: ['Dispatched'] }
     });
     assert.equal(regenerate.status, 201);
+    assert.notEqual(regenerate.json.data.bill_no, bill2No, 'a voided number is never reused');
     bill2Id = regenerate.json.data.id;
     bill2No = regenerate.json.data.bill_no;
-    assert.notEqual(bill2No, bill1No);
   });
 
   test('15. A bill with payments cannot be voided (409)', async () => {

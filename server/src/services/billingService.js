@@ -375,10 +375,14 @@ const billingService = {
       note: note || null
     }),
 
-  voidBill: async (id, orgId) => {
-    const deleted = await Bill.delete(id, orgId);
-    if (!deleted) throw new BillingServiceError('Bill not found.', 404);
-    return deleted;
+  /**
+   * Void a bill: mark it Void (never delete — the number and its lines are the
+   * audit trail) and return its trips and charges to the open statement.
+   */
+  voidBill: async (id, orgId, { reason = null, voided_by = null } = {}) => {
+    const voided = await Bill.delete(id, orgId, { reason, voided_by });
+    if (!voided) throw new BillingServiceError('Bill not found.', 404);
+    return voided;
   },
 
   /**

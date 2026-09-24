@@ -194,11 +194,15 @@ const recordPayment = asyncWrapper(async (req, res) => {
 
 const deleteBill = asyncWrapper(async (req, res) => {
   try {
-    const deleted = await billingService.voidBill(req.params.id, req.user.organization_id);
+    const voided = await billingService.voidBill(req.params.id, req.user.organization_id, {
+      // Why it was voided belongs to the audit trail, not decoration.
+      reason: req.body?.reason || null,
+      voided_by: req.user.name || req.user.email || null
+    });
     return apiResponse.success(
       res,
-      deleted,
-      `Bill ${deleted.bill_no} voided; its trips are back in the unbilled pool.`
+      voided,
+      `Bill ${voided.bill_no} voided; its trips and charges are back on the open statement.`
     );
   } catch (err) {
     return handleError(res, err);

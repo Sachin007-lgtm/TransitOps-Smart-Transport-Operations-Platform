@@ -49,6 +49,9 @@ function showToast(message) {
 }
 
 function StatusChip({ status }) {
+  // Void is a state of the document, not a payment situation — it gets its own
+  // neutral chip so it never reads as "still owed".
+  if (status === 'Void') return <span className="pill pill-gray">VOID</span>;
   const cls =
     status === 'Paid'
       ? 'pill pill-green'
@@ -288,11 +291,17 @@ export default function Billing() {
   };
 
   const handleVoid = async (bill) => {
-    if (!window.confirm(`Void bill ${bill.bill_no}? Its trips go back to the unbilled pool.`)) return;
+    // The number is kept (a GST series must not have unexplained gaps), so the
+    // reason is captured as part of the audit trail.
+    const reason = window.prompt(
+      `Void ${bill.bill_no}?\n\nIts trips and charges go back to the open statement, and the number stays on record as VOID.\n\nReason (optional):`,
+      ''
+    );
+    if (reason === null) return;
     setBusy(true);
     try {
-      await apiRequest('DELETE', `/billing/bills/${bill.id}`);
-      showToast(`Bill ${bill.bill_no} voided.`);
+      await apiRequest('DELETE', `/billing/bills/${bill.id}`, { reason: reason.trim() || null });
+      showToast(`${bill.bill_no} voided — kept on record as VOID.`);
       setOpenBill(null);
       await refreshAll();
     } catch (err) {
@@ -806,7 +815,7 @@ export default function Billing() {
           </thead>
           <tbody>
             {visibleBills.map((b) => (
-              <tr key={b.id}>
+              <tr key={b.id} className={b.status === 'Void' ? 'row-void' : ''}>
                 <td className="mono">{b.bill_no}</td>
                 <td>{b.company_name}</td>
                 <td>{fmtDate(b.bill_date)}</td>
@@ -824,9 +833,13 @@ export default function Billing() {
                   <button className="icon-btn" title="Download bill" onClick={() => handleDownload(b)}>
                     <Download size={15} />
                   </button>
-                  <button className="icon-btn billing-icon-danger" title="Void bill" onClick={() => handleVoid(b)}>
-                    <Trash2 size={15} />
-                  </button>
+                  {/* A voided statement keeps its number and lines but is no
+                      longer actionable — no second void, nothing to pay. */}
+                  {b.status !== 'Void' && (
+                    <button className="icon-btn billing-icon-danger" title="Void bill" onClick={() => handleVoid(b)}>
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -860,6 +873,14 @@ export default function Billing() {
             </div>
 
             <div className="drawer-body">
+              {openBill.status === 'Void' && (
+                <div className="void-banner-drawer">
+                  <b>VOID.</b> This statement was cancelled
+                  {openBill.voided_at ? ` on ${fmtDate(String(openBill.voided_at).slice(0, 10))}` : ''}
+                  {openBill.void_reason ? ` — ${openBill.void_reason}` : ''}. Its trips and charges are back on the
+                  open statement, and the number stays on record.
+                </div>
+              )}
               <table className="data-table">
                 <thead>
                   <tr>
@@ -970,7 +991,11 @@ export default function Billing() {
                 </>
               )}
 
-              {openBill.remaining_balance > 0 ? (
+              {openBill.status === 'Void' ? (
+                <p className="settled-note">
+                  <AlertTriangle size={15} /> Nothing to pay on a voided statement.
+                </p>
+              ) : openBill.remaining_balance > 0 ? (
                 <form className="payment-form" onSubmit={handlePayment}>
                   <h4 className="sub-heading">Record a payment</h4>
                   <div className="form-row-3">
@@ -1022,9 +1047,15 @@ export default function Billing() {
             </div>
 
             <div className="drawer-footer">
-              <button className="btn btn-outline billing-btn-danger" onClick={() => handleVoid(openBill)} disabled={busy}>
-                <Trash2 size={15} /> Void bill
-              </button>
+              {openBill.status !== 'Void' && (
+                <button
+                  className="btn btn-outline billing-btn-danger"
+                  onClick={() => handleVoid(openBill)}
+                  disabled={busy}
+                >
+                  <Trash2 size={15} /> Void bill
+                </button>
+              )}
               <button className="btn btn-primary" onClick={() => handleDownload(openBill)}>
                 <Download size={15} /> Download bill
               </button>

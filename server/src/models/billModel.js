@@ -8,6 +8,8 @@ function round2(n) {
 }
 
 function remainingOf(bill) {
+  // A voided bill is history: its number stays visible, but nobody owes it.
+  if (bill.status === 'Void') return 0;
   return Math.max(0, round2(parseFloat(bill.balance_due) - parseFloat(bill.amount_paid || 0)));
 }
 
@@ -427,11 +429,18 @@ const Bill = {
   },
 
   /**
-   * Void a bill: its trips return to the unbilled pool so they can be billed
-   * again. Refused once money has been recorded against it — deleting a paid
-   * bill would erase the payment trail on the customer's ledger.
+   * Void a bill.
+   *
+   * The row is KEPT and marked Void rather than deleted. Deleting it would
+   * free the number — leaving a permanent, unexplainable gap in a GST invoice
+   * series — and destroy the record of what the document covered. Its lines
+   * (bill_items/bill_charges) stay as the snapshot; its trips and charges go
+   * back to the customer's open statement so re-issuing reproduces it.
+   *
+   * Voided bills drop out of every balance on their own: previous_balance and
+   * company outstanding both filter on status IN ('Unpaid','Partially Paid').
    */
-  delete: async (id, organization_id) => {
+  delete: async (id, organization_id, { reason = null, voided_by = null } = {}) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -446,7 +455,15 @@ const Bill = {
         return null;
       }
 
+      if (bill.status === 'Void') {
+        await client.query('ROLLBACK');
+        const err = new Error(`Bill ${bill.bill_no} is already voided.`);
+        err.statusCode = 409;
+        throw err;
+      }
+
       if (parseFloat(bill.amount_paid || 0) > 0) {
+        await client.query('ROLLBACK');
         const err = new Error(
           'This bill has payments recorded against it and cannot be voided. Delete the payments first if the bill was raised in error.'
         );
@@ -467,14 +484,27 @@ const Bill = {
         [id, organization_id]
       );
       const result = await client.query(
-        'DELETE FROM bills WHERE id = $1 AND organization_id = $2 RETURNING *;',
-        [id, organization_id]
+        `UPDATE bills
+         SET status = 'Void',
+             voided_at = CURRENT_TIMESTAMP,
+             void_reason = $3,
+             voided_by = $4,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND organization_id = $2
+         RETURNING *;`,
+        [id, organization_id, reason, voided_by]
       );
 
       await client.query('COMMIT');
       return result.rows[0];
     } catch (err) {
-      await client.query('ROLLBACK');
+      // The early-exit paths above roll back deliberately, so a second
+      // ROLLBACK here must not mask the real error.
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        // nothing to do: already rolled back
+      }
       throw err;
     } finally {
       client.release();

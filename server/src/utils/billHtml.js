@@ -42,6 +42,9 @@ function fmtDate(d) {
 }
 
 function billHtml(bill) {
+  // A voided bill is still printed for the record, but must never read as a
+  // payable document: it gets an explicit VOID banner under the header.
+  const isVoid = (bill.status || '') === 'Void';
   const itemRows = (bill.items || [])
     .map(
       (it) => `
@@ -103,6 +106,7 @@ function billHtml(bill) {
   .bill-meta { text-align: right; font-size: 13px; }
   .bill-meta div { margin-bottom: 2px; }
   .status { display: inline-block; border: 1px solid #1a1a1a; padding: 2px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .void-banner { margin: 12px 0 0; padding: 8px 12px; border: 2px solid #1a1a1a; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
   .party { margin-top: 18px; display: flex; gap: 24px; }
   .party-box { flex: 1; border: 1px solid #ddd; padding: 10px 12px; font-size: 13px; }
   .party-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #555; margin-bottom: 4px; }
@@ -139,6 +143,16 @@ function billHtml(bill) {
         <div><span class="status">${esc(bill.status)}</span></div>
       </div>
     </div>
+
+    ${
+      isVoid
+        ? `<div class="void-banner">VOID — cancelled${
+            bill.voided_at ? ` on ${esc(fmtDate(String(bill.voided_at).slice(0, 10)))}` : ''
+          }${bill.void_reason ? ` · ${esc(bill.void_reason)}` : ''}. Retained for the record; not payable${
+            bill.voided_by ? ` (voided by ${esc(bill.voided_by)})` : ''
+          }.</div>`
+        : ''
+    }
 
     <div class="party">
       <div class="party-box">

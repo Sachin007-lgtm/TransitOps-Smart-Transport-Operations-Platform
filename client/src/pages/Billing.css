@@ -595,3 +595,27 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* A voided statement stays in the list (its number is part of the invoice
+   series) but reads as history, not as something owed. */
+.data-table tr.row-void td {
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-color: var(--border-color);
+}
+
+.data-table tr.row-void .pill {
+  text-decoration: none;
+  opacity: 1;
+}
+
+.void-banner-drawer {
+  margin-bottom: 0.875rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--status-red);
+  border-radius: 6px;
+  background: rgba(220, 53, 69, 0.08);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
