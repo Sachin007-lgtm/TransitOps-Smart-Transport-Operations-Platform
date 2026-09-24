@@ -67,6 +67,22 @@ function billHtml(bill) {
     )
     .join('');
 
+  // "Other charges" — tolls, loading, detention and so on — listed separately
+  // from the trips, as a transport invoice does.
+  const chargeRows = (bill.charges || [])
+    .map(
+      (c) => `
+        <tr>
+          <td>${esc(fmtDate(c.charge_date))}</td>
+          <td>${esc(c.description)}</td>
+          <td>${esc(String(c.kind || 'MISC').replace(/_/g, ' ').toLowerCase())}</td>
+          <td class="num">${fmt(c.amount)}</td>
+        </tr>`
+    )
+    .join('');
+
+  const chargesTotal = parseFloat(bill.charges_total || 0);
+
   // Outstanding after payments — the figure the bottom BALANCE line shows on
   // the paper bills, and the one the owner quotes when following up.
   const remaining = Math.max(0, parseFloat(bill.balance_due) - parseFloat(bill.amount_paid || 0));
@@ -156,15 +172,29 @@ function billHtml(bill) {
       </tbody>
     </table>
 
+    ${
+      chargeRows
+        ? `
+    <div class="payments">
+      <h3>Other charges</h3>
+      <table>
+        <thead><tr><th style="width:100px">Date</th><th>Description</th><th style="width:140px">Type</th><th class="num" style="width:130px">Amount</th></tr></thead>
+        <tbody>${chargeRows}</tbody>
+      </table>
+    </div>`
+        : ''
+    }
+
     <div class="totals">
       <div class="totals-row"><span>Previous balance</span><span class="num">${fmt(bill.previous_balance)}</span></div>
-      <div class="totals-row"><span>Subtotal (this bill)</span><span class="num">${fmt(bill.subtotal)}</span></div>
+      <div class="totals-row"><span>Fares this period</span><span class="num">${fmt(bill.subtotal)}</span></div>
+      ${chargesTotal ? `<div class="totals-row"><span>Other charges</span><span class="num">${fmt(chargesTotal)}</span></div>` : ''}
       <div class="totals-row"><span>Less: advances received</span><span class="num">- ${fmt(bill.total_advance)}</span></div>
-      <div class="totals-row totals-due"><span>Balance due</span><span class="num">${fmt(remaining)}</span></div>
+      <div class="totals-row totals-due"><span>Closing balance</span><span class="num">${fmt(remaining)}</span></div>
       <div class="totals-row"><span>Paid</span><span class="num">${fmt(bill.amount_paid)}</span></div>
     </div>
 
-    <div class="words"><b>Amount in words (balance due):</b> ${esc(
+    <div class="words"><b>Amount in words (closing balance):</b> ${esc(
       (bill.remaining_balance_in_words || bill.balance_due_in_words || '').replace(/^Rupees /, '')
     )}</div>
 

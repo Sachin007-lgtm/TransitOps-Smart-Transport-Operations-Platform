@@ -79,6 +79,12 @@ const Bill = {
        FROM payments WHERE bill_id = $1 ORDER BY payment_date ASC, id ASC;`,
       [id]
     );
+    const charges = await query(
+      `SELECT id, bill_id, charge_id, kind, description, amount,
+              to_char(charge_date, 'YYYY-MM-DD') AS charge_date
+       FROM bill_charges WHERE bill_id = $1 ORDER BY charge_date ASC NULLS LAST, id ASC;`,
+      [id]
+    );
 
     // Outstanding after payments — the figure the bottom BALANCE line shows on
     // the paper bills. Computed here so the detail API and the printed
@@ -88,6 +94,7 @@ const Bill = {
     return {
       ...bill,
       items: items.rows,
+      charges: charges.rows,
       payments: payments.rows,
       remaining_balance: remaining,
       balance_due_in_words: numberToWords(bill.balance_due),
@@ -184,7 +191,7 @@ const Bill = {
    * @param {string[]} statuses        trip statuses that count as billable
    * @param {number[]} [trip_ids]      optional explicit subset of trips
    */
-  generate: async ({ organization_id, company_id, statuses, trip_ids = null, note = null, bill_date = null }) => {
+  generate: async ({ organization_id, company_id, statuses, trip_ids = null, charge_ids = null, note = null, bill_date = null }) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -222,9 +229,28 @@ const Bill = {
       const tripsResult = await client.query(sql, values);
       const billableTrips = tripsResult.rows;
 
-      if (billableTrips.length === 0) {
+      // Charges waiting on the same statement. Locked with the trips so a
+      // charge added while a statement is being issued cannot slip in after
+      // the totals were computed (or be issued twice).
+      const chargeValues = [organization_id, company_id];
+      let chargeSql = `
+        SELECT id, trip_id, kind, description, amount,
+               to_char(charge_date, 'YYYY-MM-DD') AS charge_date
+        FROM charges
+        WHERE organization_id = $1 AND company_id = $2 AND billing_status = 'Unbilled'
+      `;
+      if (charge_ids && charge_ids.length > 0) {
+        chargeSql += ' AND id = ANY($3::int[])';
+        chargeValues.push(charge_ids);
+      }
+      chargeSql += ' ORDER BY charge_date ASC NULLS LAST, id ASC FOR UPDATE;';
+
+      const chargesResult = await client.query(chargeSql, chargeValues);
+      const billableCharges = chargesResult.rows;
+
+      if (billableTrips.length === 0 && billableCharges.length === 0) {
         const err = new Error(
-          'Nothing to bill: this company has no unbilled trips in the selected statuses with a fare.'
+          'Nothing to issue: this company has no unbilled trips in the selected statuses with a fare, and no unbilled charges.'
         );
         err.statusCode = 400;
         throw err;
@@ -233,24 +259,39 @@ const Bill = {
       const previousBalance = await Bill.getPreviousBalance(client, organization_id, company_id);
 
       const subtotal = round2(billableTrips.reduce((sum, t) => sum + parseFloat(t.revenue || 0), 0));
+      const chargesTotal = round2(
+        billableCharges.reduce((sum, c) => sum + parseFloat(c.amount || 0), 0)
+      );
       const totalAdvance = round2(
         billableTrips.reduce((sum, t) => sum + parseFloat(t.advance_received || 0), 0)
       );
       // Clamp at zero: per-trip advances can exceed the fares plus any prior
       // outstanding amount. A negative balance_due would be a permanently
-      // unpayable bill contradicting its own figures; the excess stays visible
-      // in total_advance and is carried forward when the next bill is raised.
-      const balanceDue = Math.max(0, round2(previousBalance + subtotal - totalAdvance));
+      // unpayable statement contradicting its own figures; the excess stays
+      // visible in total_advance and is carried forward next time.
+      // Ledger (as on the paper statement): previous + fares + charges - advances.
+      const balanceDue = Math.max(0, round2(previousBalance + subtotal + chargesTotal - totalAdvance));
 
       const bill_no = await Bill.nextBillNumber(client, organization_id);
 
       const billResult = await client.query(
         `INSERT INTO bills (
            organization_id, bill_no, company_id, bill_date, previous_balance,
-           subtotal, total_advance, balance_due, status, note
-         ) VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $6, $7, $8, 'Unpaid', $9)
+           subtotal, charges_total, total_advance, balance_due, status, note
+         ) VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $6, $7, $8, $9, 'Unpaid', $10)
          RETURNING *;`,
-        [organization_id, bill_no, company_id, bill_date, previousBalance, subtotal, totalAdvance, balanceDue, note]
+        [
+          organization_id,
+          bill_no,
+          company_id,
+          bill_date,
+          previousBalance,
+          subtotal,
+          chargesTotal,
+          totalAdvance,
+          balanceDue,
+          note
+        ]
       );
       const bill = billResult.rows[0];
 
@@ -278,6 +319,27 @@ const Bill = {
            SET billing_status = 'Billed', bill_id = $1, updated_at = CURRENT_TIMESTAMP
            WHERE id = $2 AND organization_id = $3;`,
           [bill.id, trip.id, organization_id]
+        );
+      }
+
+      for (const charge of billableCharges) {
+        await client.query(
+          `INSERT INTO bill_charges (bill_id, charge_id, kind, description, amount, charge_date)
+           VALUES ($1, $2, $3, $4, $5, $6::date);`,
+          [
+            bill.id,
+            charge.id,
+            charge.kind,
+            charge.description,
+            round2(charge.amount),
+            charge.charge_date
+          ]
+        );
+        await client.query(
+          `UPDATE charges
+           SET billing_status = 'Billed', bill_id = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2 AND organization_id = $3;`,
+          [bill.id, charge.id, organization_id]
         );
       }
 
@@ -394,6 +456,13 @@ const Bill = {
 
       await client.query(
         `UPDATE trips SET billing_status = 'Unbilled', bill_id = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE bill_id = $1 AND organization_id = $2;`,
+        [id, organization_id]
+      );
+      // Charges go back to the open statement too, so re-issuing after a void
+      // reproduces the same document instead of quietly dropping them.
+      await client.query(
+        `UPDATE charges SET billing_status = 'Unbilled', bill_id = NULL, updated_at = CURRENT_TIMESTAMP
          WHERE bill_id = $1 AND organization_id = $2;`,
         [id, organization_id]
       );

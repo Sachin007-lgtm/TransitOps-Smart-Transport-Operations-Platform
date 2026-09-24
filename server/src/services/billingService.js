@@ -1,5 +1,7 @@
+const { query } = require('../config/db');
 const Company = require('../models/companyModel');
 const Bill = require('../models/billModel');
+const Charge = require('../models/chargeModel');
 const { billHtml } = require('../utils/billHtml');
 
 class BillingServiceError extends Error {
@@ -162,30 +164,138 @@ const billingService = {
   /**
    * Preview of the trips a bill for this company would be composed from.
    */
-  getUnbilledPreview: async (orgId, companyId, statusesInput) => {
+  /**
+   * The customer's OPEN STATEMENT: everything of theirs that is still unbilled
+   * — trips and charges — plus what they already owe from issued statements.
+   *
+   * Derived, never stored: the open statement cannot go stale, and it always
+   * reflects a trip that was completed or a charge that was added a minute ago.
+   * Issuing it is a single atomic action (see issueStatement).
+   *
+   * Ledger, as on the paper statement:
+   *   closing = previous balance + fares + other charges - advances received
+   */
+  getStatement: async (orgId, companyId, statusesInput) => {
     const statuses = normalizeStatuses(statusesInput);
     const company = await Company.findById(companyId, orgId);
     if (!company) throw new BillingServiceError('Company not found.', 404);
 
     const trips = await Bill.findUnbilledTrips(orgId, companyId);
     const pool = buildPool(trips, statuses);
+    const charges = await Charge.findUnbilled(orgId, companyId);
+    const chargesTotal = round2(charges.reduce((sum, c) => sum + parseFloat(c.amount || 0), 0));
     const previousBalance = await Bill.getPreviousBalance(null, orgId, companyId);
+
+    const fares = pool.totals.billable_amount;
+    const advances = pool.totals.billable_advance;
+    const closing = Math.max(0, round2(previousBalance + fares + chargesTotal - advances));
 
     return {
       company: { id: company.id, name: company.name, opening_balance: company.opening_balance },
+      status: 'Open',
       previous_balance: previousBalance,
       ...pool,
-      // What the bill would say if it were generated from everything billable.
+      charges: {
+        billable: charges,
+        total: chargesTotal
+      },
+      ledger: {
+        previous_balance: previousBalance,
+        fares,
+        charges: chargesTotal,
+        advances,
+        closing_balance: closing
+      },
+      // What an issued statement would say right now (kept for the existing
+      // preview consumers; identical to ledger.closing_balance).
       projected: {
-        subtotal: pool.totals.billable_amount,
-        total_advance: pool.totals.billable_advance,
-        balance_due: Math.max(
-          0,
-          round2(previousBalance + pool.totals.billable_amount - pool.totals.billable_advance)
-        )
-      }
+        subtotal: fares,
+        charges_total: chargesTotal,
+        total_advance: advances,
+        balance_due: closing
+      },
+      pending_count: pool.billable.length + charges.length
     };
   },
+
+  // Backwards-compatible name for the same view.
+  getUnbilledPreview: async (orgId, companyId, statusesInput) =>
+    billingService.getStatement(orgId, companyId, statusesInput),
+
+  // --- Charges (the "other expenses" that ride on a statement) -------------
+
+  createCharge: async (orgId, companyId, payload) => {
+    const company = await Company.findById(companyId, orgId);
+    if (!company) throw new BillingServiceError('Company not found.', 404);
+
+    if (payload.trip_id) {
+      const trip = await query(
+        'SELECT id, company_id FROM trips WHERE id = $1 AND organization_id = $2',
+        [payload.trip_id, orgId]
+      );
+      if (trip.rows.length === 0) {
+        throw new BillingServiceError(`Trip with ID ${payload.trip_id} not found.`, 404);
+      }
+      if (trip.rows[0].company_id && String(trip.rows[0].company_id) !== String(companyId)) {
+        throw new BillingServiceError(
+          'That trip belongs to a different customer, so the charge cannot ride on this statement.',
+          400
+        );
+      }
+    }
+
+    return Charge.create({ ...payload, organization_id: orgId, company_id: Number(companyId) });
+  },
+
+  updateCharge: async (orgId, id, payload) => {
+    const charge = await Charge.findById(id, orgId);
+    if (!charge) throw new BillingServiceError('Charge not found.', 404);
+    if (charge.billing_status === 'Billed') {
+      throw new BillingServiceError(
+        `This charge is already on issued statement ${charge.bill_id}, so it cannot be changed. ` +
+          'Void that statement first if it was raised in error.',
+        409
+      );
+    }
+
+    if (payload.trip_id) {
+      const trip = await query(
+        'SELECT id, organization_id, company_id FROM trips WHERE id = $1 AND organization_id = $2',
+        [payload.trip_id, orgId]
+      );
+      if (trip.rows.length === 0) {
+        throw new BillingServiceError(`Trip with ID ${payload.trip_id} not found.`, 404);
+      }
+      if (trip.rows[0].company_id && String(trip.rows[0].company_id) !== String(charge.company_id)) {
+        throw new BillingServiceError('That trip belongs to a different customer.', 400);
+      }
+    }
+
+    const updated = await Charge.update(id, payload, orgId);
+    if (!updated) throw new BillingServiceError('Charge not found or already issued.', 404);
+    return updated;
+  },
+
+  deleteCharge: async (orgId, id) => {
+    const charge = await Charge.findById(id, orgId);
+    if (!charge) throw new BillingServiceError('Charge not found.', 404);
+    if (charge.billing_status === 'Billed') {
+      throw new BillingServiceError(
+        `This charge is already on issued statement ${charge.bill_id}; void that statement first.`,
+        409
+      );
+    }
+    const deleted = await Charge.delete(id, orgId);
+    if (!deleted) throw new BillingServiceError('Charge not found.', 404);
+    return deleted;
+  },
+
+  listCharges: async (orgId, { company_id, billing_status } = {}) =>
+    Charge.findAll({
+      organization_id: orgId,
+      company_id: company_id ? Number(company_id) : undefined,
+      billing_status
+    }),
 
   listBills: async (orgId, { company_id, status } = {}) =>
     Bill.findAll({
@@ -200,36 +310,43 @@ const billingService = {
     return bill;
   },
 
-  generateBill: async (orgId, { company_id, statuses, trip_ids, note, bill_date }) => {
+  /**
+   * Issue the customer's open statement: one atomic action that snapshots
+   * every pending line (trips and charges) into a numbered document, so there
+   * is no way to issue half of the work by mistake. Everything pending is
+   * included unless explicit ids narrow it down.
+   */
+  issueStatement: async (orgId, { company_id, statuses, trip_ids, charge_ids, note, bill_date }) => {
     const allowed = normalizeStatuses(statuses);
 
     // Ownership first: a company belonging to another organization must read
-    // as "not found" (404), never as "nothing to bill" (400), which would
+    // as "not found" (404), never as "nothing to issue" (400), which would
     // confirm the row exists to a stranger.
     const company = await Company.findById(Number(company_id), orgId);
     if (!company) throw new BillingServiceError('Company not found.', 404);
 
-    // Same pool the preview showed, so an empty bill explains itself rather
-    // than failing with a generic message.
+    // Same pool the statement showed, so an empty statement explains itself
+    // rather than failing with a generic message.
     const trips = await Bill.findUnbilledTrips(orgId, Number(company_id));
     const pool = buildPool(trips, allowed);
+    const charges = await Charge.findUnbilled(orgId, Number(company_id));
 
-    if (pool.billable.length === 0) {
+    if (pool.billable.length === 0 && charges.length === 0) {
       if (pool.waiting.length > 0) {
         throw new BillingServiceError(
-          `${pool.waiting.length} unbilled trip(s) for this company are not in a billable status yet ` +
-            `(currently billable: ${allowed.join(', ')}). Complete them, or include their status when generating.`,
+          `${pool.waiting.length} unbilled trip(s) for this customer are not in a billable status yet ` +
+            `(currently billable: ${allowed.join(', ')}). Complete them, or include their status when issuing.`,
           400
         );
       }
-      if (pool.unpriced.length > 0 && pool.billable.length === 0) {
+      if (pool.unpriced.length > 0) {
         throw new BillingServiceError(
-          `${pool.unpriced.length} unbilled trip(s) for this company have no fare, so there is nothing to bill.`,
+          `${pool.unpriced.length} unbilled trip(s) for this customer have no fare, so there is nothing to issue.`,
           400
         );
       }
       throw new BillingServiceError(
-        'Nothing to bill: this company has no unbilled trips left.',
+        'Nothing to issue: this customer has no pending trips or charges.',
         400
       );
     }
@@ -239,10 +356,14 @@ const billingService = {
       company_id: Number(company_id),
       statuses: allowed,
       trip_ids: Array.isArray(trip_ids) && trip_ids.length > 0 ? trip_ids.map(Number) : null,
+      charge_ids: Array.isArray(charge_ids) && charge_ids.length > 0 ? charge_ids.map(Number) : null,
       note: note || null,
       bill_date: bill_date || null
     });
   },
+
+  // Kept so existing callers/tests keep working: issuing == the old generate.
+  generateBill: async (orgId, payload) => billingService.issueStatement(orgId, payload),
 
   recordPayment: async (orgId, billId, { amount, mode, payment_date, note }) =>
     Bill.recordPayment({

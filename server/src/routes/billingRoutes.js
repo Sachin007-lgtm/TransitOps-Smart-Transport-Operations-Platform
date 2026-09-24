@@ -9,6 +9,12 @@ const {
   updateCompany,
   deleteCompany,
   getUnbilledTrips,
+  getStatement,
+  issueStatement,
+  createCharge,
+  getAllCharges,
+  updateCharge,
+  deleteCharge,
   getAllBills,
   getBillById,
   generateBill,
@@ -22,6 +28,10 @@ const {
   validateGenerateBill,
   validateRecordPayment
 } = require('../validators/billingValidator');
+const {
+  validateCreateCharge,
+  validateUpdateCharge
+} = require('../validators/chargeValidator');
 
 // All billing endpoints require a valid JWT (via authenticate) and are scoped
 // to the caller's organization inside the service layer.
@@ -46,6 +56,38 @@ router.route('/companies/:id')
 // ?statuses=Completed,Dispatched widens it beyond the default.
 router.route('/companies/:companyId/unbilled')
   .get(authorize(READ_ROLES), getUnbilledTrips);
+
+// The customer's OPEN STATEMENT: pending trips + charges + the ledger
+// (previous balance -> this period -> closing), and the one action that turns
+// it into a numbered document.
+router.route('/companies/:companyId/statement')
+  .get(authorize(READ_ROLES), getStatement);
+
+// The issue route carries the customer in the path; the validator it shares
+// with POST /bills expects it in the body.
+const companyFromParams = (req, res, next) => {
+  const fromPath = req.params.companyId;
+  if (fromPath && (req.body.company_id === undefined || req.body.company_id === null || req.body.company_id === '')) {
+    req.body.company_id = Number(fromPath);
+  }
+  next();
+};
+
+router.route('/companies/:companyId/statement/issue')
+  .post(authorize(WRITE_ROLES), companyFromParams, validateGenerateBill, issueStatement);
+
+// Charges that ride on a statement: tolls, loading/unloading, detention,
+// driver allowance, misc.
+router.route('/companies/:companyId/charges')
+  .post(authorize(WRITE_ROLES), validateCreateCharge, createCharge);
+
+router.route('/charges')
+  .get(authorize(READ_ROLES), getAllCharges);
+
+router.route('/charges/:id')
+  .patch(authorize(WRITE_ROLES), validateUpdateCharge, updateCharge)
+  .put(authorize(WRITE_ROLES), validateUpdateCharge, updateCharge)
+  .delete(authorize(WRITE_ROLES), deleteCharge);
 
 // --- Bills ---
 router.route('/bills')

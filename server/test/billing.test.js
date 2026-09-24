@@ -623,7 +623,7 @@ describe('TransitOps Company Billing Backend Tests', () => {
     assert.ok(html.includes('&#60;script&#62;'), 'script tag must be escaped, not emitted');
     assert.ok(!html.includes('<script>alert(1)</script>'), 'raw customer markup must not survive');
     assert.ok(html.includes('A &#38; B'), 'ampersand must be escaped');
-    assert.match(html, /Balance due/, 'the ledger total block must be present');
+    assert.match(html, /Closing balance/, 'the ledger total block must be present');
   });
 
   // ---------------------------------------------------------------------

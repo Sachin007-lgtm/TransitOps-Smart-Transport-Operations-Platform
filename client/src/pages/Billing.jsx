@@ -9,13 +9,17 @@ import {
   X,
   IndianRupee,
   Receipt,
-  Check
+  Check,
+  Edit2
 } from 'lucide-react';
 import { apiRequest, apiOpenDocument } from '../utils/api';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import './Billing.css';
 
 const PAYMENT_MODES = ['Cash', 'UPI', 'NEFT', 'IMPS', 'RTGS', 'Cheque', 'Bank Transfer', 'Other'];
+
+// Charge types that can ride on a statement. The API enforces the same list.
+const CHARGE_KINDS = ['TOLL', 'LOADING', 'UNLOADING', 'DETENTION', 'DRIVER_ALLOWANCE', 'MISC'];
 
 // Trips a bill is composed from. Completed is the rule: a fare is only owed
 // once the work is done. The wider list behind the override tick exists for
@@ -69,7 +73,17 @@ export default function Billing() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [includeInProgress, setIncludeInProgress] = useState(false);
   const [selectedTripIds, setSelectedTripIds] = useState([]);
+  const [selectedChargeIds, setSelectedChargeIds] = useState([]);
   const [note, setNote] = useState('');
+  // The charge form doubles as the editor: editingChargeId set means the same
+  // fields are updating an existing (still unbilled) charge.
+  const [chargeForm, setChargeForm] = useState({
+    id: null,
+    kind: 'TOLL',
+    description: '',
+    amount: '',
+    charge_date: today()
+  });
 
   // Bill detail drawer.
   const [openBill, setOpenBill] = useState(null);
@@ -112,6 +126,7 @@ export default function Billing() {
       setPreview(res.data);
       // Default to billing everything that is ready; the owner can untick rows.
       setSelectedTripIds((res.data.billable || []).map((t) => t.id));
+      setSelectedChargeIds((res.data.charges?.billable || []).map((c) => c.id));
     } catch (err) {
       setError(err.message);
       setPreview(null);
@@ -152,25 +167,84 @@ export default function Billing() {
     );
   };
 
-  const handleGenerate = async () => {
+  const toggleCharge = (id) => {
+    setSelectedChargeIds((current) =>
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+    );
+  };
+
+  const resetChargeForm = () =>
+    setChargeForm({ id: null, kind: 'TOLL', description: '', amount: '', charge_date: today() });
+
+  // Add a charge to the open statement, or save the one being edited.
+  const handleSaveCharge = async (e) => {
+    e.preventDefault();
+    if (!companyId || !chargeForm.description.trim() || !chargeForm.amount) return;
+
+    setBusy(true);
+    try {
+      const body = {
+        description: chargeForm.description.trim(),
+        amount: parseFloat(chargeForm.amount),
+        kind: chargeForm.kind,
+        charge_date: chargeForm.charge_date || undefined
+      };
+      if (chargeForm.id) {
+        await apiRequest('PATCH', `/billing/charges/${chargeForm.id}`, body);
+        showToast('Charge updated.');
+      } else {
+        await apiRequest('POST', `/billing/companies/${companyId}/charges`, body);
+        showToast('Charge added to the open statement.');
+      }
+      resetChargeForm();
+      await loadPreview(companyId, statuses);
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteCharge = async (charge) => {
+    if (!window.confirm(`Remove "${charge.description}" from the open statement?`)) return;
+    setBusy(true);
+    try {
+      await apiRequest('DELETE', `/billing/charges/${charge.id}`);
+      showToast('Charge removed.');
+      if (chargeForm.id === charge.id) resetChargeForm();
+      await loadPreview(companyId, statuses);
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Issue the open statement: one action that turns everything pending into a
+   * numbered document. Nothing here can raise a half-statement by accident —
+   * everything pending is included unless the owner unticked a line.
+   */
+  const handleIssueStatement = async () => {
     if (!companyId) return;
-    const billable = preview?.billable || [];
-    if (selectedTripIds.length === 0) {
-      showToast('Select at least one trip to bill.');
+    const trips = preview?.billable || [];
+    const charges = preview?.charges?.billable || [];
+    if (selectedTripIds.length + selectedChargeIds.length === 0) {
+      showToast('Nothing selected to issue.');
       return;
     }
 
     setBusy(true);
     try {
-      const allSelected = selectedTripIds.length === billable.length;
-      const res = await apiRequest('POST', '/billing/bills', {
-        company_id: companyId,
+      const allTrips = selectedTripIds.length === trips.length;
+      const allCharges = selectedChargeIds.length === charges.length;
+      const res = await apiRequest('POST', `/billing/companies/${companyId}/statement/issue`, {
         note: note.trim() || undefined,
         statuses,
-        // Only send an explicit subset when the owner unticked something.
-        trip_ids: allSelected ? undefined : selectedTripIds
+        trip_ids: allTrips ? undefined : selectedTripIds,
+        charge_ids: allCharges ? undefined : selectedChargeIds
       });
-      showToast(`Bill ${res.data.bill_no} generated.`);
+      showToast(`Statement ${res.data.bill_no} issued.`);
       setNote('');
       await refreshAll();
       setOpenBill(res.data);
@@ -268,15 +342,23 @@ export default function Billing() {
   );
 
   const pool = preview || { billable: [], waiting: [], unpriced: [], totals: {}, projected: {} };
+  const ledger = preview?.ledger || {
+    previous_balance: preview?.previous_balance || 0,
+    fares: preview?.projected?.subtotal || 0,
+    charges: preview?.projected?.charges_total || 0,
+    advances: preview?.projected?.total_advance || 0,
+    closing_balance: preview?.projected?.balance_due || 0
+  };
+  const pendingCharges = preview?.charges?.billable || [];
+  const selectedFares = (pool.billable || [])
+    .filter((t) => selectedTripIds.includes(t.id))
+    .reduce((sum, t) => sum + parseFloat(t.revenue || 0), 0);
+  const selectedChargeTotal = pendingCharges
+    .filter((c) => selectedChargeIds.includes(c.id))
+    .reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
   // Newest bill for the selected customer (the list arrives newest first) —
   // shown in the "all caught up" state so the owner can jump to what is owed.
   const latestBill = companyId ? bills.find((b) => b.company_id === companyId) : null;
-  const selectedTotal = (pool.billable || [])
-    .filter((t) => selectedTripIds.includes(t.id))
-    .reduce((sum, t) => sum + parseFloat(t.revenue || 0), 0);
-  const selectedAdvance = (pool.billable || [])
-    .filter((t) => selectedTripIds.includes(t.id))
-    .reduce((sum, t) => sum + parseFloat(t.advance_received || 0), 0);
 
   return (
     <div className="billing-page">
@@ -284,7 +366,8 @@ export default function Billing() {
         <div>
           <h1 className="text-2xl heading">Billing</h1>
           <p className="page-subtitle">
-            Every trip of a company is compiled into one bill. Trips already on a bill drop out of the pool.
+            Each customer has one open statement: it always shows their unbilled trips and charges, and
+            issuing it turns them into a numbered document.
           </p>
         </div>
         <div className="header-actions">
@@ -435,26 +518,28 @@ export default function Billing() {
                 )}
               </div>
 
-              <div className="stat-strip">
-                <div className="stat">
-                  <span className="stat-label">Billable trips</span>
-                  <span className="stat-value">{pool.totals.billable_count ?? 0}</span>
+              {/* The statement ledger, exactly as the paper statement reads
+                  it: previous balance -> this period -> closing balance. */}
+              <div className="ledger-block">
+                <div className="ledger-row">
+                  <span>Previous balance (issued, not yet settled)</span>
+                  <span className="num">{money(ledger.previous_balance)}</span>
                 </div>
-                <div className="stat">
-                  <span className="stat-label">Fares</span>
-                  <span className="stat-value">{money(pool.totals.billable_amount)}</span>
+                <div className="ledger-row">
+                  <span>Fares this period ({pool.billable.length} trip{pool.billable.length === 1 ? '' : 's'})</span>
+                  <span className="num">{money(ledger.fares)}</span>
                 </div>
-                <div className="stat">
-                  <span className="stat-label">Advances</span>
-                  <span className="stat-value">{money(pool.totals.billable_advance)}</span>
+                <div className="ledger-row">
+                  <span>Other charges ({pendingCharges.length})</span>
+                  <span className="num">{money(ledger.charges)}</span>
                 </div>
-                <div className="stat">
-                  <span className="stat-label">Previous balance</span>
-                  <span className="stat-value">{money(preview.previous_balance)}</span>
+                <div className="ledger-row">
+                  <span>Less: advances received</span>
+                  <span className="num">− {money(ledger.advances)}</span>
                 </div>
-                <div className="stat highlight">
-                  <span className="stat-label">Balance due if billed now</span>
-                  <span className="stat-value">{money(pool.projected.balance_due)}</span>
+                <div className="ledger-row closing">
+                  <span>Closing balance</span>
+                  <span className="num">{money(ledger.closing_balance)}</span>
                 </div>
               </div>
 
@@ -522,36 +607,165 @@ export default function Billing() {
 
               {/* (No-fare trips are reported in the note above.) */}
 
-              {pool.billable.length > 0 ? (
+              {/* Other expenses that ride on the statement: tolls, loading,
+                  detention, driver allowance. They live on the open statement
+                  until it is issued, and are frozen inside it afterwards. */}
+              <div className="charges-block">
+                <h3 className="sub-heading">Other charges</h3>
+
+                {pendingCharges.length > 0 ? (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '34px' }} />
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Type</th>
+                        <th className="num">Amount</th>
+                        <th style={{ width: '70px' }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingCharges.map((c) => (
+                        <tr key={c.id} className={selectedChargeIds.includes(c.id) ? '' : 'row-muted'}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedChargeIds.includes(c.id)}
+                              onChange={() => toggleCharge(c.id)}
+                            />
+                          </td>
+                          <td>{fmtDate(c.charge_date)}</td>
+                          <td>{c.description}</td>
+                          <td>{String(c.kind || 'MISC').replace(/_/g, ' ').toLowerCase()}</td>
+                          <td className="num">{money(c.amount)}</td>
+                          <td className="row-actions">
+                            <button
+                              className="icon-btn"
+                              title="Edit this charge"
+                              onClick={() =>
+                                setChargeForm({
+                                  id: c.id,
+                                  kind: c.kind || 'MISC',
+                                  description: c.description,
+                                  amount: c.amount,
+                                  charge_date: c.charge_date || today()
+                                })
+                              }
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              className="icon-btn billing-icon-danger"
+                              title="Remove from the open statement"
+                              onClick={() => handleDeleteCharge(c)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="muted-note">No charges on this statement yet.</p>
+                )}
+
+                <form className="charge-form" onSubmit={handleSaveCharge}>
+                  <div className="form-row-4">
+                    <div className="field-wrap">
+                      <label className="field-label">Date</label>
+                      <input
+                        type="date"
+                        className="input"
+                        value={chargeForm.charge_date}
+                        onChange={(e) => setChargeForm({ ...chargeForm, charge_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="field-wrap">
+                      <label className="field-label">Type</label>
+                      <select
+                        className="input"
+                        value={chargeForm.kind}
+                        onChange={(e) => setChargeForm({ ...chargeForm, kind: e.target.value })}
+                      >
+                        {CHARGE_KINDS.map((k) => (
+                          <option key={k} value={k}>
+                            {k.replace(/_/g, ' ').toLowerCase()}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field-wrap">
+                      <label className="field-label">Description</label>
+                      <input
+                        className="input"
+                        value={chargeForm.description}
+                        onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
+                        placeholder="e.g. Toll — Manesar to Ahmedabad"
+                      />
+                    </div>
+                    <div className="field-wrap">
+                      <label className="field-label">Amount (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="input"
+                        value={chargeForm.amount}
+                        onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="charge-form-actions">
+                    {chargeForm.id && (
+                      <button type="button" className="btn btn-outline" onClick={resetChargeForm}>
+                        Cancel edit
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={busy || !chargeForm.description.trim() || !chargeForm.amount}
+                    >
+                      <Plus size={14} /> {chargeForm.id ? 'Save charge' : 'Add charge'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {pool.billable.length + pendingCharges.length > 0 ? (
                 <div className="builder-footer">
                   <input
                     className="input"
-                    placeholder="Note on this bill (optional)"
+                    placeholder="Note on this statement (optional)"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
                   <div className="generate-summary">
                     <span>
-                      {selectedTripIds.length} of {pool.billable.length} trips · {money(selectedTotal)} fares ·{' '}
-                      {money(selectedAdvance)} advances
+                      {selectedTripIds.length} of {pool.billable.length} trips ·{' '}
+                      {selectedChargeIds.length} of {pendingCharges.length} charges ·{' '}
+                      {money(selectedFares)} fares + {money(selectedChargeTotal)} charges selected
                     </span>
                     <button
                       className="btn btn-primary"
-                      onClick={handleGenerate}
-                      disabled={busy || selectedTripIds.length === 0}
+                      onClick={handleIssueStatement}
+                      disabled={busy || selectedTripIds.length + selectedChargeIds.length === 0}
                     >
-                      <FileText size={15} /> Generate bill
+                      <FileText size={15} /> Issue statement
                     </button>
                   </div>
                 </div>
               ) : (
-                /* Everything this customer owes is already on a bill, so there
-                   is deliberately no way to raise another one: a second bill
-                   with no new trips would only duplicate what they owe. */
+                /* Everything this customer owes is already on an issued
+                   document, so there is deliberately nothing to issue: a
+                   statement with no new lines would only repeat what they owe. */
                 <div className="builder-caughtup">
                   <Check size={16} />
                   <div>
-                    <b>All caught up.</b> Every billable trip for this customer is already on a bill.
+                    <b>All caught up.</b> Every billable trip and charge for this customer is already on an
+                    issued statement.
                     {latestBill && (
                       <>
                         {' '}
@@ -619,7 +833,7 @@ export default function Billing() {
             {!loading && visibleBills.length === 0 && (
               <tr>
                 <td colSpan={9} className="muted-note">
-                  No bills yet. Select a customer above and generate the first one.
+                  No statements issued yet. Select a customer above and issue their first one.
                 </td>
               </tr>
             )}
@@ -669,21 +883,53 @@ export default function Billing() {
                 </tbody>
               </table>
 
+              {(openBill.charges || []).length > 0 && (
+                <>
+                  <h4 className="sub-heading">Other charges</h4>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Type</th>
+                        <th className="num">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {openBill.charges.map((c) => (
+                        <tr key={c.id}>
+                          <td>{fmtDate(c.charge_date)}</td>
+                          <td>{c.description}</td>
+                          <td>{String(c.kind || 'MISC').replace(/_/g, ' ').toLowerCase()}</td>
+                          <td className="num">{money(c.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+
               <div className="totals-block">
                 <div className="totals-row">
                   <span>Previous balance</span>
                   <span>{money(openBill.previous_balance)}</span>
                 </div>
                 <div className="totals-row">
-                  <span>Subtotal (this bill)</span>
+                  <span>Fares this period</span>
                   <span>{money(openBill.subtotal)}</span>
                 </div>
+                {parseFloat(openBill.charges_total || 0) !== 0 && (
+                  <div className="totals-row">
+                    <span>Other charges</span>
+                    <span>{money(openBill.charges_total)}</span>
+                  </div>
+                )}
                 <div className="totals-row">
                   <span>Less: advances received</span>
                   <span>− {money(openBill.total_advance)}</span>
                 </div>
                 <div className="totals-row due">
-                  <span>Balance due</span>
+                  <span>Closing balance</span>
                   <span>{money(openBill.balance_due)}</span>
                 </div>
                 <div className="totals-row">

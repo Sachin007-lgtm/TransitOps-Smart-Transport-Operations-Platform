@@ -14,10 +14,10 @@ const isStatusList = (val) => {
   return null;
 };
 
-const isTripIdList = (val) => {
+const isIdList = (val) => {
   if (!Array.isArray(val)) return 'must be an array of trip ids.';
   if (val.some((id) => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
-    return 'must contain positive trip ids.';
+    return 'must contain positive ids.';
   }
   return null;
 };
@@ -49,7 +49,8 @@ const generateBillSchema = {
   note: { required: false, type: 'string' },
   bill_date: { required: false, type: 'date' },
   statuses: { required: false, custom: isStatusList },
-  trip_ids: { required: false, custom: isTripIdList }
+  trip_ids: { required: false, custom: isIdList },
+  charge_ids: { required: false, custom: isIdList }
 };
 
 const recordPaymentSchema = {

@@ -80,6 +80,81 @@ const getUnbilledTrips = asyncWrapper(async (req, res) => {
   }
 });
 
+// The trips and charges still waiting on this customer's open statement, plus
+// the ledger the statement prints: previous balance -> this period -> closing.
+const getStatement = asyncWrapper(async (req, res) => {
+  try {
+    const statement = await billingService.getStatement(
+      req.user.organization_id,
+      req.params.companyId,
+      req.query.statuses
+    );
+    return apiResponse.success(res, statement, 'Statement retrieved successfully.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+// Issue the open statement: snapshots every pending line into a numbered
+// document. Same operation as POST /bills, named for what it does.
+const issueStatement = asyncWrapper(async (req, res) => {
+  try {
+    const bill = await billingService.issueStatement(req.user.organization_id, {
+      ...req.body,
+      company_id: req.body.company_id || req.params.companyId
+    });
+    return apiResponse.success(res, bill, `Statement ${bill.bill_no} issued.`, 201);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+// --- Charges (tolls, loading, detention, ...) ----------------------------
+
+const createCharge = asyncWrapper(async (req, res) => {
+  try {
+    const charge = await billingService.createCharge(
+      req.user.organization_id,
+      req.params.companyId,
+      req.body
+    );
+    return apiResponse.success(res, charge, 'Charge added to the open statement.', 201);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+const getAllCharges = asyncWrapper(async (req, res) => {
+  try {
+    const charges = await billingService.listCharges(req.user.organization_id, req.query);
+    return apiResponse.success(res, charges, 'Charges retrieved successfully.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+const updateCharge = asyncWrapper(async (req, res) => {
+  try {
+    const charge = await billingService.updateCharge(
+      req.user.organization_id,
+      req.params.id,
+      req.body
+    );
+    return apiResponse.success(res, charge, 'Charge updated successfully.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+const deleteCharge = asyncWrapper(async (req, res) => {
+  try {
+    const deleted = await billingService.deleteCharge(req.user.organization_id, req.params.id);
+    return apiResponse.success(res, deleted, 'Charge removed from the open statement.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 const getAllBills = asyncWrapper(async (req, res) => {
   try {
     const bills = await billingService.listBills(req.user.organization_id, req.query);
@@ -149,6 +224,12 @@ module.exports = {
   updateCompany,
   deleteCompany,
   getUnbilledTrips,
+  getStatement,
+  issueStatement,
+  createCharge,
+  getAllCharges,
+  updateCharge,
+  deleteCharge,
   getAllBills,
   getBillById,
   generateBill,
