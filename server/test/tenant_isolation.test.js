@@ -38,8 +38,12 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     tokenManagerB = createToken({ id: 902, email: 'mgrB@iso.com', role: 'Fleet Manager', organization_id: orgB });
     tokenNoOrg = jwt.sign({ id: 903, email: 'noorg@iso.com', role: 'Fleet Manager' }, JWT_SECRET, { expiresIn: '1h' });
 
-    // Clean test data
+    // Clean test data.
+    // Users first: creating a driver through the API provisions a login
+    // account for it, and organizations cannot be deleted while a user row
+    // still points at them (fk_users_organization).
     await query("DELETE FROM trips WHERE organization_id IN ($1, $2)", [orgA, orgB]);
+    await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM drivers WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM vehicles WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM organizations WHERE id IN ($1, $2)", [orgA, orgB]);
@@ -63,6 +67,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
 
   after(async () => {
     await query("DELETE FROM trips WHERE organization_id IN ($1, $2)", [orgA, orgB]);
+    await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM drivers WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM vehicles WHERE organization_id IN ($1, $2)", [orgA, orgB]);
     await query("DELETE FROM organizations WHERE id IN ($1, $2)", [orgA, orgB]);
@@ -215,9 +220,9 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     try {
       await query(`
         INSERT INTO trips (
-          origin, destination, planned_route, cargo_weight, planned_distance, start_time, expected_arrival
+          origin, destination, planned_route, cargo_weight, start_time, expected_arrival
         ) VALUES (
-          'Test Origin', 'Test Dest', 'Route 1', 100, 50, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour'
+          'Test Origin', 'Test Dest', 'Route 1', 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour'
         )
       `);
       assert.fail('Expected insert omitting organization_id to fail');
@@ -548,11 +553,11 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     await query(`
       INSERT INTO trips (
         organization_id, origin, destination, planned_route,
-        vehicle_id, cargo_weight, planned_distance, actual_distance,
+        vehicle_id, cargo_weight, actual_distance,
         start_time, expected_arrival, actual_arrival, status
       ) VALUES (
         $1, 'Point A', 'Point B', 'Route 1',
-        $2, 100, 50, 50,
+        $2, 100, 50,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', CURRENT_TIMESTAMP + INTERVAL '1 hour', 'Completed'
       )
     `, [orgA, testVehicleAId]);
@@ -565,11 +570,11 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     await query(`
       INSERT INTO trips (
         organization_id, origin, destination, planned_route,
-        vehicle_id, cargo_weight, planned_distance,
+        vehicle_id, cargo_weight,
         start_time, expected_arrival, status
       ) VALUES (
         $1, 'Point A', 'Point C', 'Route 2',
-        $2, 100, 50,
+        $2, 100,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', 'Cancelled'
       )
     `, [orgA, testVehicleAId]);
@@ -578,11 +583,11 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     await query(`
       INSERT INTO trips (
         organization_id, origin, destination, planned_route,
-        vehicle_id, cargo_weight, planned_distance,
+        vehicle_id, cargo_weight,
         start_time, expected_arrival, status
       ) VALUES (
         $1, 'Point A', 'Point D', 'Route 3',
-        $2, 100, 50,
+        $2, 100,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', 'Dispatched'
       )
     `, [orgA, testVehicleAId]);
