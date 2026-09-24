@@ -110,6 +110,10 @@ export async function getLastBackgroundLocation(): Promise<LastBackgroundLocatio
   }
 }
 
+export async function saveLastBackgroundLocation(location: LastBackgroundLocation): Promise<void> {
+  await SecureStore.setItemAsync(LAST_BACKGROUND_LOCATION_KEY, JSON.stringify(location));
+}
+
 export async function getCurrentPosition(): Promise<Coordinates | null> {
   try {
     const location = await Location.getCurrentPositionAsync({
