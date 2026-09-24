@@ -871,6 +871,46 @@ export default function TripDispatcher() {
                     </div>
                   )}
 
+                  {/* Lifecycle actions. A trip only becomes billable once it
+                      is Completed, so the path to Completed has to be
+                      reachable from here — these were missing entirely and
+                      trips could never leave 'Assigned'. */}
+                  <div className="tc-actions-row" onClick={e => e.stopPropagation()}>
+                    {(t.status === 'Draft' || t.status === 'Planned') && (
+                      <button
+                        className="tc-act"
+                        onClick={() => setAssignModal({
+                          open: true,
+                          trip: t,
+                          vehicleId: t.vehicle_id || '',
+                          driverId: t.driver_id || ''
+                        })}
+                      >
+                        <Truck size={12} /> Assign vehicle &amp; driver
+                      </button>
+                    )}
+
+                    {t.status === 'Assigned' && (
+                      <button className="tc-act" onClick={() => handleAdvanceStatus(t, 'Dispatched')}>
+                        <Navigation size={12} /> Dispatch
+                      </button>
+                    )}
+
+                    {t.status === 'Dispatched' && (
+                      <button
+                        className="tc-act primary"
+                        onClick={() => setCompleteModal({
+                          open: true,
+                          trip: t,
+                          actualDistance: t.actual_distance || t.planned_distance || '',
+                          actualArrival: ''
+                        })}
+                      >
+                        <Check size={12} /> Mark Completed
+                      </button>
+                    )}
+                  </div>
+
                   <div className="tc-progress-wrap">
                     <span className="tc-start-dot" />
                     <div className="tc-progress-track">
@@ -1077,7 +1117,7 @@ export default function TripDispatcher() {
                 <label className="field-label">Select Vehicle</label>
                 <select className="field-select" value={assignModal.vehicleId} onChange={e => setAssignModal({ ...assignModal, vehicleId: e.target.value })}>
                   <option value="">Select vehicle...</option>
-                  {vehicles.map(v => (
+                  {vehicles.filter(v => v.status === 'Available').map(v => (
                     <option key={v.id} value={v.id}>{v.name} ({v.type})</option>
                   ))}
                 </select>
@@ -1086,7 +1126,7 @@ export default function TripDispatcher() {
                 <label className="field-label">Select Driver</label>
                 <select className="field-select" value={assignModal.driverId} onChange={e => setAssignModal({ ...assignModal, driverId: e.target.value })}>
                   <option value="">Select driver...</option>
-                  {drivers.map(d => (
+                  {drivers.filter(d => d.status === 'Available').map(d => (
                     <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
                   ))}
                 </select>
@@ -1097,12 +1137,19 @@ export default function TripDispatcher() {
               <button className="btn-submit" onClick={async () => {
                 if (!assignModal.vehicleId || !assignModal.driverId) return;
                 try {
-                  await apiRequest('PATCH', `/trips/${assignModal.trip.id}/status`, {
-                    status: 'Assigned',
+                  const tripId = assignModal.trip.id;
+                  // Resources go through the trip update endpoint. The status
+                  // endpoint accepts only a status (plus actuals), so sending
+                  // vehicle_id/driver_id there did nothing and the Assigned
+                  // transition then failed for lack of assigned resources.
+                  await apiRequest('PATCH', `/trips/${tripId}`, {
                     vehicle_id: Number(assignModal.vehicleId),
                     driver_id: Number(assignModal.driverId)
                   });
-                  showToast(`Trip #${assignModal.trip.id} assigned!`);
+                  if (assignModal.trip.status === 'Draft' || assignModal.trip.status === 'Planned') {
+                    await apiRequest('PATCH', `/trips/${tripId}/status`, { status: 'Assigned' });
+                  }
+                  showToast(`Trip #${tripId} assigned!`);
                   setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
                   await loadData(true);
                 } catch(e) { showToast(`Error: ${e.message}`); }

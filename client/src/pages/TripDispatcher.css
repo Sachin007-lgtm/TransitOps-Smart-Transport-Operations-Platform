@@ -1688,3 +1688,36 @@
   color: var(--text);
   font-weight: 500;
 }
+
+/* Lifecycle actions on a trip card (Assign / Dispatch / Mark Completed) */
+.tc-actions-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tc-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tc-act:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-app);
+}
+
+.tc-act.primary {
+  border-color: var(--green);
+  background: var(--green-bg);
+  color: var(--green);
+}

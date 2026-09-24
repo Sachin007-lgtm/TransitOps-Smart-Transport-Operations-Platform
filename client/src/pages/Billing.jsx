@@ -17,10 +17,11 @@ import './Billing.css';
 
 const PAYMENT_MODES = ['Cash', 'UPI', 'NEFT', 'IMPS', 'RTGS', 'Cheque', 'Bank Transfer', 'Other'];
 
-// Trips a bill is composed from by default. Widening this list pulls trips
-// that are still on the road into the bill.
+// Trips a bill is composed from. Completed is the rule: a fare is only owed
+// once the work is done. The wider list behind the override tick exists for
+// the cases the owner knows are finished but has not closed in the app yet.
 const DEFAULT_STATUSES = ['Completed'];
-const WIDENED_STATUSES = ['Completed', 'Dispatched'];
+const INCLUDE_IN_PROGRESS_STATUSES = ['Completed', 'Dispatched', 'Assigned', 'Planned'];
 
 function money(value) {
   const n = parseFloat(value || 0);
@@ -85,7 +86,7 @@ export default function Billing() {
     opening_balance: ''
   });
 
-  const statuses = includeInProgress ? WIDENED_STATUSES : DEFAULT_STATUSES;
+  const statuses = includeInProgress ? INCLUDE_IN_PROGRESS_STATUSES : DEFAULT_STATUSES;
 
   const loadCompanies = useCallback(async () => {
     const res = await apiRequest('GET', '/billing/companies');
@@ -422,7 +423,7 @@ export default function Billing() {
                     checked={includeInProgress}
                     onChange={(e) => setIncludeInProgress(e.target.checked)}
                   />
-                  Include trips still on the road (Dispatched)
+                  Include trips that are not completed yet (Planned, Assigned, Dispatched)
                 </label>
               </div>
 
