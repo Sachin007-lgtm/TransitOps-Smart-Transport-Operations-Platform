@@ -268,6 +268,9 @@ export default function Billing() {
   );
 
   const pool = preview || { billable: [], waiting: [], unpriced: [], totals: {}, projected: {} };
+  // Newest bill for the selected customer (the list arrives newest first) —
+  // shown in the "all caught up" state so the owner can jump to what is owed.
+  const latestBill = companyId ? bills.find((b) => b.company_id === companyId) : null;
   const selectedTotal = (pool.billable || [])
     .filter((t) => selectedTripIds.includes(t.id))
     .reduce((sum, t) => sum + parseFloat(t.revenue || 0), 0);
@@ -417,14 +420,19 @@ export default function Billing() {
                 <h2 className="panel-title">
                   <Receipt size={15} /> {preview.company?.name}
                 </h2>
-                <label className="toggle-inline">
-                  <input
-                    type="checkbox"
-                    checked={includeInProgress}
-                    onChange={(e) => setIncludeInProgress(e.target.checked)}
-                  />
-                  Include trips that are not completed yet (Planned, Assigned, Dispatched)
-                </label>
+                {/* Only offered when it could actually add something: a
+                    customer whose trips are all billed has nothing to
+                    generate, so the control is not shown at all. */}
+                {(pool.waiting.length > 0 || includeInProgress) && (
+                  <label className="toggle-inline">
+                    <input
+                      type="checkbox"
+                      checked={includeInProgress}
+                      onChange={(e) => setIncludeInProgress(e.target.checked)}
+                    />
+                    Also bill trips that are not completed yet (Planned, Assigned, Dispatched)
+                  </label>
+                )}
               </div>
 
               <div className="stat-strip">
@@ -452,11 +460,12 @@ export default function Billing() {
 
               {previewLoading && <p className="muted-note">Loading trips…</p>}
 
-              {pool.billable.length === 0 && !previewLoading && (
+              {pool.billable.length === 0 && !previewLoading && (pool.waiting.length > 0 || pool.unpriced.length > 0) && (
                 <p className="muted-note">
-                  Nothing ready to bill. {pool.waiting.length > 0 && `${pool.waiting.length} trip(s) are still in
-                  progress — tick the box above to bill them.`}
-                  {pool.unpriced.length > 0 && ` ${pool.unpriced.length} trip(s) have no fare yet.`}
+                  {pool.waiting.length > 0 &&
+                    `${pool.waiting.length} trip(s) are not finished yet, so their fares are not billable. `}
+                  {pool.unpriced.length > 0 &&
+                    `${pool.unpriced.length} trip(s) have no fare recorded yet.`}
                 </p>
               )}
 
@@ -513,33 +522,50 @@ export default function Billing() {
                 </div>
               )}
 
-              {pool.unpriced.length > 0 && (
-                <p className="muted-note">
-                  {pool.unpriced.length} trip(s) for this customer have no fare recorded, so they cannot be billed yet.
-                </p>
-              )}
+              {/* (No-fare trips are reported in the note above.) */}
 
-              <div className="builder-footer">
-                <input
-                  className="input"
-                  placeholder="Note on this bill (optional)"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                />
-                <div className="generate-summary">
-                  <span>
-                    {selectedTripIds.length} of {pool.billable.length} trips · {money(selectedTotal)} fares ·{' '}
-                    {money(selectedAdvance)} advances
-                  </span>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleGenerate}
-                    disabled={busy || selectedTripIds.length === 0}
-                  >
-                    <FileText size={15} /> Generate bill
-                  </button>
+              {pool.billable.length > 0 ? (
+                <div className="builder-footer">
+                  <input
+                    className="input"
+                    placeholder="Note on this bill (optional)"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                  <div className="generate-summary">
+                    <span>
+                      {selectedTripIds.length} of {pool.billable.length} trips · {money(selectedTotal)} fares ·{' '}
+                      {money(selectedAdvance)} advances
+                    </span>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleGenerate}
+                      disabled={busy || selectedTripIds.length === 0}
+                    >
+                      <FileText size={15} /> Generate bill
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Everything this customer owes is already on a bill, so there
+                   is deliberately no way to raise another one: a second bill
+                   with no new trips would only duplicate what they owe. */
+                <div className="builder-caughtup">
+                  <Check size={16} />
+                  <div>
+                    <b>All caught up.</b> Every billable trip for this customer is already on a bill.
+                    {latestBill && (
+                      <>
+                        {' '}
+                        Latest:{' '}
+                        <button className="link-btn" onClick={() => handleOpenBill(latestBill.id)}>
+                          {latestBill.bill_no} · {money(latestBill.remaining_balance)} outstanding
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
 

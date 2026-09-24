@@ -473,3 +473,44 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* "All caught up": nothing left to bill for this customer, so no generate control */
+.builder-caughtup {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  background: var(--green-bg);
+  color: var(--green);
+  font-size: 0.8125rem;
+}
+
+.builder-caughtup b {
+  color: var(--green);
+}
+
+/* Inline link-style button (open the latest bill) */
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--green);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  color: var(--text-primary);
+}
+
+/* A disabled action must look disabled — otherwise it still invites a click */
+.billing-page .btn:disabled,
+.billing-page .btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
