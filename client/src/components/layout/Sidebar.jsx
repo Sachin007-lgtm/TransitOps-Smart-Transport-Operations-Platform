@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Truck, Users, Map, Radio, Wrench, Droplet, BarChart2, Settings, ChevronLeft, LogOut } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import './Sidebar.css';
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const handleLogout = () => {
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('token');
-    localStorage.removeItem('organization_id');
+    logout();
     navigate('/login');
   };
 

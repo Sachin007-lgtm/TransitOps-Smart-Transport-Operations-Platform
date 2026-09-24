@@ -12,7 +12,7 @@ const User = {
 			SELECT u.*, r.name AS role
 			FROM users u
 			JOIN roles r ON r.id = u.role_id
-			WHERE u.phone_number = $1 OR u.email = $1
+			WHERE u.phone_number = $1 OR LOWER(u.email) = LOWER($1)
 			LIMIT 1
 		`, [identifier]);
 		return result.rows[0];

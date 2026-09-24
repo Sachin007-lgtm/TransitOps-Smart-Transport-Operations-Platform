@@ -45,13 +45,13 @@ const authService = {
 	login: async (identifier, password) => {
 		const normalizedIdentifier = String(identifier || '').trim();
 		if (!normalizedIdentifier || !password) {
-			throw new AuthServiceError('Phone number and password are required.', 400);
+			throw new AuthServiceError('Email or phone number and password are required.', 400);
 		}
 
 		const loginIdentifier = normalizePhoneNumber(normalizedIdentifier) || normalizedIdentifier;
 		const user = await User.findByLogin(loginIdentifier);
 		if (!user || user.is_active === false || !(await comparePassword(password, user.password_hash))) {
-			throw new AuthServiceError('Invalid phone number or password.', 401);
+			throw new AuthServiceError('Invalid credentials.', 401);
 		}
 
 		return { token: signToken(user), user: publicUser(user) };
