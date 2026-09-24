@@ -33,14 +33,12 @@ const createTripSchema = {
   external_party_name: { required: false, type: 'string' },
   external_party_type: { required: false, type: 'enum', enum: ['CUSTOMER', 'AGENCY'] },
   cargo_weight: { required: false, type: 'number' },
-  planned_distance: { required: false, type: 'number' },
   revenue: { required: false, type: 'number' },
   status: { required: false, type: 'enum', enum: ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed', 'Cancelled'] },
   // Billing fields (see billingValidator for the company/bill side).
   company_id: { required: false, type: 'integer', positive: true },
   trip_date: { required: false, type: 'date' },
-  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') },
-  rate_basis: { required: false, type: 'string' }
+  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') }
 };
 
 const updateTripSchema = {
@@ -63,13 +61,11 @@ const updateTripSchema = {
   external_party_name: { required: false, type: 'string' },
   external_party_type: { required: false, type: 'enum', enum: ['CUSTOMER', 'AGENCY'] },
   cargo_weight: { required: false, type: 'number' },
-  planned_distance: { required: false, type: 'number' },
   actual_distance: { required: false, type: 'number' },
   revenue: { required: false, type: 'number' },
   company_id: { required: false, type: 'integer', positive: true },
   trip_date: { required: false, type: 'date' },
-  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') },
-  rate_basis: { required: false, type: 'string' }
+  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') }
 };
 
 const updateTripStatusSchema = {

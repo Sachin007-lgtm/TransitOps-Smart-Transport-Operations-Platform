@@ -24,7 +24,6 @@ export type Trip = {
   driver_name?: string | null;
   driver_status?: string | null;
   cargo_weight?: number | string | null;
-  planned_distance?: number | string | null;
   actual_distance?: number | string | null;
 };
 

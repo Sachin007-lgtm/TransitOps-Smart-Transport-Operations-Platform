@@ -312,7 +312,6 @@ describe('TransitOps Driver Module Backend Tests', () => {
         status: 'Draft',
         vehicle_id: vId,
         driver_id: driverA1Id,
-        planned_distance: 35
       },
       token: tokenManagerA
     });

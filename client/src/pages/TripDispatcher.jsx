@@ -241,14 +241,11 @@ export default function TripDispatcher() {
   const [vehicleId,       setVehicleId]       = useState('');
   const [driverId,        setDriverId]        = useState('');
   const [cargoWeight,     setCargoWeight]      = useState('');
-  const [plannedDistance, setPlannedDistance]  = useState('');
   const [revenue,         setRevenue]         = useState('');
-  // Billing fields: which customer this trip is billed to (matched to a
-  // company so the trip can be composed into that company's bill), the fare
-  // already received up front, and how the rate was quoted.
+  // Billing fields: which customer this trip is billed to and the fare
+  // already received up front.
   const [company,         setCompany]         = useState('');
   const [advanceReceived, setAdvanceReceived] = useState('');
-  const [rateBasis,       setRateBasis]       = useState('');
   const [companyOptions,  setCompanyOptions]  = useState([]);
   const [startTime,       setStartTime]        = useState('');
   const [expectedArrival, setExpectedArrival]  = useState('');
@@ -647,11 +644,9 @@ export default function TripDispatcher() {
       setVehicleId(editingTrip.vehicle_id || '');
       setDriverId(editingTrip.driver_id || '');
       setCargoWeight(editingTrip.cargo_weight || '');
-      setPlannedDistance(editingTrip.planned_distance || '');
       setRevenue(editingTrip.revenue || '');
       setCompany(editingTrip.external_party_name || '');
       setAdvanceReceived(editingTrip.advance_received || '');
-      setRateBasis(editingTrip.rate_basis || '');
       setInitialStatus(editingTrip.status || 'Draft');
     }
   }, [editingTrip]);
@@ -659,8 +654,8 @@ export default function TripDispatcher() {
   const resetForm = () => {
     originAC.clear(); destAC.clear();
     setVehicleId(''); setDriverId(''); setCargoWeight('');
-    setPlannedDistance(''); setRevenue(''); setInitialStatus('Draft');
-    setCompany(''); setAdvanceReceived(''); setRateBasis('');
+    setRevenue(''); setInitialStatus('Draft');
+    setCompany(''); setAdvanceReceived('');
     setConflictError(null);
     setEditingTrip(null);
     setDrawerOpen(false);
@@ -673,7 +668,6 @@ export default function TripDispatcher() {
     setIsSubmitting(true); setConflictError(null);
 
     const weightNum   = parseFloat(cargoWeight);
-    const distanceNum = parseFloat(plannedDistance);
 
     const hasVehicleAndDriver = vehicleId && driverId;
     let calculatedStatus = initialStatus;
@@ -694,14 +688,12 @@ export default function TripDispatcher() {
       vehicle_id:      vehicleId ? Number(vehicleId) : null,
       driver_id:       driverId  ? Number(driverId)  : null,
       cargo_weight:    weightNum  > 0 ? weightNum  : null,
-      planned_distance: distanceNum > 0 ? distanceNum : null,
       revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null,
       // Billing: the customer name links this trip to a company, and the fare
       // is what a generated bill charges for it.
       external_party_name: company.trim() || undefined,
       external_party_type: company.trim() ? 'CUSTOMER' : undefined,
-      advance_received: parseFloat(advanceReceived) > 0 ? parseFloat(advanceReceived) : 0,
-      rate_basis:       rateBasis.trim() || undefined
+      advance_received: parseFloat(advanceReceived) > 0 ? parseFloat(advanceReceived) : 0
     };
 
     try {
@@ -736,7 +728,7 @@ export default function TripDispatcher() {
     try {
       await apiRequest('PATCH', `/trips/${trip.id}/status`, {
         status: 'Completed',
-        actual_distance: parseFloat(actualDistance) || Number(trip.planned_distance) || 0,
+        actual_distance: parseFloat(actualDistance) || 0,
         actual_arrival:  actualArrival ? new Date(actualArrival).toISOString() : new Date().toISOString()
       });
       showToast(`Trip #${trip.id} completed!`);
@@ -902,7 +894,7 @@ export default function TripDispatcher() {
                         onClick={() => setCompleteModal({
                           open: true,
                           trip: t,
-                          actualDistance: t.actual_distance || t.planned_distance || '',
+                          actualDistance: t.actual_distance || '',
                           actualArrival: ''
                         })}
                       >
@@ -1025,10 +1017,6 @@ export default function TripDispatcher() {
                   <label className="field-label">Cargo Weight (kg)</label>
                   <input type="number" className="field-input" value={cargoWeight} onChange={e => setCargoWeight(e.target.value)} placeholder="500" />
                 </div>
-                <div className="field-wrap">
-                  <label className="field-label">Planned Distance (km)</label>
-                  <input type="number" className="field-input" value={plannedDistance} onChange={e => setPlannedDistance(e.target.value)} placeholder="45" />
-                </div>
               </div>
 
               {/* Billing details: the customer named here decides which bill
@@ -1053,15 +1041,9 @@ export default function TripDispatcher() {
                 </div>
               </div>
 
-              <div className="form-row-2">
-                <div className="field-wrap">
-                  <label className="field-label">Advance received (₹)</label>
-                  <input type="number" className="field-input" value={advanceReceived} onChange={e => setAdvanceReceived(e.target.value)} placeholder="0" />
-                </div>
-                <div className="field-wrap">
-                  <label className="field-label">Rate basis</label>
-                  <input className="field-input" value={rateBasis} onChange={e => setRateBasis(e.target.value)} placeholder="per trip / per tonne" />
-                </div>
+              <div className="field-wrap">
+                <label className="field-label">Advance received (₹)</label>
+                <input type="number" className="field-input" value={advanceReceived} onChange={e => setAdvanceReceived(e.target.value)} placeholder="0" />
               </div>
 
               <div className="drawer-actions">

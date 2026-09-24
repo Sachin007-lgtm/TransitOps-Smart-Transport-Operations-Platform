@@ -69,7 +69,7 @@ const Bill = {
     // a bill, and a timestamp would shift by a day for any reader west of IST.
     const items = await query(
       `SELECT id, bill_id, trip_id, to_char(trip_date, 'YYYY-MM-DD') AS trip_date,
-              origin, destination, particulars, vehicle_registration, rate_basis,
+              origin, destination, particulars, vehicle_registration,
               amount, advance
        FROM bill_items WHERE bill_id = $1 ORDER BY trip_date ASC NULLS LAST, id ASC;`,
       [id]
@@ -106,7 +106,7 @@ const Bill = {
       SELECT t.id, t.organization_id, t.company_id, t.external_party_name,
              t.origin, t.destination, t.planned_route,
              t.vehicle_id, t.driver_id, t.status, t.revenue,
-             t.advance_received, t.rate_basis, t.billing_status, t.bill_id,
+             t.advance_received, t.billing_status, t.bill_id,
              -- Calendar date as text, so it cannot shift a day for a reader
              -- in another timezone.
              to_char(t.trip_date, 'YYYY-MM-DD') AS trip_date,
@@ -202,7 +202,7 @@ const Bill = {
       const values = [organization_id, company_id, statuses];
       let sql = `
         SELECT t.id, t.origin, t.destination, t.revenue, t.advance_received,
-               t.rate_basis, t.status, t.billing_status,
+               t.status, t.billing_status,
                to_char(t.trip_date, 'YYYY-MM-DD') AS trip_date,
                v.registration_number AS vehicle_registration
         FROM trips t
@@ -259,8 +259,8 @@ const Bill = {
         await client.query(
           `INSERT INTO bill_items (
              bill_id, trip_id, trip_date, origin, destination, particulars,
-             vehicle_registration, rate_basis, amount, advance
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+             vehicle_registration, amount, advance
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
           [
             bill.id,
             trip.id,
@@ -269,7 +269,6 @@ const Bill = {
             trip.destination,
             road,
             trip.vehicle_registration,
-            trip.rate_basis || null,
             round2(trip.revenue),
             round2(trip.advance_received)
           ]

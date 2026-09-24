@@ -86,15 +86,13 @@ const tripService = {
       external_party_name,
       external_party_type,
       cargo_weight = 0.00,
-      planned_distance = 0.00,
       revenue = 0.00,
       start_time,
       expected_arrival,
       status = 'Draft',
       company_id,
       trip_date,
-      advance_received = 0.00,
-      rate_basis
+      advance_received = 0.00
     } = tripData;
 
     // Validate vehicle if provided
@@ -156,7 +154,6 @@ const tripService = {
       vehicle_id: vehicle_id || null,
       driver_id: driver_id || null,
       cargo_weight,
-      planned_distance,
       revenue,
       start_time,
       expected_arrival,
@@ -169,8 +166,7 @@ const tripService = {
         organization_id: orgId
       }),
       trip_date: trip_date || deriveTripDate(start_time),
-      advance_received,
-      rate_basis: rate_basis || null
+      advance_received
     });
 
     return await Trip.findById(created.id, orgId);
@@ -541,7 +537,7 @@ const tripService = {
 
         if (trip.vehicle_id) {
           await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
-          const distanceToLog = parseFloat(actual_distance ?? trip.planned_distance ?? 0);
+          const distanceToLog = parseFloat(actual_distance || 0);
           if (distanceToLog > 0) {
             await Vehicle.incrementOdometer(client, trip.vehicle_id, distanceToLog, user.organization_id);
           }

@@ -179,7 +179,6 @@ describe('TransitOps Trip Module Backend Tests', () => {
       external_party_name: 'Metro Logistics',
       external_party_type: 'CUSTOMER',
       cargo_weight: 1200,
-      planned_distance: 150,
       status: 'Draft'
     };
 

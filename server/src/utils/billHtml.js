@@ -49,7 +49,6 @@ function billHtml(bill) {
           <td>${esc(fmtDate(it.trip_date))}</td>
           <td>${esc(it.particulars)}</td>
           <td>${esc(it.vehicle_registration || '—')}</td>
-          <td class="num">${esc(it.rate_basis || '')}</td>
           <td class="num">${fmt(it.amount)}</td>
           <td class="num">${parseFloat(it.advance) ? fmt(it.advance) : '—'}</td>
         </tr>`
@@ -148,13 +147,12 @@ function billHtml(bill) {
           <th style="width:90px">Date</th>
           <th>Particulars</th>
           <th style="width:100px">Vehicle</th>
-          <th class="num" style="width:90px">Rate</th>
           <th class="num" style="width:110px">Amount</th>
           <th class="num" style="width:90px">Advance</th>
         </tr>
       </thead>
       <tbody>
-        ${itemRows || '<tr><td colspan="6">No line items.</td></tr>'}
+        ${itemRows || '<tr><td colspan="5">No line items.</td></tr>'}
       </tbody>
     </table>
 

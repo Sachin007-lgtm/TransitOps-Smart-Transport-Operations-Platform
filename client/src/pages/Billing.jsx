@@ -477,7 +477,6 @@ export default function Billing() {
                       <th>Date</th>
                       <th>Route</th>
                       <th>Vehicle</th>
-                      <th>Rate basis</th>
                       <th className="num">Fare</th>
                       <th className="num">Advance</th>
                     </tr>
@@ -497,7 +496,6 @@ export default function Billing() {
                           {t.origin} → {t.destination}
                         </td>
                         <td>{t.vehicle_registration || '—'}</td>
-                        <td>{t.rate_basis || '—'}</td>
                         <td className="num">{money(t.revenue)}</td>
                         <td className="num">{money(t.advance_received)}</td>
                       </tr>

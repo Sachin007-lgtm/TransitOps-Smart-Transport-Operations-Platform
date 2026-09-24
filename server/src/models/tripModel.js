@@ -21,18 +21,15 @@ const Trip = {
     vehicle_id = null,
     driver_id = null,
     cargo_weight = 0.00,
-    planned_distance = 0.00,
     revenue = 0.00,
     start_time,
     expected_arrival,
     status = 'Draft',
     // Billing fields: which customer this trip is billed to, the date the
-    // bill should show, the fare already received up front, and the basis the
-    // rate was quoted on (e.g. "per trip", "per tonne").
+    // bill should show, and the fare already received up front.
     company_id = null,
     trip_date = null,
-    advance_received = 0.00,
-    rate_basis = null
+    advance_received = 0.00
   }, client = null) => {
     assertOrganizationId(organization_id, 'create');
 
@@ -41,10 +38,10 @@ const Trip = {
         organization_id, external_party_name, external_party_type,
         origin, destination, planned_route,
         vehicle_id, driver_id,
-        cargo_weight, planned_distance, revenue,
+        cargo_weight, revenue,
         start_time, expected_arrival, status,
-        company_id, trip_date, advance_received, rate_basis
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        company_id, trip_date, advance_received
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *;
     `;
     const values = [
@@ -57,15 +54,13 @@ const Trip = {
       vehicle_id,
       driver_id,
       cargo_weight,
-      planned_distance,
       revenue,
       start_time,
       expected_arrival,
       status,
       company_id,
       trip_date,
-      advance_received,
-      rate_basis
+      advance_received
     ];
 
     const executor = client || { query };
@@ -275,7 +270,6 @@ const Trip = {
       'vehicle_id',
       'driver_id',
       'cargo_weight',
-      'planned_distance',
       'actual_distance',
       'revenue',
       'start_time',
@@ -287,8 +281,7 @@ const Trip = {
       // them), so a trip edit can never forge a billed state.
       'company_id',
       'trip_date',
-      'advance_received',
-      'rate_basis'
+      'advance_received'
     ];
 
     const setClause = [];

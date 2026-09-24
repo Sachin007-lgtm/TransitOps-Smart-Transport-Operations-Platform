@@ -218,8 +218,7 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
       start_time: '2026-12-01T08:00:00Z',
       expected_arrival: '2026-12-01T12:00:00Z',
       vehicle_id: vehicleA1Id,
-      driver_id: driverId,
-      planned_distance: 120
+      driver_id: driverId
     };
 
     const tripCreate = await api(tripsBaseUrl, { method: 'POST', body: tripPayload, token: tokenManagerA });

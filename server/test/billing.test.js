@@ -88,19 +88,18 @@ describe('TransitOps Company Billing Backend Tests', () => {
     status = 'Completed',
     origin = 'Manesar',
     destination = 'Ahmedabad',
-    trip_date = '2026-09-20',
-    rate_basis = null
+    trip_date = '2026-09-20'
   }) {
     const result = await query(
       `INSERT INTO trips (
          organization_id, external_party_name, external_party_type,
-         origin, destination, planned_route, cargo_weight, planned_distance,
+         origin, destination, planned_route, cargo_weight,
          revenue, start_time, expected_arrival, status,
-         company_id, trip_date, advance_received, rate_basis
+         company_id, trip_date, advance_received
        ) VALUES (
-         $1, $2, 'CUSTOMER', $3, $4, $5, 900, 900,
+         $1, $2, 'CUSTOMER', $3, $4, $5, 900,
          $6, $7::date + time '09:00', $7::date + time '14:00', $8,
-         $9, $7::date, $10, $11
+         $9, $7::date, $10
        ) RETURNING *;`,
       [
         organization_id,
@@ -112,8 +111,7 @@ describe('TransitOps Company Billing Backend Tests', () => {
         trip_date,
         status,
         company_id,
-        advance,
-        rate_basis
+        advance
       ]
     );
     return result.rows[0];
@@ -232,8 +230,7 @@ describe('TransitOps Company Billing Backend Tests', () => {
         external_party_name: 'Sharma Logistics',
         external_party_type: 'CUSTOMER',
         revenue: 25000,
-        advance_received: 5000,
-        rate_basis: 'per trip'
+        advance_received: 5000
       }
     });
     assert.equal(created.status, 201, 'trip create failed: ' + JSON.stringify(created.json));
