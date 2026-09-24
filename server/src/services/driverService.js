@@ -23,11 +23,20 @@ function isDateExpired(dateStr) {
 
 function addManagerCredential(driver, user) {
   if (!user || !user.temporary_password_encrypted) return driver;
-  return {
-    ...driver,
-    temporary_password: decryptTemporaryPassword(user.temporary_password_encrypted),
-    must_change_password: user.must_change_password
-  };
+  try {
+    return {
+      ...driver,
+      temporary_password: decryptTemporaryPassword(user.temporary_password_encrypted),
+      must_change_password: user.must_change_password
+    };
+  } catch (error) {
+    console.warn(`Unable to decrypt temporary password for driver ${driver.id}: ${error.message}`);
+    return {
+      ...driver,
+      temporary_password_unavailable: true,
+      must_change_password: user.must_change_password
+    };
+  }
 }
 
 function canViewTemporaryPassword(user) {
@@ -57,10 +66,9 @@ const driverService = {
       );
     }
 
-    return Promise.all(drivers.map(async (driver) => {
-      const account = await User.findDriverAccount(driver.id, user.organization_id);
-      return canViewTemporaryPassword(user) ? addManagerCredential(driver, account) : driver;
-    }));
+    return drivers.map((driver) => (
+      canViewTemporaryPassword(user) ? addManagerCredential(driver, driver) : driver
+    ));
   },
 
   /**
@@ -71,8 +79,7 @@ const driverService = {
     if (!driver) {
       throw new DriverServiceError('Driver not found.', 404);
     }
-    const account = await User.findDriverAccount(driver.id, user.organization_id);
-    return canViewTemporaryPassword(user) ? addManagerCredential(driver, account) : driver;
+    return canViewTemporaryPassword(user) ? addManagerCredential(driver, driver) : driver;
   },
 
   /**

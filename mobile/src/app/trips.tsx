@@ -1,6 +1,6 @@
-import { Redirect } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DriverNav } from '@/components/driver/DriverNav';
@@ -68,7 +68,11 @@ export default function TripsScreen() {
           data={trips}
           keyExtractor={(trip) => String(trip.id)}
           renderItem={({ item }) => (
-            <View style={styles.tripCard}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push(`/trip/${item.id}` as any)}
+              style={({ pressed }) => [styles.tripCard, pressed && styles.tripCardPressed]}
+            >
               <View style={styles.tripHeader}>
                 <Text style={styles.tripRoute}>{item.origin} to {item.destination}</Text>
                 <Text style={styles.tripStatus}>{item.status}</Text>
@@ -77,7 +81,7 @@ export default function TripsScreen() {
                 {item.vehicle_registration || item.vehicle_name || 'Vehicle not assigned'}
               </Text>
               {item.start_time ? <Text style={styles.tripMeta}>{formatTripDate(item.start_time)}</Text> : null}
-            </View>
+            </Pressable>
           )}
           scrollEnabled={false}
         />
@@ -158,6 +162,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: 14,
     padding: 16,
+  },
+  tripCardPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.99 }],
   },
   tripHeader: {
     alignItems: 'flex-start',

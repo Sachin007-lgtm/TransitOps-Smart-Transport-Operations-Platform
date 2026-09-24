@@ -352,6 +352,16 @@ const tripService = {
 
       const currentStatus = trip.status;
 
+      // RBAC: Drivers can only update trips assigned to them, and can only advance Assigned -> Dispatched or Dispatched -> Completed
+      if (user.role === 'Driver') {
+        if (!user.driver_id || trip.driver_id !== user.driver_id) {
+          throw new TripServiceError('Forbidden: Drivers may only update the status of trips assigned to them.', 403);
+        }
+        if (nextStatus !== 'Dispatched' && nextStatus !== 'Completed') {
+          throw new TripServiceError("Forbidden: Drivers may only transition trip status to 'Dispatched' or 'Completed'.", 403);
+        }
+      }
+
       // 2. Prevent transitions from terminal states
       if (currentStatus === 'Completed' || currentStatus === 'Cancelled') {
         throw new TripServiceError(`Cannot transition from terminal status '${currentStatus}'.`, 400);
