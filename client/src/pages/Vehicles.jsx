@@ -4,6 +4,7 @@ import { Plus, Search, ChevronDown, Copy, Edit3, Info } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
+import EditVehicleModal from '../components/vehicles/EditVehicleModal';
 
 const DEFAULT_TYPES = ['Truck', 'Van', 'Mini'];
 const DEFAULT_SIZES = ['Small (8ft)', 'Medium (14ft)', 'Heavy (24ft)', 'Extra Heavy (32ft)'];
@@ -42,6 +43,9 @@ export default function Vehicles() {
   const [isCustomTypeSelected, setIsCustomTypeSelected] = useState(false);
   const [isCustomSizeSelected, setIsCustomSizeSelected] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+
+  // Edit Vehicle Modal State
+  const [editingVehicle, setEditingVehicle] = useState(null);
 
   // Update Distance Modal State
   const [distanceModalVehicle, setDistanceModalVehicle] = useState(null);
@@ -283,6 +287,29 @@ export default function Vehicles() {
     }
   };
 
+  const handleEditVehicle = async (updatedVehicle) => {
+    try {
+      let backendStatus = updatedVehicle.status;
+      if (backendStatus === 'Maintenance') backendStatus = 'In Shop';
+      
+      const payload = {
+        registration_number: updatedVehicle.numberPlate,
+        type: updatedVehicle.type,
+        size: updatedVehicle.size,
+        odometer: updatedVehicle.distanceCovered,
+        status: backendStatus
+      };
+
+      await apiRequest('PATCH', `/vehicles/${editingVehicle.id}`, payload);
+      addToast(`Vehicle ${updatedVehicle.numberPlate} updated`);
+      setEditingVehicle(null);
+      await loadVehicles();
+    } catch (err) {
+      console.error('Failed to update vehicle:', err);
+      addToast(err.message || 'Failed to update vehicle', true);
+    }
+  };
+
   // Update distance modal open
   const openDistanceModal = (v) => {
     setDistanceModalVehicle(v);
@@ -470,7 +497,8 @@ export default function Vehicles() {
                 filteredVehicles.map((v, idx) => (
                   <tr 
                     key={v.id} 
-                    className="table-row-animate" 
+                    className="table-row-animate cursor-pointer hover:bg-[#fcfcfc]" 
+                    onClick={() => setEditingVehicle(v)}
                     style={{ 
                       animationDelay: `${idx * 70}ms`,
                       borderLeft: `4px solid ${getLeftBorderColor(v.status)}`,
@@ -733,6 +761,15 @@ export default function Vehicles() {
         </div>,
         document.body
       )}
+
+      {/* Edit Vehicle Modal (Vehicle Profile) */}
+      <EditVehicleModal 
+        vehicle={editingVehicle} 
+        onClose={() => setEditingVehicle(null)} 
+        onSubmit={handleEditVehicle} 
+        customTypes={customTypes}
+        customSizes={customSizes}
+      />
 
       {/* Manual Distance Update Modal */}
       {distanceModalVehicle && createPortal(

@@ -8,6 +8,7 @@ import {
   isLicenseExpired,
   INDIAN_LICENSE_CATEGORIES
 } from './driverConstants';
+import EntityDocuments from '../documents/EntityDocuments';
 
 export default function EditDriverModal({ driver, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
@@ -205,7 +206,12 @@ export default function EditDriverModal({ driver, onClose, onSubmit }) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6 pt-4" style={{ borderTop: '1px solid var(--line)' }}>
+          {/* Document Management Section */}
+          {driver && driver.id && (
+            <EntityDocuments entityType="DRIVER" entityId={driver.id} />
+          )}
+
+          <div className="sticky bottom-0 bg-[var(--bg-card)] flex justify-end gap-3 mt-6 pt-4 pb-1 border-t border-[var(--border-color)] z-10">
             <button type="button" className="btn btn-outline" onClick={onClose}>
               Cancel
             </button>
