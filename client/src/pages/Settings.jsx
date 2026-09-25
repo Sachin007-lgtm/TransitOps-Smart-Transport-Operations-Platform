@@ -3,10 +3,9 @@ import { Settings as SettingsIcon, Shield, Check } from 'lucide-react';
 import './Settings.css';
 
 const INITIAL_RBAC_DATA = [
-  { id: 'manager', role: 'Fleet Manager', dotClass: 'manager', permissions: { fleet: 'full', drivers: 'full', trips: 'none', fuel: 'none', analytics: 'full' } },
-  { id: 'dispatcher', role: 'Dispatcher', dotClass: 'dispatcher', permissions: { fleet: 'view', drivers: 'none', trips: 'full', fuel: 'none', analytics: 'none' } },
-  { id: 'safety', role: 'Safety Officer', dotClass: 'safety', permissions: { fleet: 'none', drivers: 'full', trips: 'view', fuel: 'none', analytics: 'none' } },
-  { id: 'finance', role: 'Financial Analyst', dotClass: 'finance', permissions: { fleet: 'view', drivers: 'none', trips: 'none', fuel: 'full', analytics: 'full' } },
+  { id: 'admin', role: 'Platform Admin', dotClass: 'manager', permissions: { fleet: 'none', drivers: 'none', trips: 'none', fuel: 'none', analytics: 'full' } },
+  { id: 'manager', role: 'Owner/Manager', dotClass: 'manager', permissions: { fleet: 'full', drivers: 'full', trips: 'full', fuel: 'full', analytics: 'full' } },
+  { id: 'driver', role: 'Driver', dotClass: 'dispatcher', permissions: { fleet: 'none', drivers: 'none', trips: 'view', fuel: 'none', analytics: 'none' } },
 ];
 
 const PERMISSION_CYCLE = {

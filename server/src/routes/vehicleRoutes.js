@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/authenticate');
+const requireTenantContext = require('../middleware/requireTenantContext');
+const authorize = require('../middleware/authorize');
 const {
   getAllVehicles,
   getVehicleById,
@@ -10,8 +12,12 @@ const {
   deleteVehicle
 } = require('../controllers/vehicleController');
 
-// All vehicle endpoints require authenticated session with organization context
+// All vehicle endpoints require authenticated session with tenant context
 router.use(authenticate);
+router.use(requireTenantContext);
+
+// Vehicle fleet management is restricted to Owner/Manager
+router.use(authorize(['Owner/Manager']));
 
 router.get('/', getAllVehicles);
 router.get('/:id', getVehicleById);

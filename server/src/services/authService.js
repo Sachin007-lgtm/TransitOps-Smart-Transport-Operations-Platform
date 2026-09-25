@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('../config/jwt');
 const User = require('../models/userModel');
 const { normalizePhoneNumber } = require('../utils/phone');
 const {
@@ -29,7 +30,6 @@ function publicUser(user) {
 }
 
 function signToken(user) {
-	const secret = process.env.JWT_SECRET || 'your_jwt_secret_key_here';
 	return jwt.sign({
 		id: user.id,
 		email: user.email,
@@ -38,17 +38,17 @@ function signToken(user) {
 		role_id: user.role_id,
 		driver_id: user.driver_id,
 		organization_id: user.organization_id
-	}, secret, { expiresIn: '8h' });
+	}, JWT_SECRET, { expiresIn: '8h' });
 }
 
 const authService = {
 	login: async (identifier, password) => {
-		const normalizedIdentifier = String(identifier || '').trim();
-		if (!normalizedIdentifier || !password) {
+		const rawIdentifier = String(identifier || '').trim();
+		if (!rawIdentifier || !password) {
 			throw new AuthServiceError('Email or phone number and password are required.', 400);
 		}
 
-		const loginIdentifier = normalizePhoneNumber(normalizedIdentifier) || normalizedIdentifier;
+		const loginIdentifier = normalizePhoneNumber(rawIdentifier) || rawIdentifier;
 		const user = await User.findByLogin(loginIdentifier);
 		if (!user || user.is_active === false || !(await comparePassword(password, user.password_hash))) {
 			throw new AuthServiceError('Invalid credentials.', 401);
@@ -77,4 +77,4 @@ const authService = {
 	generateTemporaryPassword
 };
 
-module.exports = { authService, AuthServiceError, publicUser };
+module.exports = { authService, AuthServiceError, publicUser, signToken };

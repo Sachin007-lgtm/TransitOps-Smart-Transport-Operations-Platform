@@ -11,6 +11,7 @@ const maintenanceRoutes = require('./maintenanceRoutes');
 const reportRoutes = require('./reportRoutes');
 const userRoutes = require('./userRoutes');
 const locationRoutes = require('./locationRoutes');
+const platformRoutes = require('./platformRoutes');
 
 router.use('/trips', tripRoutes);
 router.use('/drivers', driverRoutes);
@@ -22,5 +23,6 @@ router.use('/maintenance', maintenanceRoutes);
 router.use('/reports', reportRoutes);
 router.use('/users', userRoutes);
 router.use('/locations', locationRoutes);
+router.use('/platform', platformRoutes);
 
 module.exports = router;

@@ -10,7 +10,7 @@ function handleError(res, error) {
 
 const login = asyncWrapper(async (req, res) => {
 	try {
-		const { phone_number, email, identifier, password } = req.body;
+		const { phone_number, email, identifier, password } = req.body || {};
 		const loginTarget = identifier || email || phone_number;
 		const result = await authService.login(loginTarget, password);
 		return apiResponse.success(res, result, 'Login successful.');
@@ -30,7 +30,7 @@ const me = asyncWrapper(async (req, res) => {
 
 const changePassword = asyncWrapper(async (req, res) => {
 	try {
-		const { current_password, new_password } = req.body;
+		const { current_password, new_password } = req.body || {};
 		await authService.changePassword(req.user.id, current_password, new_password);
 		return apiResponse.success(res, null, 'Password changed successfully.');
 	} catch (error) {

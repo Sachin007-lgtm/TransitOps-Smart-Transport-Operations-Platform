@@ -1,8 +1,12 @@
 /**
  * Role-Based Access Control Middleware.
- * Usage: authorize(['Fleet Manager', 'Dispatcher'])
+ * Enforces verified role access. Maps legacy 'Fleet Manager' to 'Owner/Manager'
+ * for backward compatibility during transition.
+ *
+ * Usage: authorize(['Owner/Manager', 'Driver'])
  */
-const authorize = (allowedRoles = []) => {
+const authorize = (...roles) => {
+  const allowedRoles = roles.flat(Infinity);
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -11,10 +15,13 @@ const authorize = (allowedRoles = []) => {
       });
     }
 
-    if (allowedRoles.length > 0 && !allowedRoles.includes(req.user.role)) {
+    const normalizedUserRole = req.user.role === 'Fleet Manager' ? 'Owner/Manager' : req.user.role;
+    const effectiveAllowed = allowedRoles.map(r => r === 'Fleet Manager' ? 'Owner/Manager' : r);
+
+    if (effectiveAllowed.length > 0 && !effectiveAllowed.includes(normalizedUserRole)) {
       return res.status(403).json({
         success: false,
-        message: `Forbidden: Access restricted to [${allowedRoles.join(', ')}]. Your role is '${req.user.role}'.`
+        message: `Forbidden: Access restricted to [${effectiveAllowed.join(', ')}]. Your role is '${req.user.role}'.`
       });
     }
 

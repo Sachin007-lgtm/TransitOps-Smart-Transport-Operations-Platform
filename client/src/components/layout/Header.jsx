@@ -144,7 +144,7 @@ export default function Header() {
         <div className="relative" ref={userRef}>
           {(() => {
             const displayName = user?.name || 'Operations Manager';
-            const displayRole = user?.role || 'Fleet Manager';
+            const displayRole = user?.role || 'Owner/Manager';
             const displayContact = user?.email || user?.phone_number || 'manager@transitops.com';
             const initials = displayName
               .trim()

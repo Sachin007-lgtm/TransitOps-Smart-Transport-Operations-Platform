@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Check, ChevronDown, Lock, ShieldCheck, Edit2, Trash2, KeyRound } from 'lucide-react';
+import { Plus, Check, ChevronDown, Lock, ShieldCheck, Edit2, Trash2, KeyRound, Copy, AlertTriangle } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import './Drivers.css';
@@ -25,6 +25,10 @@ export default function Drivers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDriver, setEditingDriver] = useState(null);
   const [newDriverHighlighted, setNewDriverHighlighted] = useState(null);
+
+  // One-time credential modal state
+  const [credentialModal, setCredentialModal] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   // Add Driver Form State
   const [formData, setFormData] = useState({
@@ -187,7 +191,11 @@ export default function Drivers() {
       setFormData({ name: '', license: '', expiry: '', contact: '', status: 'Available' });
 
       if (res.data?.temporary_password) {
-        window.alert(`Temporary password for ${formData.name}:\n\n${res.data.temporary_password}\n\nThe driver must change it after signing in.`);
+        setCredentialModal({
+          driverName: res.data.name || formData.name.trim(),
+          contactNumber: res.data.contact_number || formattedContact,
+          temporaryPassword: res.data.temporary_password
+        });
       }
       
       const newId = res.data.id;
@@ -290,13 +298,25 @@ export default function Drivers() {
       const response = await apiRequest('POST', `/drivers/${driver.id}/reset-password`);
       const temporaryPassword = response.data?.temporary_password;
       if (temporaryPassword) {
-        window.alert(`Temporary password for ${driver.name}:\n\n${temporaryPassword}\n\nThe driver must change it after signing in.`);
+        setCredentialModal({
+          driverName: driver.name,
+          contactNumber: driver.contact_number,
+          temporaryPassword: temporaryPassword
+        });
       }
       loadDrivers();
     } catch (err) {
       const evt = new CustomEvent('app-toast', { detail: err.message || 'Failed to reset driver password', type: 'error' });
       window.dispatchEvent(evt);
     }
+  };
+
+  const handleCopyPassword = (password) => {
+    navigator.clipboard.writeText(password);
+    setCopied(true);
+    const evt = new CustomEvent('app-toast', { detail: 'Temporary password copied to clipboard!' });
+    window.dispatchEvent(evt);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   // Filter Data
@@ -365,7 +385,7 @@ export default function Drivers() {
                 <th>License no.</th>
                 <th>Driver Licence Expiry</th>
                 <th>Contact</th>
-                <th>App access</th>
+                <th className="text-center">App access</th>
                 <th className="text-center">Trips Count</th>
                 <th>Status</th>
                 <th className="text-right pr-6">Actions</th>
@@ -406,15 +426,15 @@ export default function Drivers() {
                     <td className="mono text-xs">
                       {d.contact_number ? (d.contact_number.startsWith('+91') ? d.contact_number : `+91 ${d.contact_number}`) : ''}
                     </td>
-                    <td className="mono text-xs">
-                      {d.temporary_password ? (
-                        <span className="driver-temp-password" title="Temporary password; hidden after the driver changes it">
-                          {d.temporary_password}
+                    <td className="text-center">
+                      {d.must_change_password ? (
+                        <span className="pill pill-orange mono text-xs font-semibold px-2.5 py-0.5" title="Driver must change password on first mobile login">
+                          Pending 1st Login
                         </span>
-                      ) : d.temporary_password_unavailable ? (
-                        <span className="text-muted">Password unavailable - reset</span>
                       ) : (
-                        <span className="text-muted">Password changed</span>
+                        <span className="pill pill-green mono text-xs font-semibold px-2.5 py-0.5" title="Permanent password set">
+                          Password Set
+                        </span>
                       )}
                     </td>
                     <td className="text-center">
@@ -707,6 +727,79 @@ export default function Drivers() {
                 <button type="submit" className="btn btn-primary">Save Changes</button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* One-Time Credential Modal */}
+      {credentialModal && createPortal(
+        <div 
+          className="modal-overlay" 
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(6px)', zIndex: 9999 }} 
+          onClick={() => setCredentialModal(null)}
+        >
+          <div 
+            className="modal-content" 
+            style={{ maxWidth: '440px', padding: '1.75rem', borderRadius: '16px', border: '1px solid var(--line)' }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(234, 138, 0, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706', flexShrink: 0 }}>
+                <KeyRound size={22} />
+              </div>
+              <div>
+                <h2 className="heading text-lg font-bold">Temporary Driver Password</h2>
+                <p className="text-xs text-muted">Single-use initial credential</p>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }} />
+                <p className="text-xs" style={{ color: '#b91c1c', margin: 0, lineHeight: 1.4 }}>
+                  <strong>Security notice:</strong> This temporary password is displayed <strong>ONLY ONCE</strong> and is not stored or retrievable after closing this window. Please copy and share it with the driver immediately.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 mb-4">
+              <div>
+                <label className="text-xs text-muted font-medium">Driver Name</label>
+                <div className="font-semibold text-sm">{credentialModal.driverName}</div>
+              </div>
+              <div>
+                <label className="text-xs text-muted font-medium">Mobile Login Number</label>
+                <div className="mono text-sm">{credentialModal.contactNumber}</div>
+              </div>
+              <div>
+                <label className="text-xs text-muted font-medium">Temporary Password</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <div style={{ flex: 1, padding: '0.65rem 0.85rem', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: '8px', fontFamily: 'monospace', fontSize: '0.95rem', fontWeight: 600, letterSpacing: '0.05em' }}>
+                    {credentialModal.temporaryPassword}
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn btn-outline flex items-center gap-1.5"
+                    style={{ padding: '0.65rem 1rem', whiteSpace: 'nowrap' }}
+                    onClick={() => handleCopyPassword(credentialModal.temporaryPassword)}
+                  >
+                    {copied ? <Check size={16} style={{ color: '#16a34a' }} /> : <Copy size={16} />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3" style={{ borderTop: '1px solid var(--line)' }}>
+              <button 
+                type="button" 
+                className="btn btn-primary w-full"
+                onClick={() => setCredentialModal(null)}
+              >
+                Done / I Have Saved This Password
+              </button>
+            </div>
           </div>
         </div>,
         document.body

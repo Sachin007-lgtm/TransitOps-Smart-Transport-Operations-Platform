@@ -1,18 +1,31 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
-const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
-function getEncryptionKey() {
-  const encryptionKey = process.env.CREDENTIAL_ENCRYPTION_KEY;
-  if (encryptionKey && /^[a-f0-9]{64}$/i.test(encryptionKey)) {
-    return Buffer.from(encryptionKey, 'hex');
-  }
-  // Safe deterministic 32-byte key fallback for development & automated tests
-  return crypto.createHash('sha256').update(process.env.JWT_SECRET || 'transitops_fallback_secret_key').digest();
-}
-
 function generateTemporaryPassword() {
-  return crypto.randomBytes(9).toString('base64url');
+  const uppers = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lowers = 'abcdefghijkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%';
+  const all = uppers + lowers + digits + symbols;
+
+  const chars = [
+    uppers[crypto.randomInt(0, uppers.length)],
+    lowers[crypto.randomInt(0, lowers.length)],
+    digits[crypto.randomInt(0, digits.length)],
+    symbols[crypto.randomInt(0, symbols.length)]
+  ];
+
+  for (let i = 4; i < 12; i++) {
+    chars.push(all[crypto.randomInt(0, all.length)]);
+  }
+
+  // Shuffle array using Fisher-Yates
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
 }
 
 async function hashPassword(password) {
@@ -23,35 +36,8 @@ async function comparePassword(password, passwordHash) {
   return bcrypt.compare(password, passwordHash);
 }
 
-function encryptTemporaryPassword(password) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, getEncryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(password, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [iv.toString('hex'), tag.toString('hex'), encrypted.toString('hex')].join(':');
-}
-
-function decryptTemporaryPassword(value) {
-  if (!value) return null;
-  const [ivHex, tagHex, encryptedHex] = value.split(':');
-  if (!ivHex || !tagHex || !encryptedHex) return null;
-
-  const decipher = crypto.createDecipheriv(
-    ENCRYPTION_ALGORITHM,
-    getEncryptionKey(),
-    Buffer.from(ivHex, 'hex'),
-  );
-  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encryptedHex, 'hex')),
-    decipher.final(),
-  ]).toString('utf8');
-}
-
 module.exports = {
   comparePassword,
-  decryptTemporaryPassword,
-  encryptTemporaryPassword,
   generateTemporaryPassword,
   hashPassword,
 };

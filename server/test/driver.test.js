@@ -15,8 +15,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
   let baseUrl;
   let tripsBaseUrl;
 
-  const orgA = 'org-drv-test-A';
-  const orgB = 'org-drv-test-B';
+  const orgA = 'd0000000-0000-0000-0000-000000000001';
+  const orgB = 'd0000000-0000-0000-0000-000000000002';
 
   let tokenManagerA;
   let tokenManagerB;
@@ -30,8 +30,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
     baseUrl = `http://127.0.0.1:${port}/api/drivers`;
     tripsBaseUrl = `http://127.0.0.1:${port}/api/trips`;
 
-    tokenManagerA = createToken({ id: 901, email: 'mgrA@drv.com', role: 'Fleet Manager', organization_id: orgA });
-    tokenManagerB = createToken({ id: 902, email: 'mgrB@drv.com', role: 'Fleet Manager', organization_id: orgB });
+    tokenManagerA = createToken({ id: '90000000-0000-0000-0000-000000000901', email: 'mgrA@drv.com', role: 'Owner/Manager', organization_id: orgA });
+    tokenManagerB = createToken({ id: '90000000-0000-0000-0000-000000000902', email: 'mgrB@drv.com', role: 'Owner/Manager', organization_id: orgB });
 
     // Clean any prior records
     await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
@@ -110,10 +110,10 @@ describe('TransitOps Driver Module Backend Tests', () => {
       method: 'POST',
       body: {
         name: 'Ramesh Kumar',
-        license_number: 'DL-MH-20250001',
+        license_number: 'DL-MH-TEST-0001',
         license_category: 'LMV',
         license_expiry_date: '2028-12-31',
-        contact_number: '+919876543210',
+        contact_number: '+919777110001',
         status: 'Available',
         safety_score: 95
       },
@@ -122,7 +122,7 @@ describe('TransitOps Driver Module Backend Tests', () => {
     assert.equal(res.status, 201);
     assert.equal(res.data.success, true);
     assert.equal(res.data.data.name, 'Ramesh Kumar');
-    assert.equal(res.data.data.license_number, 'DL-MH-20250001');
+    assert.equal(res.data.data.license_number, 'DL-MH-TEST-0001');
     assert.equal(res.data.data.status, 'Available');
     assert.equal(res.data.data.organization_id, orgA);
     driverA1Id = res.data.data.id;
@@ -133,10 +133,10 @@ describe('TransitOps Driver Module Backend Tests', () => {
       method: 'POST',
       body: {
         name: 'Duplicate License Person',
-        license_number: 'DL-MH-20250001',
+        license_number: 'DL-MH-TEST-0001',
         license_category: 'LMV',
         license_expiry_date: '2029-01-01',
-        contact_number: '+919876543211',
+        contact_number: '+919777110002',
         status: 'Available'
       },
       token: tokenManagerA

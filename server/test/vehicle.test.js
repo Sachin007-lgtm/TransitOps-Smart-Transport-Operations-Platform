@@ -17,8 +17,8 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
   let baseUrl;
   let tripsBaseUrl;
 
-  const orgA = 'org-veh-A';
-  const orgB = 'org-veh-B';
+  const orgA = 'c0000000-0000-0000-0000-000000000001';
+  const orgB = 'c0000000-0000-0000-0000-000000000002';
 
   let tokenManagerA;
   let tokenManagerB;
@@ -29,8 +29,8 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
     baseUrl = `http://127.0.0.1:${port}/api/vehicles`;
     tripsBaseUrl = `http://127.0.0.1:${port}/api/trips`;
 
-    tokenManagerA = createToken({ id: 801, email: 'mgrA@veh.com', role: 'Fleet Manager', organization_id: orgA });
-    tokenManagerB = createToken({ id: 802, email: 'mgrB@veh.com', role: 'Fleet Manager', organization_id: orgB });
+    tokenManagerA = createToken({ id: '80000000-0000-0000-0000-000000000801', email: 'mgrA@veh.com', role: 'Owner/Manager', organization_id: orgA });
+    tokenManagerB = createToken({ id: '80000000-0000-0000-0000-000000000802', email: 'mgrB@veh.com', role: 'Owner/Manager', organization_id: orgB });
 
     // Clean old test records
     await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);

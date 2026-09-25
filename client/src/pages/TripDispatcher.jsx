@@ -721,8 +721,8 @@ export default function TripDispatcher() {
       status:          calculatedStatus,
       start_time:      startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
       expected_arrival: expectedArrival ? new Date(expectedArrival).toISOString() : new Date(Date.now() + 7200000).toISOString(),
-      vehicle_id:      vehicleId ? Number(vehicleId) : null,
-      driver_id:       driverId  ? Number(driverId)  : null,
+      vehicle_id:      vehicleId ? String(vehicleId) : null,
+      driver_id:       driverId  ? String(driverId)  : null,
       cargo_weight:    weightNum  > 0 ? weightNum  : null,
       planned_distance: distanceNum > 0 ? distanceNum : null,
       revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null
@@ -1087,8 +1087,8 @@ export default function TripDispatcher() {
                 try {
                   await apiRequest('PATCH', `/trips/${assignModal.trip.id}/status`, {
                     status: 'Assigned',
-                    vehicle_id: Number(assignModal.vehicleId),
-                    driver_id: Number(assignModal.driverId)
+                    vehicle_id: assignModal.vehicleId,
+                    driver_id: assignModal.driverId
                   });
                   showToast(`Trip #${assignModal.trip.id} assigned!`);
                   setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
