@@ -27,15 +27,15 @@ No other top-level route gets built. Specifically:
 Two roles only. No public self-signup for either — both identities are created from the manager side. **Platform split: Manager = web app only. Driver = Android APK only — no web login exists for drivers.**
 
 **Manager (web)**
-- [ ] 🟢 One manager identity (or a few), created by admin/onboarding
-- [ ] 🟢 Full access to all 5 pages, web only
+- [x] 🟢 One manager identity (or a few), created by admin/onboarding
+- [x] 🟢 Full access to all 5 pages, web only
 - [ ] 🟡 Support multiple manager accounts if more than one person needs full access
 
 **Driver (Android APK only)**
-- [ ] 🟢 Auto-created the moment a driver profile is added on the Drivers page (web side) — system generates a login ID + password at that point
-- [ ] 🟢 Credentials shown once to the manager (copy/share action) to hand to the driver
+- [x] 🟢 Auto-created the moment a driver profile is added on the Drivers page (web side) — system generates a login ID + password at that point
+- [x] 🟢 Credentials shown once to the manager (copy/share action) to hand to the driver
 - [ ] 🟢 Driver logs into the APK only: own assigned trip(s), trip status-update actions, POD upload — nothing else
-- [ ] 🟡 Manager can reset/regenerate a driver's password
+- [x] 🟡 Manager can reset/regenerate a driver's password
 - [ ] 🟡 Driver can view their own document expiry, earnings/advances (read-only) in the APK
 - [ ] ⚪ Any further driver self-service (profile edits, leave requests, etc.)
 
@@ -72,21 +72,21 @@ The current build has 8 separate pages (`Dashboard`, `Vehicles`, `Drivers`, `Tri
 - [ ] ⚪ Live route map, sparkline charts, "simulate dispatch" demo button
 
 ### 2. Fleet (`Vehicles.jsx`)
-- [ ] 🟢 Vehicle table: plate, type, size, trips completed, distance, status — keep existing search/filter/status behavior
+- [x] 🟢 Vehicle table: plate, type, size, trips completed, distance, status — keep existing search/filter/status behavior
 - [ ] 🟢 Vehicle profile: documents (RC, insurance, permit, fitness, pollution) + expiry dates
 - [ ] 🟢 **Maintenance tab (merged in):** service log — type, cost, date, status; mark-as-completed; auto status → "In shop"/"Available"
 - [ ] 🟡 **Fuel/cost tab (merged in):** fuel logs (liters, cost, odometer), cost/vehicle, cost/km
 - [ ] 🟡 Total trips, total distance, total expenses per vehicle
 
 ### 3. Drivers
-- [ ] 🟢 Driver table: name, license, expiry, contact, status, safety score — keep existing validations (expiry blocks status change, license uniqueness, phone format)
-- [ ] 🟢 Status set: Available / On Trip / Off Duty / Suspended
+- [x] 🟢 Driver table: name, license, expiry, contact, status, safety score — keep existing validations (expiry blocks status change, license uniqueness, phone format)
+- [x] 🟢 Status set: Available / On Trip / Off Duty / Suspended
 - [ ] 🟡 Driver history: past trips, earnings, advances
 - [ ] 🟢 Driver document upload/expiry lives on this same profile (RC-equivalent: license doc) — feeds Dashboard alerts, no separate Compliance page
 
 ### 4. Trips (`TripDispatcher.jsx`)
-- [ ] 🟢 Keep existing lifecycle: Draft → Planned → Assigned → Dispatched → Completed
-- [ ] 🟢 Keep existing guards: cargo capacity, license expiry, driver availability, double-booking conflict
+- [x] 🟢 Keep existing lifecycle: Draft → Planned → Assigned → Dispatched → Completed
+- [x] 🟢 Keep existing guards: cargo capacity, license expiry, driver availability, double-booking conflict
 - [ ] 🟡 **Expense entry per trip (merged in from Fuel & Expenses):** toll, other, maintenance-linked cost
 - [ ] 🟡 Revenue + actual cost → profit per trip, pushed to Billing on completion
 - [ ] 🟢 Driver-side (APK): status update actions + POD upload on their assigned trip
