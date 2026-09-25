@@ -69,6 +69,11 @@
   color: var(--st-blue);
 }
 
+.st-icon-box.amber {
+  background: rgba(224, 138, 30, 0.1);
+  color: var(--amber, #e08a1e);
+}
+
 .st-header-text {
   display: flex;
   flex-direction: column;
@@ -312,3 +317,112 @@
   50% { transform: scale(1.15) rotate(3deg); }
   100% { transform: scale(1) rotate(0deg); }
 }
+
+/* Security Panel & Input Styles */
+.st-card.panel-security {
+  animation-delay: 0.15s;
+  transition: box-shadow 0.4s ease, border-color 0.4s ease;
+}
+
+.st-card.panel-security.highlight-pulse {
+  animation: highlightPulse 2s ease-out;
+}
+
+@keyframes highlightPulse {
+  0% {
+    box-shadow: 0 0 0 4px rgba(224, 138, 30, 0.6), 0 10px 30px rgba(224, 138, 30, 0.2);
+    border-color: rgba(224, 138, 30, 0.8);
+  }
+  100% {
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.05);
+  }
+}
+
+.st-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.st-input.has-icon {
+  padding-left: 2.5rem;
+  padding-right: 2.5rem;
+}
+
+.st-input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--sub, #8a8794);
+  pointer-events: none;
+}
+
+.st-eye-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--sub, #8a8794);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.st-eye-btn:hover {
+  color: var(--text-primary);
+}
+
+.st-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  padding: 0.625rem 0.875rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  margin-bottom: 1rem;
+}
+
+.st-success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(34, 160, 107, 0.1);
+  border: 1px solid rgba(34, 160, 107, 0.25);
+  color: #22a06b;
+  padding: 0.625rem 0.875rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  margin-bottom: 1rem;
+}
+
+.st-pwd-requirements {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.st-pwd-req {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--sub, #8a8794);
+}
+
+.st-pwd-req.met {
+  color: #22a06b;
+}
+
+.st-pwd-req.unmet {
+  color: #f87171;
+}
+

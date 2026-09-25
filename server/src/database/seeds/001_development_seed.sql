@@ -144,6 +144,67 @@ INSERT INTO users (
     FALSE,
     TRUE
 ),
+-- Team Platform Admins (Password: TransitOps@2026)
+(
+    '01a0d9dc-0871-7bea-b137-54fa4a199ca5',
+    'Ayush Pratap Singh',
+    'ayush@transitops.com',
+    NULL,
+    '$2a$12$YhEjDrIF1ZRw4vqWeNu3X.1b0Im8Su1KHztY8WkOmHVw/DISDwFpa',
+    '01950000-0000-7000-8000-000000000001',
+    NULL,
+    NULL,
+    FALSE,
+    TRUE
+),
+(
+    '01a0d9dc-093a-7b7c-8de9-8f88271731f3',
+    'Sachin Singh',
+    'sachin@transitops.com',
+    NULL,
+    '$2a$12$YhEjDrIF1ZRw4vqWeNu3X.1b0Im8Su1KHztY8WkOmHVw/DISDwFpa',
+    '01950000-0000-7000-8000-000000000001',
+    NULL,
+    NULL,
+    FALSE,
+    TRUE
+),
+(
+    '01a0d9dc-0a00-7d89-9294-9984a476e51b',
+    'Shruti Keshri',
+    'shruti@transitops.com',
+    NULL,
+    '$2a$12$YhEjDrIF1ZRw4vqWeNu3X.1b0Im8Su1KHztY8WkOmHVw/DISDwFpa',
+    '01950000-0000-7000-8000-000000000001',
+    NULL,
+    NULL,
+    FALSE,
+    TRUE
+),
+(
+    '01a0d9dc-0ac5-71d6-a488-b543c3fe3d77',
+    'Priyanshu Sharma',
+    'priyanshu@transitops.com',
+    NULL,
+    '$2a$12$YhEjDrIF1ZRw4vqWeNu3X.1b0Im8Su1KHztY8WkOmHVw/DISDwFpa',
+    '01950000-0000-7000-8000-000000000001',
+    NULL,
+    NULL,
+    FALSE,
+    TRUE
+),
+(
+    '01a0d9dc-0b8a-7338-ad5e-31029a77e3c7',
+    'Abhimanyu Sharma',
+    'abhimanyu@transitops.com',
+    NULL,
+    '$2a$12$YhEjDrIF1ZRw4vqWeNu3X.1b0Im8Su1KHztY8WkOmHVw/DISDwFpa',
+    '01950000-0000-7000-8000-000000000001',
+    NULL,
+    NULL,
+    FALSE,
+    TRUE
+),
 -- Apex Owner/Manager (org_id = Apex Freight, driver_id = NULL)
 (
     '01950000-000a-7000-8000-000000000002',

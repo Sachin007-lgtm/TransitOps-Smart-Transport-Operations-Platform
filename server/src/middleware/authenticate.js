@@ -24,7 +24,10 @@ const authenticate = async (req, res, next) => {
 
     // 1. Role-invariant token claim validation
     if (decoded.role === 'Platform Admin') {
-      if (decoded.organization_id !== null || decoded.driver_id !== null) {
+      if (
+        (decoded.organization_id !== null && decoded.organization_id !== undefined) ||
+        (decoded.driver_id !== null && decoded.driver_id !== undefined)
+      ) {
         return res.status(401).json({
           success: false,
           message: 'Invalid platform admin credentials: organization or driver cannot be assigned.'

@@ -254,4 +254,19 @@ describe('TransitOps Database Trigger Invariant Tests', () => {
       }
     );
   });
+
+  after(async () => {
+    try {
+      await query('ALTER TABLE vehicle_locations DISABLE TRIGGER trg_prevent_telemetry_delete');
+      await query('DELETE FROM vehicle_locations WHERE organization_id IN ($1, $2)', [testOrgA, testOrgB]);
+      await query('ALTER TABLE vehicle_locations ENABLE TRIGGER trg_prevent_telemetry_delete');
+      await query('DELETE FROM trips WHERE organization_id IN ($1, $2)', [testOrgA, testOrgB]);
+      await query('DELETE FROM vehicles WHERE organization_id IN ($1, $2)', [testOrgA, testOrgB]);
+      await query('DELETE FROM drivers WHERE organization_id IN ($1, $2)', [testOrgA, testOrgB]);
+      await query('DELETE FROM users WHERE organization_id IN ($1, $2)', [testOrgA, testOrgB]);
+      await query('DELETE FROM organizations WHERE id IN ($1, $2)', [testOrgA, testOrgB]);
+    } catch (e) {
+      console.error('Triggers test cleanup error:', e);
+    }
+  });
 });

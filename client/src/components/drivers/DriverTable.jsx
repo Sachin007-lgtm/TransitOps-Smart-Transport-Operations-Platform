@@ -45,7 +45,7 @@ export default function DriverTable({
               ) : drivers.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="text-center py-12 text-muted">
-                    No drivers match these filters.
+                    No drivers registered in your roster yet. Click "+ Add Driver" above to register your first driver.
                   </td>
                 </tr>
               ) : (
