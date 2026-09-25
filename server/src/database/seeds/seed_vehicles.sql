@@ -1,73 +1,62 @@
 INSERT INTO vehicles (
     registration_number,
-    name,
     type,
+    size,
     max_load_capacity,
     odometer,
-    acquisition_cost,
     status,
-    region,
     organization_id
 ) VALUES
 
 (
     'REG-001',
-    'Van-01',
     'Van',
+    'Standard',
     500.00,
     12000.00,
-    25000.00,
     'Available',
-    'North',
     'org-1'
 ),
 
 (
     'REG-002',
-    'Van-02',
     'Van',
+    'Standard',
     500.00,
     15000.00,
-    25000.00,
     'In Shop',
-    'South',
     'org-1'
 ),
 
 (
     'REG-003',
-    'Truck-01',
     'Truck',
+    'Standard',
     3000.00,
     45000.00,
-    65000.00,
     'Available',
-    'East',
     'org-1'
 ),
 
 (
     'REG-004',
-    'Truck-02',
     'Truck',
+    'Standard',
     3500.00,
     60000.00,
-    70000.00,
     'On Trip',
-    'West',
     'org-1'
 ),
 
 (
     'REG-005',
-    'Trailer-01',
     'Trailer',
+    'Standard',
     10000.00,
     120000.00,
-    110000.00,
     'Retired',
-    'North',
     'org-1'
 )
 
 ON CONFLICT (registration_number) DO NOTHING;
+

@@ -1,10 +1,12 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Vehicles from './pages/Vehicles';
 import Drivers from './pages/Drivers';
 import LoginPage from './pages/auth/LoginPage';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
 import { GlobalSearchProvider } from './contexts/GlobalSearchContext';
 
 import TripDispatcher from './pages/TripDispatcher';
@@ -65,23 +67,35 @@ function GlobalToast() {
 function App() {
   return (
     <ErrorBoundary>
-      <GlobalSearchProvider>
-        <GlobalToast />
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="vehicles" element={<Vehicles />} />
-            <Route path="drivers" element={<Drivers />} />
-            <Route path="trips" element={<TripDispatcher />} />
-            <Route path="live-map" element={<LiveMap />} />
-            <Route path="maintenance" element={<Maintenance />} />
-            <Route path="fuel" element={<FuelExpenses />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="settings" element={<Settings />} />
-          </Route>
-        </Routes>
-      </GlobalSearchProvider>
+      <AuthProvider>
+        <GlobalSearchProvider>
+          <GlobalToast />
+          <Routes>
+            <Route 
+              path="/login" 
+              element={
+                <PublicOnlyRoute>
+                  <LoginPage />
+                </PublicOnlyRoute>
+              } 
+            />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/" element={<AppLayout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="vehicles" element={<Vehicles />} />
+                <Route path="drivers" element={<Drivers />} />
+                <Route path="trips" element={<TripDispatcher />} />
+                <Route path="live-map" element={<LiveMap />} />
+                <Route path="maintenance" element={<Maintenance />} />
+                <Route path="fuel" element={<FuelExpenses />} />
+                <Route path="analytics" element={<Analytics />} />
+                <Route path="settings" element={<Settings />} />
+              </Route>
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </GlobalSearchProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

@@ -126,7 +126,6 @@ Configure your environment variables in `server/.env`:
 PORT=5001
 NODE_ENV=development
 JWT_SECRET=your_jwt_secret_key_here
-CREDENTIAL_ENCRYPTION_KEY=c3f7d8a9e2b1450689fedcba0123456789abcdef0123456789abcdef01234567
 DATABASE_URL=postgresql://username:password@ep-your-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
 ```
 

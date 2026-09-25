@@ -17,8 +17,8 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
   let baseUrl;
   let tripsBaseUrl;
 
-  const orgA = 'org-veh-A';
-  const orgB = 'org-veh-B';
+  const orgA = 'c0000000-0000-0000-0000-000000000001';
+  const orgB = 'c0000000-0000-0000-0000-000000000002';
 
   let tokenManagerA;
   let tokenManagerB;
@@ -29,8 +29,8 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
     baseUrl = `http://127.0.0.1:${port}/api/vehicles`;
     tripsBaseUrl = `http://127.0.0.1:${port}/api/trips`;
 
-    tokenManagerA = createToken({ id: 801, email: 'mgrA@veh.com', role: 'Fleet Manager', organization_id: orgA });
-    tokenManagerB = createToken({ id: 802, email: 'mgrB@veh.com', role: 'Fleet Manager', organization_id: orgB });
+    tokenManagerA = createToken({ id: '80000000-0000-0000-0000-000000000801', email: 'mgrA@veh.com', role: 'Owner/Manager', organization_id: orgA });
+    tokenManagerB = createToken({ id: '80000000-0000-0000-0000-000000000802', email: 'mgrB@veh.com', role: 'Owner/Manager', organization_id: orgB });
 
     // Clean old test records
     await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
@@ -205,7 +205,7 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
     // Seed an active driver in Org A
     const dRes = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Trip Driver A', 'LIC-TRIP-VEH-1', 'HMV', '2028-01-01', '+919877777777', 'Available', $1)
+      VALUES ('Trip Driver A', 'LIC-TRIP-VEH-1', 'HMV / HGMV', '2028-01-01', '+919877777777', 'Available', $1)
       RETURNING id
     `, [orgA]);
     const driverId = dRes.rows[0].id;
@@ -271,5 +271,77 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
 
     const check = await api(`${baseUrl}/${vehicleA1Id}`, { method: 'GET', token: tokenManagerA });
     assert.equal(check.status, 404);
+  });
+
+  // 13. Rejects invalid Indian number plate format
+  test('13. Reject invalid number plate formats with HTTP 400', async () => {
+    const invalidPlates = ['INVALID123', 'XX-00-00', '12345', 'ABC-DEF-GHI'];
+    for (const badPlate of invalidPlates) {
+      const res = await api(baseUrl, {
+        method: 'POST',
+        body: { numberPlate: badPlate, type: 'Van', size: 'Medium (14ft)' },
+        token: tokenManagerA
+      });
+      assert.equal(res.status, 400, `Expected 400 for plate ${badPlate}`);
+      assert.equal(res.data.success, false);
+    }
+  });
+
+  // 14. Normalizes and accepts standard Indian number plates
+  test('14. Normalize and accept standard Indian number plates and Bharat series', async () => {
+    // Normalizes unformatted standard plate (e.g. KA03MM1234 -> KA-03-MM-1234)
+    const res1 = await api(baseUrl, {
+      method: 'POST',
+      body: { numberPlate: 'ka03mm1234', type: 'Van', size: 'Medium (14ft)' },
+      token: tokenManagerA
+    });
+    assert.equal(res1.status, 201);
+    assert.equal(res1.data.data.registration_number, 'KA-03-MM-1234');
+
+    // Normalizes Bharat Series (22BH1234AA -> 22-BH-1234-AA)
+    const res2 = await api(baseUrl, {
+      method: 'POST',
+      body: { numberPlate: '22BH1234AA', type: 'Truck', size: 'Heavy (24ft)' },
+      token: tokenManagerA
+    });
+    assert.equal(res2.status, 201);
+    assert.equal(res2.data.data.registration_number, '22-BH-1234-AA');
+
+    // Cleanup created test vehicles
+    await query('DELETE FROM vehicles WHERE id IN ($1, $2)', [res1.data.data.id, res2.data.data.id]);
+  });
+
+  // 15. Rejects manual transition to 'On Trip'
+  test('15. Reject manually setting vehicle status to "On Trip"', async () => {
+    // Create a dedicated available vehicle in Org A
+    const createRes = await api(baseUrl, {
+      method: 'POST',
+      body: { numberPlate: 'DL-01-XY-5555', type: 'Truck', size: 'Heavy (24ft)' },
+      token: tokenManagerA
+    });
+    assert.equal(createRes.status, 201);
+    const targetVehId = createRes.data.data.id;
+
+    // Attempt to manually PATCH status to 'On Trip'
+    const patchRes = await api(`${baseUrl}/${targetVehId}/status`, {
+      method: 'PATCH',
+      body: { status: 'On Trip' },
+      token: tokenManagerA
+    });
+    assert.equal(patchRes.status, 400);
+    assert.equal(patchRes.data.success, false);
+    assert.match(patchRes.data.error, /cannot be manually set to "On Trip"/i);
+
+    // Attempt to manually PUT status to 'On trip'
+    const putRes = await api(`${baseUrl}/${targetVehId}`, {
+      method: 'PUT',
+      body: { status: 'On trip' },
+      token: tokenManagerA
+    });
+    assert.equal(putRes.status, 400);
+    assert.equal(putRes.data.success, false);
+
+    // Clean up
+    await query('DELETE FROM vehicles WHERE id = $1', [targetVehId]);
   });
 });

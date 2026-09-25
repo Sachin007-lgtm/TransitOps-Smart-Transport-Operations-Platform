@@ -22,8 +22,8 @@ const createTripSchema = {
       return null;
     }
   },
-  vehicle_id: { required: false, type: 'integer', positive: true },
-  driver_id: { required: false, type: 'integer', positive: true },
+  vehicle_id: { required: false, type: 'uuid' },
+  driver_id: { required: false, type: 'uuid' },
   external_party_name: { required: false, type: 'string' },
   external_party_type: { required: false, type: 'enum', enum: ['CUSTOMER', 'AGENCY'] },
   cargo_weight: { required: false, type: 'number' },
@@ -47,8 +47,8 @@ const updateTripSchema = {
       return null;
     }
   },
-  vehicle_id: { required: false, type: 'integer', positive: true },
-  driver_id: { required: false, type: 'integer', positive: true },
+  vehicle_id: { required: false, type: 'uuid' },
+  driver_id: { required: false, type: 'uuid' },
   external_party_name: { required: false, type: 'string' },
   external_party_type: { required: false, type: 'enum', enum: ['CUSTOMER', 'AGENCY'] },
   cargo_weight: { required: false, type: 'number' },
@@ -63,11 +63,16 @@ const updateTripStatusSchema = {
     type: 'enum',
     enum: ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed', 'Cancelled']
   },
+  vehicle_id: { required: false, type: 'uuid' },
+  driver_id: { required: false, type: 'uuid' },
   actual_arrival: { required: false, type: 'date' },
   actual_distance: { required: false, type: 'number' }
 };
 
 module.exports = {
+  createTripSchema,
+  updateTripSchema,
+  updateTripStatusSchema,
   validateCreateTrip: [normalizeOrigin, validate(createTripSchema)],
   validateUpdateTrip: [normalizeOrigin, validate(updateTripSchema)],
   validateUpdateTripStatus: [validate(updateTripStatusSchema)]

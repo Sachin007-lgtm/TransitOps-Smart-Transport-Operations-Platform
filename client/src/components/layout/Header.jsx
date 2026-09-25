@@ -3,20 +3,20 @@ import { Search, Bell, User, Settings, LogOut, ChevronRight, ShieldAlert, Wrench
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { useGlobalSearch } from '../../contexts/GlobalSearchContext';
+import { useAuth } from '../../contexts/AuthContext';
 import './Header.css';
 
 export default function Header() {
   const [openCommand, setOpenCommand] = useState(false);
   const [openPopover, setOpenPopover] = useState(null); // 'bell' | 'user' | null
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isDispatching = location.pathname === '/trips';
 
   const handleLogout = () => {
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('token');
-    localStorage.removeItem('organization_id');
+    logout();
     navigate('/login');
   };
 
@@ -142,41 +142,55 @@ export default function Header() {
 
         {/* User Block */}
         <div className="relative" ref={userRef}>
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => togglePopover('user')}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#7c4fd6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
-              RK
-            </div>
-            <div className="header-profile-text">
-              <span className="heading" style={{ fontSize: '0.875rem', lineHeight: '1.2' }}>Raven K.</span>
-              <span className="text-muted" style={{ fontSize: '0.75rem', lineHeight: '1.2' }}>Dispatcher</span>
-            </div>
-            <ChevronRight size={14} className="text-muted" style={{ transform: openPopover === 'user' ? 'rotate(90deg)' : 'rotate(0deg)', transition: '0.2s' }} />
-          </div>
+          {(() => {
+            const displayName = user?.name || 'Operations Manager';
+            const displayRole = user?.role || 'Owner/Manager';
+            const displayContact = user?.email || user?.phone_number || 'manager@transitops.com';
+            const initials = displayName
+              .trim()
+              .split(/\s+/)
+              .map(n => n[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase() || 'TO';
 
-          {openPopover === 'user' && (
-            <div className="popover-menu" style={{ width: '220px', right: 0 }}>
-              <div className="px-4 py-3 border-b border-[var(--line)]">
-                <div className="text-sm font-medium">Raven K.</div>
-                <div className="text-xs text-muted">raven@transitops.com</div>
-              </div>
-              <div className="py-1">
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <User size={16} className="text-muted" /> View profile
+            return (
+              <>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => togglePopover('user')}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#7c4fd6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
+                    {initials}
+                  </div>
+                  <div className="header-profile-text">
+                    <span className="heading" style={{ fontSize: '0.875rem', lineHeight: '1.2' }}>{displayName}</span>
+                    <span className="text-muted" style={{ fontSize: '0.75rem', lineHeight: '1.2' }}>{displayRole}</span>
+                  </div>
+                  <ChevronRight size={14} className="text-muted" style={{ transform: openPopover === 'user' ? 'rotate(90deg)' : 'rotate(0deg)', transition: '0.2s' }} />
                 </div>
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <Settings size={16} className="text-muted" /> Account settings
-                </div>
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <ShieldAlert size={16} className="text-muted" /> Switch role
-                </div>
-              </div>
-              <div className="border-t border-[var(--line)] py-1">
-                <div className="popover-item px-4 py-2 text-sm text-status-red flex items-center gap-2" onClick={handleLogout}>
-                  <LogOut size={16} /> Sign out
-                </div>
-              </div>
-            </div>
-          )}
+
+                {openPopover === 'user' && (
+                  <div className="popover-menu" style={{ width: '220px', right: 0 }}>
+                    <div className="px-4 py-3 border-b border-[var(--line)]">
+                      <div className="text-sm font-medium">{displayName}</div>
+                      <div className="text-xs text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayContact}</div>
+                    </div>
+                    <div className="py-1">
+                      <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
+                        <User size={16} className="text-muted" /> View profile
+                      </div>
+                      <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
+                        <Settings size={16} className="text-muted" /> Account settings
+                      </div>
+                    </div>
+                    <div className="border-t border-[var(--line)] py-1">
+                      <div className="popover-item px-4 py-2 text-sm text-status-red flex items-center gap-2" onClick={handleLogout}>
+                        <LogOut size={16} /> Sign out
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
 
       </div>

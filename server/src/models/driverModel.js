@@ -14,7 +14,7 @@ const Driver = {
     assertOrganizationId(organization_id, 'findAll');
 
     let sql = `
-      SELECT d.*, u.id AS user_id, u.must_change_password, u.temporary_password_encrypted,
+      SELECT d.*, u.id AS user_id, u.must_change_password,
              COALESCE((SELECT COUNT(*) FROM trips t WHERE t.driver_id = d.id AND t.status = 'Completed'), 0)::int AS trips_count
       FROM drivers d
       LEFT JOIN users u ON u.driver_id = d.id AND u.organization_id = d.organization_id
@@ -44,7 +44,7 @@ const Driver = {
     assertOrganizationId(organization_id, 'findById');
 
     const result = await query(`
-      SELECT d.*, u.id AS user_id, u.must_change_password, u.temporary_password_encrypted,
+      SELECT d.*, u.id AS user_id, u.must_change_password,
              COALESCE((SELECT COUNT(*) FROM trips t WHERE t.driver_id = d.id AND t.status = 'Completed'), 0)::int AS trips_count
       FROM drivers d
       LEFT JOIN users u ON u.driver_id = d.id AND u.organization_id = d.organization_id
@@ -112,18 +112,17 @@ const Driver = {
     license_category = 'LMV',
     license_expiry_date,
     contact_number,
-    safety_score = 100,
     status = 'Available',
     organization_id
   }, client = { query }) => {
     assertOrganizationId(organization_id, 'create');
 
     const sql = `
-      INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, safety_score, status, organization_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `;
-    const result = await client.query(sql, [name, license_number, license_category, license_expiry_date, contact_number, safety_score, status, organization_id]);
+    const result = await client.query(sql, [name, license_number, license_category, license_expiry_date, contact_number, status, organization_id]);
     return result.rows[0];
   },
 
@@ -133,7 +132,7 @@ const Driver = {
   update: async (id, fields, organization_id) => {
     assertOrganizationId(organization_id, 'update');
 
-    const allowedFields = ['name', 'license_number', 'license_category', 'license_expiry_date', 'contact_number', 'safety_score', 'status'];
+    const allowedFields = ['name', 'license_number', 'license_category', 'license_expiry_date', 'contact_number', 'status'];
     const setClause = [];
     const values = [];
     let idx = 1;
@@ -165,20 +164,20 @@ const Driver = {
   /**
    * Delete a driver by PK, strictly scoped by organization_id.
    */
-  delete: async (id, organization_id) => {
+  delete: async (id, organization_id, client = null) => {
     assertOrganizationId(organization_id, 'delete');
-
-    const result = await query(`DELETE FROM drivers WHERE id = $1 AND organization_id = $2 RETURNING *`, [id, organization_id]);
+    const executor = client || { query };
+    const result = await executor.query(`DELETE FROM drivers WHERE id = $1 AND organization_id = $2 RETURNING *`, [id, organization_id]);
     return result.rows[0];
   },
 
   /**
    * Directly update only the status field, strictly scoped by organization_id.
    */
-  setStatus: async (id, status, organization_id) => {
+  setStatus: async (id, status, organization_id, client = null) => {
     assertOrganizationId(organization_id, 'setStatus');
-
-    const result = await query(
+    const executor = client || { query };
+    const result = await executor.query(
       `UPDATE drivers SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND organization_id = $3 RETURNING *`,
       [status, id, organization_id]
     );

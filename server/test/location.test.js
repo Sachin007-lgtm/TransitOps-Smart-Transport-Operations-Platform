@@ -15,8 +15,9 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
   let baseUrl;
   let tripsBaseUrl;
 
-  const orgA = 'org-loc-test-A';
-  const orgB = 'org-loc-test-B';
+  const runSeed = Date.now();
+  const orgA = 'e0000000-0000-0000-0000-' + String(runSeed).slice(-12).padStart(12, '0');
+  const orgB = 'e0000000-0000-0000-0001-' + String(runSeed).slice(-12).padStart(12, '0');
 
   let tokenManagerA;
   let tokenDriverA1;
@@ -35,38 +36,31 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     tripsBaseUrl = `http://127.0.0.1:${port}/api/trips`;
 
     // Ensure organizations exist
-    await query(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [orgA, 'Org Loc A', 'org-loc-a']);
-    await query(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [orgB, 'Org Loc B', 'org-loc-b']);
-
-    // Clean prior records
-    await query('DELETE FROM vehicle_locations WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM trips WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM users WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM drivers WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM vehicles WHERE organization_id IN ($1, $2)', [orgA, orgB]);
+    await query(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [orgA, 'Org Loc A', `org-loc-a-${runSeed}`]);
+    await query(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [orgB, 'Org Loc B', `org-loc-b-${runSeed}`]);
 
     // Create vehicle in orgA
     const vehRes = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('MH-LOC-01', 'GPS Fleet Van', 'Van', 2500, 30000, 'Available', $1)
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ($1, 'Van', 2500, 'Available', $2)
       RETURNING id
-    `, [orgA]);
+    `, ['MH-LOC-01', orgA]);
     vehicleAId = vehRes.rows[0].id;
 
     // Create driver 1 in orgA
     const drv1Res = await query(`
       INSERT INTO drivers (name, contact_number, license_number, license_category, license_expiry_date, status, organization_id)
-      VALUES ('Driver One', '1111111111', 'DL-LOC-001', 'Van', '2030-01-01', 'Available', $1)
+      VALUES ('Driver One', $1, $2, 'LMV-TR', '2030-01-01', 'Available', $3)
       RETURNING id
-    `, [orgA]);
+    `, [`+918888${String(runSeed).slice(-6)}`, `DL-LOC-1-${runSeed}`, orgA]);
     driverA1Id = drv1Res.rows[0].id;
 
     // Create driver 2 in orgA
     const drv2Res = await query(`
       INSERT INTO drivers (name, contact_number, license_number, license_category, license_expiry_date, status, organization_id)
-      VALUES ('Driver Two', '2222222222', 'DL-LOC-002', 'Van', '2030-01-01', 'Available', $1)
+      VALUES ('Driver Two', $1, $2, 'LMV-TR', '2030-01-01', 'Available', $3)
       RETURNING id
-    `, [orgA]);
+    `, [`+918887${String(runSeed).slice(-6)}`, `DL-LOC-2-${runSeed}`, orgA]);
     driverA2Id = drv2Res.rows[0].id;
 
     // Create trip in orgA (Assigned status)
@@ -81,25 +75,18 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     `, [vehicleAId, driverA1Id, orgA]);
     tripAId = tripRes.rows[0].id;
 
-    tokenManagerA = createToken({ id: 801, email: 'mgrA@loctest.com', role: 'Fleet Manager', organization_id: orgA });
-    tokenDriverA1 = createToken({ id: 802, email: 'driver1@loctest.com', role: 'Driver', driver_id: driverA1Id, organization_id: orgA });
-    tokenDriverA2 = createToken({ id: 803, email: 'driver2@loctest.com', role: 'Driver', driver_id: driverA2Id, organization_id: orgA });
-    tokenDriverB = createToken({ id: 804, email: 'driverB@loctest.com', role: 'Driver', driver_id: 9999, organization_id: orgB });
+    tokenManagerA = createToken({ id: '80000000-0000-0000-0000-000000000801', email: 'mgrA@loctest.com', role: 'Owner/Manager', organization_id: orgA });
+    tokenDriverA1 = createToken({ id: '80000000-0000-0000-0000-000000000802', email: 'driver1@loctest.com', role: 'Driver', driver_id: driverA1Id, organization_id: orgA });
+    tokenDriverA2 = createToken({ id: '80000000-0000-0000-0000-000000000803', email: 'driver2@loctest.com', role: 'Driver', driver_id: driverA2Id, organization_id: orgA });
+    tokenDriverB = createToken({ id: '80000000-0000-0000-0000-000000000804', email: 'driverB@loctest.com', role: 'Driver', driver_id: '90000000-0000-0000-0000-000000000999', organization_id: orgB });
   });
 
   after(async () => {
-    await query('DELETE FROM vehicle_locations WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM trips WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM users WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM drivers WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM vehicles WHERE organization_id IN ($1, $2)', [orgA, orgB]);
-    await query('DELETE FROM organizations WHERE id IN ($1, $2)', [orgA, orgB]);
     if (server) {
       await new Promise((resolve, reject) => {
         server.close(error => (error ? reject(error) : resolve()));
       });
     }
-    await pool.end();
   });
 
   test('1. Reject unauthenticated location request with 401', async () => {

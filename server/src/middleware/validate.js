@@ -1,5 +1,9 @@
-const validate = (schema) => {
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const validate = (schema = {}) => {
   return (req, res, next) => {
+    if (!schema || typeof schema !== 'object') return next();
+    req.body = req.body || {};
     const errors = [];
     
     for (const [key, rules] of Object.entries(schema)) {
@@ -25,6 +29,10 @@ const validate = (schema) => {
           } else if (rules.positive && num <= 0) {
             errors.push(`${key} must be a positive integer.`);
           }
+        } else if (rules.type === 'uuid') {
+          if (typeof val !== 'string' || !UUID_REGEX.test(val.trim())) {
+            errors.push(`${key} must be a valid UUID.`);
+          }
         } else if (rules.type === 'string' && typeof val !== 'string') {
           errors.push(`${key} must be a string.`);
         } else if (rules.type === 'date') {
@@ -44,7 +52,11 @@ const validate = (schema) => {
     }
     
     if (errors.length > 0) {
-      return res.status(400).json({ errors });
+      return res.status(400).json({
+        success: false,
+        message: errors.join('; '),
+        errors
+      });
     }
     
     next();
