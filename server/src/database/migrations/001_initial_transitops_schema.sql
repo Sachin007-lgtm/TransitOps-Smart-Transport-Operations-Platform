@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. Organizations
 CREATE TABLE IF NOT EXISTS organizations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(150) NOT NULL,
     slug VARCHAR(100) UNIQUE NOT NULL,
     status VARCHAR(20) DEFAULT 'Active' CHECK (status IN ('Active', 'Suspended', 'Inactive')),
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS organizations (
 
 -- 2. Roles (strictly 3 roles)
 CREATE TABLE IF NOT EXISTS roles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(50) UNIQUE NOT NULL CHECK (name IN ('Platform Admin', 'Owner/Manager', 'Driver')),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -23,14 +23,17 @@ CREATE TABLE IF NOT EXISTS roles (
 
 -- 3. Drivers
 CREATE TABLE IF NOT EXISTS drivers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
     name VARCHAR(100) NOT NULL,
     license_number VARCHAR(50) UNIQUE NOT NULL,
-    license_category VARCHAR(50) NOT NULL DEFAULT 'LMV',
+    license_category VARCHAR(50) DEFAULT 'LMV-TR' CHECK (
+        license_category IS NULL OR license_category IN (
+            'MC 50CC', 'MCWOG / FVG', 'MCWG', 'LMV-NT', 'LMV-TR', 'MGV', 'HMV / HGMV', 'HPMV / HTV', 'Trailer'
+        )
+    ),
     license_expiry_date DATE NOT NULL,
     contact_number VARCHAR(30) NOT NULL,
-    safety_score DECIMAL(5, 2) DEFAULT 100.00 CHECK (safety_score >= 0.00 AND safety_score <= 100.00),
     status VARCHAR(20) DEFAULT 'Available' CHECK (status IN ('Available', 'On Trip', 'Off Duty', 'Suspended')),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -40,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_drivers_org ON drivers(organization_id);
 
 -- 4. Users
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(100) NOT NULL,
     email VARCHAR(100),
     phone_number VARCHAR(30),
@@ -63,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id);
 
 -- 5. Vehicles
 CREATE TABLE IF NOT EXISTS vehicles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
     registration_number VARCHAR(50) NOT NULL,
     name VARCHAR(100) NOT NULL,
@@ -83,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_vehicles_org ON vehicles(organization_id);
 
 -- 6. Trips
 CREATE TABLE IF NOT EXISTS trips (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
     origin VARCHAR(255) NOT NULL,
     destination VARCHAR(255) NOT NULL,
@@ -114,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_trips_driver ON trips(driver_id);
 
 -- 7. Vehicle Locations (Append-Only Telemetry)
 CREATE TABLE IF NOT EXISTS vehicle_locations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
     trip_id UUID NOT NULL,
     vehicle_id UUID NOT NULL,

@@ -205,7 +205,7 @@ describe('TransitOps Vehicle Module Backend Tests', () => {
     // Seed an active driver in Org A
     const dRes = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Trip Driver A', 'LIC-TRIP-VEH-1', 'HMV', '2028-01-01', '+919877777777', 'Available', $1)
+      VALUES ('Trip Driver A', 'LIC-TRIP-VEH-1', 'HMV / HGMV', '2028-01-01', '+919877777777', 'Available', $1)
       RETURNING id
     `, [orgA]);
     const driverId = dRes.rows[0].id;

@@ -58,7 +58,7 @@ describe('TransitOps Authentication Module Hardening & Contract Tests', () => {
     // 5. Seed a driver in Org A with phone number login
     const driverRecord = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Auth Driver A', 'DL-AUTH-001', 'LMV', '2028-12-31', '+919888877771', 'Available', $1)
+      VALUES ('Auth Driver A', 'DL-AUTH-001', 'LMV-TR', '2028-12-31', '+919888877771', 'Available', $1)
       RETURNING id
     `, [testOrgA]);
     testDriverAId = driverRecord.rows[0].id;

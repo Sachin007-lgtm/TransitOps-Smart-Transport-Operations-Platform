@@ -86,21 +86,21 @@ describe('TransitOps Trip Module Backend Tests', () => {
     // 5. Create Org A Drivers
     const dA1 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver One', 'LIC-TEST-A1', 'HMV', '2028-01-01', '+919999990001', 'Available', 'b0000000-0000-0000-0000-000000000001')
+      VALUES ('Driver One', 'LIC-TEST-A1', 'HMV / HGMV', '2028-01-01', '+919999990001', 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     driverA1Id = dA1.rows[0].id;
 
     const dA2 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver Bad', 'LIC-TEST-A2', 'HMV', '2028-01-01', '+919999990002', 'Suspended', 'b0000000-0000-0000-0000-000000000001')
+      VALUES ('Driver Bad', 'LIC-TEST-A2', 'HMV / HGMV', '2028-01-01', '+919999990002', 'Suspended', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     driverA2Id = dA2.rows[0].id;
 
     const dA3 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver Two', 'LIC-TEST-A3', 'HMV', '2028-01-01', '+919999990003', 'Available', 'b0000000-0000-0000-0000-000000000001')
+      VALUES ('Driver Two', 'LIC-TEST-A3', 'HMV / HGMV', '2028-01-01', '+919999990003', 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     driverA3Id = dA3.rows[0].id;
@@ -108,7 +108,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
     // 6. Create Org B Driver
     const dB1 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver Org B', 'LIC-TEST-B1', 'HMV', '2028-01-01', '+919999990004', 'Available', 'b0000000-0000-0000-0000-000000000002')
+      VALUES ('Driver Org B', 'LIC-TEST-B1', 'HMV / HGMV', '2028-01-01', '+919999990004', 'Available', 'b0000000-0000-0000-0000-000000000002')
       RETURNING id
     `);
     driverB1Id = dB1.rows[0].id;

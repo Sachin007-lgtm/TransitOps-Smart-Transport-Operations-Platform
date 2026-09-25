@@ -112,18 +112,17 @@ const Driver = {
     license_category = 'LMV',
     license_expiry_date,
     contact_number,
-    safety_score = 100,
     status = 'Available',
     organization_id
   }, client = { query }) => {
     assertOrganizationId(organization_id, 'create');
 
     const sql = `
-      INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, safety_score, status, organization_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `;
-    const result = await client.query(sql, [name, license_number, license_category, license_expiry_date, contact_number, safety_score, status, organization_id]);
+    const result = await client.query(sql, [name, license_number, license_category, license_expiry_date, contact_number, status, organization_id]);
     return result.rows[0];
   },
 
@@ -133,7 +132,7 @@ const Driver = {
   update: async (id, fields, organization_id) => {
     assertOrganizationId(organization_id, 'update');
 
-    const allowedFields = ['name', 'license_number', 'license_category', 'license_expiry_date', 'contact_number', 'safety_score', 'status'];
+    const allowedFields = ['name', 'license_number', 'license_category', 'license_expiry_date', 'contact_number', 'status'];
     const setClause = [];
     const values = [];
     let idx = 1;

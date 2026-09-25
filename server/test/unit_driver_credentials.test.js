@@ -130,7 +130,7 @@ describe('Secure Credential Architecture Verification', () => {
         const result = await driverService.createDriver({
           name: 'Rajesh Pilot',
           license_number: 'DL-9999-TEST',
-          license_category: 'LMV',
+          license_category: 'LMV-TR',
           license_expiry_date: '2029-01-01',
           contact_number: '+919876543210',
           status: 'Available'

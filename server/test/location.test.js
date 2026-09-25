@@ -50,7 +50,7 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     // Create driver 1 in orgA
     const drv1Res = await query(`
       INSERT INTO drivers (name, contact_number, license_number, license_category, license_expiry_date, status, organization_id)
-      VALUES ('Driver One', $1, $2, 'Van', '2030-01-01', 'Available', $3)
+      VALUES ('Driver One', $1, $2, 'LMV-TR', '2030-01-01', 'Available', $3)
       RETURNING id
     `, [`+918888${String(runSeed).slice(-6)}`, `DL-LOC-1-${runSeed}`, orgA]);
     driverA1Id = drv1Res.rows[0].id;
@@ -58,7 +58,7 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     // Create driver 2 in orgA
     const drv2Res = await query(`
       INSERT INTO drivers (name, contact_number, license_number, license_category, license_expiry_date, status, organization_id)
-      VALUES ('Driver Two', $1, $2, 'Van', '2030-01-01', 'Available', $3)
+      VALUES ('Driver Two', $1, $2, 'LMV-TR', '2030-01-01', 'Available', $3)
       RETURNING id
     `, [`+918887${String(runSeed).slice(-6)}`, `DL-LOC-2-${runSeed}`, orgA]);
     driverA2Id = drv2Res.rows[0].id;

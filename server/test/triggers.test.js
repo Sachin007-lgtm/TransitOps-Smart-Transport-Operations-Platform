@@ -43,7 +43,7 @@ describe('TransitOps Database Trigger Invariant Tests', () => {
     // Seed driver in Org A
     const drvRes = await query(`
       INSERT INTO drivers (organization_id, name, license_number, license_category, license_expiry_date, contact_number, status)
-      VALUES ($1, 'Trigger Driver A', $2, 'LMV', '2030-01-01', $3, 'Available')
+      VALUES ($1, 'Trigger Driver A', $2, 'LMV-TR', '2030-01-01', $3, 'Available')
       RETURNING id
     `, [testOrgA, testLicense, testPhone]);
     driverAId = drvRes.rows[0].id;
@@ -156,7 +156,7 @@ describe('TransitOps Database Trigger Invariant Tests', () => {
     // Seed alternate driver in Org A
     const altDrv = await query(`
       INSERT INTO drivers (organization_id, name, license_number, license_category, license_expiry_date, contact_number, status)
-      VALUES ($1, 'Trigger Driver 2', $2, 'LMV', '2030-01-01', $3, 'Available')
+      VALUES ($1, 'Trigger Driver 2', $2, 'LMV-TR', '2030-01-01', $3, 'Available')
       RETURNING id
     `, [testOrgA, `DL-ALT-${altRunId}`, `+919998${String(altRunId).slice(-6)}`]);
     const altDrvId = altDrv.rows[0].id;
@@ -234,7 +234,11 @@ describe('TransitOps Database Trigger Invariant Tests', () => {
     if (!tripAId) return;
 
     // Alternate vehicle in Org A
-    const altVeh = await query(`SELECT id FROM vehicles WHERE registration_number = 'REG-TRIG-02' LIMIT 1`);
+    const altVeh = await query(`
+      INSERT INTO vehicles (organization_id, registration_number, name, type, max_load_capacity, acquisition_cost, status)
+      VALUES ($1, $2, 'Trigger Van Alt', 'Van', 1000, 20000, 'Available')
+      RETURNING id
+    `, [testOrgA, `REG-ALT-${Date.now()}`]);
     const mismatchedVehId = altVeh.rows[0].id;
 
     await assert.rejects(

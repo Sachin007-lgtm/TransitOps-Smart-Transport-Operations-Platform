@@ -1,58 +1,130 @@
 -- 001_development_seed.sql
--- Deterministic Development Seed Data for TransitOps
+-- Deterministic Development Seed Data for TransitOps (RFC 9562 UUIDv7 Standard)
 
 -- 1. Insert Canonical Roles
 INSERT INTO roles (id, name) VALUES
-('00000000-0000-0000-0000-000000000001', 'Platform Admin'),
-('00000000-0000-0000-0000-000000000002', 'Owner/Manager'),
-('00000000-0000-0000-0000-000000000003', 'Driver')
+('01950000-0000-7000-8000-000000000001', 'Platform Admin'),
+('01950000-0000-7000-8000-000000000002', 'Owner/Manager'),
+('01950000-0000-7000-8000-000000000003', 'Driver')
 ON CONFLICT (name) DO NOTHING;
 
 -- 2. Insert Organizations
 INSERT INTO organizations (id, name, slug, status) VALUES
-('10000000-0000-0000-0000-000000000001', 'Apex Freight Logistics', 'apex-freight', 'Active'),
-('10000000-0000-0000-0000-000000000002', 'Beacon Express Lines', 'beacon-express', 'Active')
+('01950000-0001-7000-8000-000000000001', 'Apex Freight Logistics', 'apex-freight', 'Active'),
+('01950000-0001-7000-8000-000000000002', 'Beacon Express Lines', 'beacon-express', 'Active')
 ON CONFLICT (id) DO NOTHING;
 
--- 3. Insert Drivers
+-- 3. Insert Drivers (safety_score removed, dynamic trips_count computed from completed trips)
 INSERT INTO drivers (
     id, organization_id, name, license_number, license_category,
-    license_expiry_date, contact_number, safety_score, status
+    license_expiry_date, contact_number, status
 ) VALUES
 (
-    '20000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000001',
+    '01950000-0002-7000-8000-000000000001',
+    '01950000-0001-7000-8000-000000000001',
     'Alex Kumar',
-    'DL-MH-20190001',
-    'C',
+    'DL-01-2019-0000001',
+    'LMV-TR',
     '2028-06-30',
     '+919876543210',
-    95.00,
     'Available'
 ),
 (
-    '20000000-0000-0000-0000-000000000002',
-    '10000000-0000-0000-0000-000000000001',
+    '01950000-0002-7000-8000-000000000002',
+    '01950000-0001-7000-8000-000000000001',
     'Ravi Sharma',
-    'DL-MH-20200045',
-    'BE',
+    'MH-02-2020-0000045',
+    'HMV / HGMV',
     '2027-12-31',
     '+919123456780',
-    88.00,
     'Available'
 ),
 (
-    '20000000-0000-0000-0000-000000000003',
-    '10000000-0000-0000-0000-000000000002',
+    '01950000-0002-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000002',
     'Priya Nair',
-    'DL-KA-20180123',
-    'D',
+    'KA-03-2018-0000123',
+    'LMV-TR',
     '2026-03-15',
     '+919000012345',
-    92.00,
+    'Available'
+),
+(
+    '01950000-0002-7000-8000-000000000004',
+    '01950000-0001-7000-8000-000000000001',
+    'Vikram Singh',
+    'DL-04-2021-0000189',
+    'HMV / HGMV',
+    '2028-09-15',
+    '+919811223344',
+    'Available'
+),
+(
+    '01950000-0002-7000-8000-000000000005',
+    '01950000-0001-7000-8000-000000000001',
+    'Sunita Patil',
+    'MH-12-2022-0000301',
+    'LMV-TR',
+    '2029-04-20',
+    '+919822334455',
+    'Off Duty'
+),
+(
+    '01950000-0002-7000-8000-000000000006',
+    '01950000-0001-7000-8000-000000000001',
+    'Mohammed Irfan',
+    'KA-01-2020-0000542',
+    'Trailer',
+    '2027-11-10',
+    '+919833445566',
+    'Available'
+),
+(
+    '01950000-0002-7000-8000-000000000007',
+    '01950000-0001-7000-8000-000000000001',
+    'Arjun Reddy',
+    'TS-09-2023-0000778',
+    'HPMV / HTV',
+    '2029-08-05',
+    '+919844556677',
+    'Available'
+),
+(
+    '01950000-0002-7000-8000-000000000008',
+    '01950000-0001-7000-8000-000000000001',
+    'Rajesh Verma',
+    'UP-32-2019-0000912',
+    'MGV',
+    '2027-02-28',
+    '+919855667788',
+    'Suspended'
+),
+(
+    '01950000-0002-7000-8000-000000000009',
+    '01950000-0001-7000-8000-000000000001',
+    'Manoj Tiwari',
+    'DL-08-2018-0000431',
+    'LMV-NT',
+    '2026-10-18',
+    '+919866778899',
+    'Off Duty'
+),
+(
+    '01950000-0002-7000-8000-000000000010',
+    '01950000-0001-7000-8000-000000000002',
+    'Suresh Menon',
+    'KL-07-2021-0000654',
+    'HMV / HGMV',
+    '2028-05-12',
+    '+919700012345',
     'Available'
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+    license_number = EXCLUDED.license_number,
+    license_category = EXCLUDED.license_category,
+    license_expiry_date = EXCLUDED.license_expiry_date,
+    contact_number = EXCLUDED.contact_number,
+    status = EXCLUDED.status;
 
 -- 4. Insert Users (Password: Password123! -> bcrypt $2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy)
 INSERT INTO users (
@@ -61,12 +133,12 @@ INSERT INTO users (
 ) VALUES
 -- Platform Admin (org_id = NULL, driver_id = NULL)
 (
-    'a0000000-0000-0000-0000-000000000001',
+    '01950000-000a-7000-8000-000000000001',
     'Platform Administrator',
     'admin@transitops.com',
     NULL,
     '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
-    '00000000-0000-0000-0000-000000000001',
+    '01950000-0000-7000-8000-000000000001',
     NULL,
     NULL,
     FALSE,
@@ -74,40 +146,105 @@ INSERT INTO users (
 ),
 -- Apex Owner/Manager (org_id = Apex Freight, driver_id = NULL)
 (
-    'a0000000-0000-0000-0000-000000000002',
+    '01950000-000a-7000-8000-000000000002',
     'Jane Doe (Apex)',
     'owner@apexfreight.com',
     '+919876500001',
     '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
-    '00000000-0000-0000-0000-000000000002',
-    '10000000-0000-0000-0000-000000000001',
+    '01950000-0000-7000-8000-000000000002',
+    '01950000-0001-7000-8000-000000000001',
     NULL,
     FALSE,
     TRUE
 ),
 -- Beacon Owner/Manager (org_id = Beacon Express, driver_id = NULL)
 (
-    'a0000000-0000-0000-0000-000000000003',
+    '01950000-000a-7000-8000-000000000003',
     'Bob Miller (Beacon)',
     'owner@beaconexpress.com',
     '+919876500002',
     '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
-    '00000000-0000-0000-0000-000000000002',
-    '10000000-0000-0000-0000-000000000002',
+    '01950000-0000-7000-8000-000000000002',
+    '01950000-0001-7000-8000-000000000002',
     NULL,
     FALSE,
     TRUE
 ),
 -- Driver User (Apex Freight, driver_id = Alex Kumar)
 (
-    'a0000000-0000-0000-0000-000000000004',
+    '01950000-000a-7000-8000-000000000004',
     'Alex Kumar',
-    'driver@apexfreight.com',
+    'alex@apexfreight.com',
     '+919876543210',
     '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
-    '00000000-0000-0000-0000-000000000003',
-    '10000000-0000-0000-0000-000000000001',
-    '20000000-0000-0000-0000-000000000001',
+    '01950000-0000-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000001',
+    '01950000-0002-7000-8000-000000000001',
+    FALSE,
+    TRUE
+),
+-- Driver User (Apex Freight, driver_id = Ravi Sharma)
+(
+    '01950000-000a-7000-8000-000000000005',
+    'Ravi Sharma',
+    'ravi@apexfreight.com',
+    '+919123456780',
+    '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
+    '01950000-0000-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000001',
+    '01950000-0002-7000-8000-000000000002',
+    FALSE,
+    TRUE
+),
+-- Driver User (Apex Freight, driver_id = Vikram Singh)
+(
+    '01950000-000a-7000-8000-000000000006',
+    'Vikram Singh',
+    'vikram@apexfreight.com',
+    '+919811223344',
+    '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
+    '01950000-0000-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000001',
+    '01950000-0002-7000-8000-000000000004',
+    TRUE,
+    TRUE
+),
+-- Driver User (Apex Freight, driver_id = Sunita Patil)
+(
+    '01950000-000a-7000-8000-000000000007',
+    'Sunita Patil',
+    'sunita@apexfreight.com',
+    '+919822334455',
+    '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
+    '01950000-0000-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000001',
+    '01950000-0002-7000-8000-000000000005',
+    FALSE,
+    TRUE
+),
+-- Driver User (Apex Freight, driver_id = Mohammed Irfan)
+(
+    '01950000-000a-7000-8000-000000000008',
+    'Mohammed Irfan',
+    'irfan@apexfreight.com',
+    '+919833445566',
+    '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
+    '01950000-0000-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000001',
+    '01950000-0002-7000-8000-000000000006',
+    FALSE,
+    TRUE
+),
+-- Driver User (Beacon Express, driver_id = Priya Nair)
+(
+    '01950000-000a-7000-8000-000000000009',
+    'Priya Nair',
+    'priya@beaconexpress.com',
+    '+919000012345',
+    '$2a$12$B9dfUsYfM4aXO0t0qRlhseZjvrvKBdOtluYLPOX3wIyi1LAj6uMpy',
+    '01950000-0000-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000002',
+    '01950000-0002-7000-8000-000000000003',
     FALSE,
     TRUE
 )
@@ -119,8 +256,8 @@ INSERT INTO vehicles (
     sub_category, region, max_load_capacity, odometer, acquisition_cost, status
 ) VALUES
 (
-    '30000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000001',
+    '01950000-0003-7000-8000-000000000001',
+    '01950000-0001-7000-8000-000000000001',
     'REG-APEX-01',
     'Apex Van 1',
     'Van',
@@ -132,8 +269,8 @@ INSERT INTO vehicles (
     'Available'
 ),
 (
-    '30000000-0000-0000-0000-000000000002',
-    '10000000-0000-0000-0000-000000000001',
+    '01950000-0003-7000-8000-000000000002',
+    '01950000-0001-7000-8000-000000000001',
     'REG-APEX-02',
     'Apex Heavy 1',
     'Truck',
@@ -145,8 +282,8 @@ INSERT INTO vehicles (
     'Available'
 ),
 (
-    '30000000-0000-0000-0000-000000000003',
-    '10000000-0000-0000-0000-000000000002',
+    '01950000-0003-7000-8000-000000000003',
+    '01950000-0001-7000-8000-000000000002',
     'REG-BEACON-01',
     'Beacon Van 1',
     'Van',
@@ -166,13 +303,13 @@ INSERT INTO trips (
     start_time, expected_arrival, status
 ) VALUES
 (
-    '40000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000001',
+    '01950000-0004-7000-8000-000000000001',
+    '01950000-0001-7000-8000-000000000001',
     'Mumbai Hub',
     'Pune Depot',
     'Mumbai Express Highway -> Pune Bypass',
-    '30000000-0000-0000-0000-000000000001',
-    '20000000-0000-0000-0000-000000000001',
+    '01950000-0003-7000-8000-000000000001',
+    '01950000-0002-7000-8000-000000000001',
     350.00,
     148.50,
     7500.00,

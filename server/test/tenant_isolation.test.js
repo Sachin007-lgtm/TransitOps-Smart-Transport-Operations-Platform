@@ -56,7 +56,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     // Seed one driver in Org B
     const dRes = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Org B Driver', 'LIC-ISO-B1', 'HMV', '2028-01-01', '+919800000001', 'Available', $1)
+      VALUES ('Org B Driver', 'LIC-ISO-B1', 'HMV / HGMV', '2028-01-01', '+919800000001', 'Available', $1)
       RETURNING id
     `, [orgB]);
     driverBId = dRes.rows[0].id;
@@ -116,7 +116,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     const payload = {
       name: 'Driver In A',
       license_number: 'LIC-ISO-A1',
-      license_category: 'LMV',
+      license_category: 'LMV-TR',
       license_expiry_date: '2028-12-31',
       contact_number: '+919999900001'
     };
@@ -133,7 +133,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     const payload = {
       name: 'Driver Spoof Attempt',
       license_number: 'LIC-ISO-A2',
-      license_category: 'LMV',
+      license_category: 'LMV-TR',
       license_expiry_date: '2028-12-31',
       contact_number: '+919999900002',
       organization_id: orgB // Client tries to spoof Org B
@@ -191,7 +191,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
         await Driver.create({
           name: 'No Org Driver',
           license_number: 'LIC-FAIL-1',
-          license_category: 'LMV',
+          license_category: 'LMV-TR',
           license_expiry_date: '2028-12-31',
           contact_number: '+919999900099'
         });
@@ -234,7 +234,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     try {
       await query(`
         INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-        VALUES ('Ghost Driver', 'LIC-GHOST-1', 'LMV', '2028-01-01', '+919999999999', 'Available', '00000000-0000-0000-0000-000000000999')
+        VALUES ('Ghost Driver', 'LIC-GHOST-1', 'LMV-TR', '2028-01-01', '+919999999999', 'Available', '00000000-0000-0000-0000-000000000999')
       `);
       assert.fail('Expected insert with nonexistent organization_id to fail foreign key check');
     } catch (err) {

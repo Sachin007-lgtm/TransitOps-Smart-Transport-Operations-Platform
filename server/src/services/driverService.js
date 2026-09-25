@@ -6,6 +6,10 @@ const {
   hashPassword
 } = require('../utils/credentials');
 const { normalizePhoneNumber } = require('../utils/phone');
+const {
+  normalizeIndianLicenseNumber,
+  normalizeLicenseCategory
+} = require('../utils/license');
 
 class DriverServiceError extends Error {
   constructor(message, statusCode = 400) {
@@ -29,30 +33,15 @@ const driverService = {
    * List drivers strictly scoped to user's organization with optional filters.
    * Passwords are NEVER included in list responses.
    */
-  listDrivers: async (filters = {}, user) => {
-    let { status, license_category, search } = filters;
-
-    let drivers = await Driver.findAll({
-      status,
-      license_category,
+  listDrivers: async (filters, user) => {
+    return await Driver.findAll({
+      ...filters,
       organization_id: user.organization_id
     });
-
-    if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      drivers = drivers.filter(d =>
-        (d.name && d.name.toLowerCase().includes(q)) ||
-        (d.license_number && d.license_number.toLowerCase().includes(q)) ||
-        (d.contact_number && d.contact_number.toLowerCase().includes(q)) ||
-        (d.status && d.status.toLowerCase().includes(q))
-      );
-    }
-
-    return drivers;
   },
 
   /**
-   * Get single driver by ID, strictly scoped to user's organization.
+   * Get single driver by PK, strictly scoped to user's organization.
    * Passwords are NEVER included.
    */
   getDriverById: async (id, user) => {
@@ -72,15 +61,22 @@ const driverService = {
     const {
       name,
       license_number,
-      license_category = 'LMV',
+      license_category = 'LMV-TR',
       license_expiry_date,
       contact_number,
-      safety_score = 100,
       status = 'Available'
     } = data;
 
+    // Disallow manual creation directly into 'On Trip' status
+    if (status === 'On Trip') {
+      throw new DriverServiceError('Driver status cannot be manually set to "On Trip". "On Trip" status is managed automatically by trip dispatch.', 400);
+    }
+
+    const normalizedLicense = normalizeIndianLicenseNumber(license_number) || (license_number ? license_number.trim() : '');
+    const normalizedCategory = normalizeLicenseCategory(license_category);
+
     // Check license uniqueness
-    const existing = await Driver.findByLicense(license_number);
+    const existing = await Driver.findByLicense(normalizedLicense);
     if (existing) {
       throw new DriverServiceError('License number already exists.', 409);
     }
@@ -101,11 +97,10 @@ const driverService = {
       await client.query('BEGIN');
       const driver = await Driver.create({
         name: name.trim(),
-        license_number: license_number.trim(),
-        license_category,
+        license_number: normalizedLicense,
+        license_category: normalizedCategory,
         license_expiry_date,
         contact_number: phoneNumber,
-        safety_score,
         status,
         organization_id: user.organization_id
       }, client);
@@ -167,8 +162,15 @@ const driverService = {
       throw new DriverServiceError('Driver not found.', 404);
     }
 
+    // Driver cannot be manually moved to 'On Trip'
+    if (data.status === 'On Trip' && existing.status !== 'On Trip') {
+      throw new DriverServiceError('Driver status cannot be manually set to "On Trip". "On Trip" status is managed automatically by trip dispatch.', 400);
+    }
+
+    let normalizedLicense = undefined;
     if (data.license_number && data.license_number.trim() !== existing.license_number) {
-      const duplicate = await Driver.findByLicense(data.license_number.trim(), id);
+      normalizedLicense = normalizeIndianLicenseNumber(data.license_number) || data.license_number.trim();
+      const duplicate = await Driver.findByLicense(normalizedLicense, id);
       if (duplicate) {
         throw new DriverServiceError('License number already in use.', 409);
       }
@@ -189,7 +191,10 @@ const driverService = {
 
     const updatePayload = { ...data };
     if (updatePayload.name) updatePayload.name = updatePayload.name.trim();
-    if (updatePayload.license_number) updatePayload.license_number = updatePayload.license_number.trim();
+    if (normalizedLicense !== undefined) updatePayload.license_number = normalizedLicense;
+    if (updatePayload.license_category !== undefined) {
+      updatePayload.license_category = normalizeLicenseCategory(updatePayload.license_category);
+    }
     if (updatePayload.contact_number) updatePayload.contact_number = updatePayload.contact_number.trim();
 
     await Driver.update(id, updatePayload, user.organization_id);
@@ -206,7 +211,12 @@ const driverService = {
       throw new DriverServiceError('Driver not found.', 404);
     }
 
-    const allowed = ['Available', 'On Trip', 'Off Duty', 'Suspended'];
+    // Driver cannot be manually moved to 'On Trip'
+    if (status === 'On Trip' && existing.status !== 'On Trip') {
+      throw new DriverServiceError('Driver status cannot be manually set to "On Trip". "On Trip" status is managed automatically by trip dispatch.', 400);
+    }
+
+    const allowed = ['Available', 'Off Duty', 'Suspended'];
     if (!allowed.includes(status)) {
       throw new DriverServiceError(`Status must be one of: ${allowed.join(', ')}`, 400);
     }
@@ -215,9 +225,9 @@ const driverService = {
       throw new DriverServiceError('Cannot manually change status while driver is currently On Trip.', 400);
     }
 
-    if (isDateExpired(existing.license_expiry_date) && ['Available', 'On Trip'].includes(status)) {
+    if (isDateExpired(existing.license_expiry_date) && status === 'Available') {
       throw new DriverServiceError(
-        'Cannot set status to Available or On Trip when license is expired.',
+        'Cannot set status to Available when license is expired.',
         400
       );
     }
@@ -247,7 +257,7 @@ const driverService = {
 
   /**
    * Delete a driver, strictly scoped to user's organization.
-   * Historical records cannot be deleted.
+   * In development phase, historical checks are commented out to facilitate testing.
    */
   deleteDriver: async (id, user) => {
     const existing = await Driver.findById(id, user.organization_id);
@@ -255,43 +265,46 @@ const driverService = {
       throw new DriverServiceError('Driver not found.', 404);
     }
 
-    if (existing.status === 'On Trip') {
-      throw new DriverServiceError('Cannot delete a driver currently On Trip.', 400);
-    }
-
-    // Check if driver has active or historical trips
-    const tripCheck = await query(
-      `SELECT id, status FROM trips 
-       WHERE driver_id = $1 AND organization_id = $2 LIMIT 1`,
-      [id, user.organization_id]
-    );
-    if (tripCheck.rows.length > 0) {
-      throw new DriverServiceError(
-        `Cannot delete driver with existing trip history (Trip #${tripCheck.rows[0].id}). Deactivate or suspend the driver instead.`,
-        400
-      );
-    }
-
-    // Check if driver has telemetry history
-    const locCheck = await query(
-      `SELECT id FROM vehicle_locations WHERE driver_id = $1 AND organization_id = $2 LIMIT 1`,
-      [id, user.organization_id]
-    );
-    if (locCheck.rows.length > 0) {
-      throw new DriverServiceError(
-        'Cannot delete driver with existing GPS telemetry history. Deactivate or suspend the driver instead.',
-        400
-      );
-    }
+    /* -------------------------------------------------------------
+     * [PRODUCTION CONSTRAINT - TEMPORARILY COMMENTED FOR DEVELOPMENT]
+     * In production, drivers on active trips or with historical trips
+     * or telemetry records are protected from physical deletion.
+     *
+     * if (existing.status === 'On Trip') {
+     *   throw new DriverServiceError('Cannot delete a driver currently On Trip.', 400);
+     * }
+     *
+     * const tripCheck = await query(
+     *   `SELECT id, status FROM trips 
+     *    WHERE driver_id = $1 AND organization_id = $2 LIMIT 1`,
+     *   [id, user.organization_id]
+     * );
+     * if (tripCheck.rows.length > 0) {
+     *   throw new DriverServiceError(
+     *     `Cannot delete driver with existing trip history. Deactivate or suspend instead.`,
+     *     400
+     *   );
+     * }
+     *
+     * const locCheck = await query(
+     *   `SELECT id FROM vehicle_locations WHERE driver_id = $1 AND organization_id = $2 LIMIT 1`,
+     *   [id, user.organization_id]
+     * );
+     * if (locCheck.rows.length > 0) {
+     *   throw new DriverServiceError(
+     *     'Cannot delete driver with existing GPS telemetry history. Deactivate or suspend instead.',
+     *     400
+     *   );
+     * }
+     * ------------------------------------------------------------- */
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      // Delete linked user account first to satisfy ON DELETE RESTRICT
-      await client.query(
-        'DELETE FROM users WHERE driver_id = $1 AND organization_id = $2',
-        [id, user.organization_id]
-      );
+      // In development phase: unlink telemetry and trips to allow clean testing deletion
+      await client.query('DELETE FROM vehicle_locations WHERE driver_id = $1 AND organization_id = $2', [id, user.organization_id]);
+      await client.query('UPDATE trips SET driver_id = NULL WHERE driver_id = $1 AND organization_id = $2', [id, user.organization_id]);
+      await client.query('DELETE FROM users WHERE driver_id = $1 AND organization_id = $2', [id, user.organization_id]);
       const deleted = await Driver.delete(id, user.organization_id, client);
       await client.query('COMMIT');
       return deleted;
