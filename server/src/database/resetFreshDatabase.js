@@ -76,6 +76,11 @@ async function resetFreshDatabase() {
       DROP TABLE IF EXISTS maintenance_logs CASCADE;
       DROP TABLE IF EXISTS fuel_logs CASCADE;
       DROP TABLE IF EXISTS expenses CASCADE;
+      DROP TABLE IF EXISTS bills CASCADE;
+      DROP TABLE IF EXISTS bill_items CASCADE;
+      DROP TABLE IF EXISTS payments CASCADE;
+      DROP TABLE IF EXISTS documents CASCADE;
+      DROP TABLE IF EXISTS companies CASCADE;
     `);
     await client.query('COMMIT');
     console.log('✅ Clean slate established.\n');

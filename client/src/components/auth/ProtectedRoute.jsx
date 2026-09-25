@@ -51,15 +51,51 @@ export function ProtectedRoute() {
   return <Outlet />;
 }
 
+export function PlatformAdminRoute() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.role !== 'Platform Admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <Outlet />;
+}
+
+export function TenantManagerRoute() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.role === 'Platform Admin') {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return <Outlet />;
+}
+
 export function PublicOnlyRoute({ children }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={user?.role === 'Platform Admin' ? '/admin' : '/'} replace />;
   }
 
   return children;

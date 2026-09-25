@@ -96,13 +96,46 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    const trimmedCurrent = String(currentPassword || '').trim();
+    const trimmedNew = String(newPassword || '');
+
+    if (!trimmedCurrent || !trimmedNew) {
+      throw new Error('Please enter both your current password and new password.');
+    }
+    if (trimmedNew.length < 8) {
+      throw new Error('New password must be at least 8 characters long.');
+    }
+
+    const currentToken = getStoredToken();
+    const res = await apiRequest('PATCH', '/auth/password', {
+      current_password: trimmedCurrent,
+      new_password: trimmedNew
+    }, currentToken);
+
+    // Refresh profile to update must_change_password flag in active state
+    try {
+      const meRes = await apiRequest('GET', '/auth/me', null, currentToken);
+      if (meRes?.data) {
+        setUser(meRes.data);
+        storeAuthSession(currentToken, meRes.data);
+      }
+    } catch {
+      // If fetching me fails, at least clear the local flag
+      setUser(prev => prev ? { ...prev, must_change_password: false } : prev);
+    }
+
+    return res;
+  }, []);
+
   const value = {
     user,
     token,
     isAuthenticated: Boolean(token && user),
     isLoading,
     login,
-    logout
+    logout,
+    changePassword
   };
 
   return (

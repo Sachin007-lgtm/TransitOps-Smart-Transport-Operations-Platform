@@ -297,4 +297,23 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     });
     assert.equal(res.status, 400);
   });
+
+  after(async () => {
+    try {
+      await query('ALTER TABLE vehicle_locations DISABLE TRIGGER trg_prevent_telemetry_delete');
+      await query('DELETE FROM vehicle_locations WHERE organization_id IN ($1, $2)', [orgA, orgB]);
+      await query('ALTER TABLE vehicle_locations ENABLE TRIGGER trg_prevent_telemetry_delete');
+      await query('DELETE FROM trips WHERE organization_id IN ($1, $2)', [orgA, orgB]);
+      await query('DELETE FROM vehicles WHERE organization_id IN ($1, $2)', [orgA, orgB]);
+      await query('DELETE FROM drivers WHERE organization_id IN ($1, $2)', [orgA, orgB]);
+      await query('DELETE FROM users WHERE organization_id IN ($1, $2)', [orgA, orgB]);
+      await query('DELETE FROM organizations WHERE id IN ($1, $2)', [orgA, orgB]);
+    } catch (e) {
+      console.error('Location test cleanup error:', e);
+    } finally {
+      if (server) {
+        await new Promise(r => server.close(r));
+      }
+    }
+  });
 });
