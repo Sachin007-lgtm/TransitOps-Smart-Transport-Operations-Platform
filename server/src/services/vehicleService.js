@@ -1,5 +1,6 @@
 const Vehicle = require('../models/vehicleModel');
 const { query } = require('../config/db');
+const { normalizeIndianNumberPlate } = require('../utils/numberPlate');
 
 class VehicleServiceError extends Error {
   constructor(message, statusCode = 400) {
@@ -58,12 +59,20 @@ const vehicleService = {
   },
 
   /**
-   * Create a new vehicle with number plate validation and uniqueness check.
+   * Create a new vehicle with Indian number plate validation and uniqueness check.
    */
   createVehicle: async (data, user) => {
-    const plate = (data.numberPlate || data.number_plate || data.registration_number || data.name || '').trim().toUpperCase();
-    if (!plate) {
+    const rawPlate = (data.numberPlate || data.number_plate || data.registration_number || data.name || '').trim().toUpperCase();
+    if (!rawPlate) {
       throw new VehicleServiceError('Number plate is required.', 400);
+    }
+
+    const plate = normalizeIndianNumberPlate(rawPlate);
+    if (!plate) {
+      throw new VehicleServiceError(
+        'Invalid number plate format. Must follow standard Indian format: SS-RR-XX-NNNN (e.g. MH-01-AB-1234).',
+        400
+      );
     }
 
     // Check uniqueness within the organization
@@ -111,14 +120,23 @@ const vehicleService = {
     const updatePayload = { ...data };
 
     // Number plate uniqueness check if changing
-    const newPlate = (data.numberPlate || data.number_plate || data.registration_number)?.trim()?.toUpperCase();
-    if (newPlate && newPlate !== current.registration_number) {
-      const duplicate = await Vehicle.findByRegistration(newPlate, user.organization_id, id);
-      if (duplicate) {
-        throw new VehicleServiceError(`Number plate '${newPlate}' is already in use by another vehicle.`, 409);
+    const rawNewPlate = (data.numberPlate || data.number_plate || data.registration_number)?.trim()?.toUpperCase();
+    if (rawNewPlate) {
+      const newPlate = normalizeIndianNumberPlate(rawNewPlate);
+      if (!newPlate) {
+        throw new VehicleServiceError(
+          'Invalid number plate format. Must follow standard Indian format: SS-RR-XX-NNNN (e.g. MH-01-AB-1234).',
+          400
+        );
       }
-      updatePayload.registration_number = newPlate;
-      updatePayload.name = newPlate;
+      if (newPlate !== current.registration_number) {
+        const duplicate = await Vehicle.findByRegistration(newPlate, user.organization_id, id);
+        if (duplicate) {
+          throw new VehicleServiceError(`Number plate '${newPlate}' is already in use by another vehicle.`, 409);
+        }
+        updatePayload.registration_number = newPlate;
+        updatePayload.name = newPlate;
+      }
     }
 
     // Distance covered / Odometer validation if updating
@@ -142,7 +160,12 @@ const vehicleService = {
 
       const allowedStatuses = ['Available', 'On Trip', 'In Shop', 'Retired'];
       if (!allowedStatuses.includes(targetStatus)) {
-        throw new VehicleServiceError(`Invalid vehicle status '${data.status}'. Allowed: Available, On trip, Maintenance, Retired.`, 400);
+        throw new VehicleServiceError(`Invalid vehicle status '${data.status}'. Allowed: Available, Maintenance, Retired.`, 400);
+      }
+
+      // Vehicle cannot be manually moved to 'On Trip' (managed automatically by trip dispatch)
+      if (targetStatus === 'On Trip' && current.status !== 'On Trip') {
+        throw new VehicleServiceError('Vehicle status cannot be manually set to "On Trip". "On Trip" status is managed automatically by trip dispatch.', 400);
       }
 
       // If vehicle is currently On Trip, prevent manual override to Available or In Shop
