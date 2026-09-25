@@ -70,8 +70,8 @@ describe('TransitOps Authentication Module Hardening & Contract Tests', () => {
 
     // 6. Seed a vehicle in Org B to verify tenant isolation
     await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, odometer, acquisition_cost, status, region, organization_id)
-      VALUES ('REG-AUTH-B1', 'Van-B1', 'Van', 500.00, 1000.00, 20000.00, 'Available', 'North', $1)
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, odometer, status, size, organization_id)
+      VALUES ('REG-AUTH-B1', 'Van', 500.00, 1000.00, 'Available', 'North', $1)
     `, [testOrgB]);
   });
 

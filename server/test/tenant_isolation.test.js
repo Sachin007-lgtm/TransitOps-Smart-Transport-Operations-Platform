@@ -373,36 +373,32 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
   let testVehicleAId;
   let testVehicleBId;
 
-  test('19. Create vehicle with sub_category and organization_id', async () => {
+  test('19. Create vehicle with size and organization_id', async () => {
     const v = await Vehicle.create({
       registration_number: 'TEST-VEH-A1',
-      name: 'Cargo Van A',
       type: 'Van',
-      sub_category: 'Medium-Duty',
+      size: 'Medium-Duty',
       max_load_capacity: 1500,
-      acquisition_cost: 30000,
       status: 'Available',
       organization_id: orgA
     });
     assert.ok(v.id);
     assert.equal(v.organization_id, orgA);
-    assert.equal(v.sub_category, 'Medium-Duty');
+    assert.equal(v.size, 'Medium-Duty');
     testVehicleAId = v.id;
 
     // Create a vehicle in Org B
     const vB = await Vehicle.create({
       registration_number: 'TEST-VEH-B1',
-      name: 'Cargo Truck B',
       type: 'Truck',
-      sub_category: 'Heavy-Duty',
+      size: 'Heavy-Duty',
       max_load_capacity: 5000,
-      acquisition_cost: 60000,
       status: 'Available',
       organization_id: orgB
     });
     assert.ok(vB.id);
     assert.equal(vB.organization_id, orgB);
-    assert.equal(vB.sub_category, 'Heavy-Duty');
+    assert.equal(vB.size, 'Heavy-Duty');
     testVehicleBId = vB.id;
   });
 
@@ -411,7 +407,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     const own = await Vehicle.findById(testVehicleAId, orgA);
     assert.ok(own);
     assert.equal(own.id, testVehicleAId);
-    assert.equal(own.sub_category, 'Medium-Duty');
+    assert.equal(own.size, 'Medium-Duty');
     assert.equal(typeof own.trips_count, 'number');
     assert.equal(own.trips_count, 0);
 
@@ -434,16 +430,16 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
 
   test('22. Vehicle.update blocked across tenants', async () => {
     // Org B attempts to update Org A's vehicle
-    const hack = await Vehicle.update(testVehicleAId, { name: 'Compromised Name' }, orgB);
+    const hack = await Vehicle.update(testVehicleAId, { type: 'Compromised Type' }, orgB);
     assert.equal(hack, undefined);
 
     // Verify Org A vehicle remains unchanged in database
     const check = await Vehicle.findById(testVehicleAId, orgA);
-    assert.equal(check.name, 'Cargo Van A');
+    assert.equal(check.type, 'Van');
 
     // Org A updates its own vehicle -> succeeds
-    const legit = await Vehicle.update(testVehicleAId, { name: 'Updated Cargo Van A' }, orgA);
-    assert.equal(legit.name, 'Updated Cargo Van A');
+    const legit = await Vehicle.update(testVehicleAId, { type: 'Updated Van' }, orgA);
+    assert.equal(legit.type, 'Updated Van');
   });
 
   test('23. Vehicle.delete blocked across tenants', async () => {
@@ -607,13 +603,12 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     assert.equal(res.rows.length, 0, 'trips_count should NOT be a stored column on vehicles table');
   });
 
-  test('29. sub_category column exists in vehicles table and is nullable', async () => {
+  test('29. size column exists in vehicles table and is character varying', async () => {
     const res = await query(
-      "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'vehicles' AND column_name = 'sub_category'"
+      "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'vehicles' AND column_name = 'size'"
     );
-    assert.equal(res.rows.length, 1, 'sub_category column must exist on vehicles table');
+    assert.equal(res.rows.length, 1, 'size column must exist on vehicles table');
     assert.equal(res.rows[0].data_type, 'character varying');
-    assert.equal(res.rows[0].is_nullable, 'YES');
   });
 
   // ==========================================
@@ -672,11 +667,11 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     // Attempt 1: Caller sends organization_id: orgB in update fields to legitimately owned Org A vehicle
     const attempt1 = await Vehicle.update(
       testVehicleAId,
-      { name: 'Tamper Attempt 1', organization_id: orgB },
+      { type: 'Tamper Attempt 1', organization_id: orgB },
       orgA
     );
     assert.ok(attempt1);
-    assert.equal(attempt1.name, 'Tamper Attempt 1');
+    assert.equal(attempt1.type, 'Tamper Attempt 1');
     assert.equal(attempt1.organization_id, orgA, 'organization_id must not change from update payload');
 
     // Verify directly in DB that organization_id was untouched
@@ -688,7 +683,7 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     assert.equal(attempt2, null);
 
     // Attempt 3: Cross-tenant update attempt from Org B targeting Org A vehicle
-    const attempt3 = await Vehicle.update(testVehicleAId, { name: 'Tamper Attempt 3' }, orgB);
+    const attempt3 = await Vehicle.update(testVehicleAId, { type: 'Tamper Attempt 3' }, orgB);
     assert.equal(attempt3, undefined);
 
     // Final verification: Vehicle is still in Org A

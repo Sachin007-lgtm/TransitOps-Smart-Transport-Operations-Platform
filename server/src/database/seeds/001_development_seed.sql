@@ -252,99 +252,78 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 5. Insert Vehicles (Standard Indian Number Plates SS-RR-XX-NNNN)
 INSERT INTO vehicles (
-    id, organization_id, registration_number, name, type,
-    sub_category, region, max_load_capacity, odometer, acquisition_cost, status
+    id, organization_id, registration_number, type,
+    size, max_load_capacity, odometer, status
 ) VALUES
 -- Apex Freight Logistics Vehicles (org_id = 01950000-0001-7000-8000-000000000001)
 (
     '01950000-0003-7000-8000-000000000001',
     '01950000-0001-7000-8000-000000000001',
     'MH-01-AB-1234',
-    'MH-01-AB-1234',
     'Van',
-    'Medium (14ft)',
     'Medium (14ft)',
     1500.00,
     12500.00,
-    25000.00,
     'Available'
 ),
 (
     '01950000-0003-7000-8000-000000000002',
     '01950000-0001-7000-8000-000000000001',
     'MH-02-CD-5678',
-    'MH-02-CD-5678',
     'Truck',
-    'Heavy (24ft)',
     'Heavy (24ft)',
     7500.00,
     42000.00,
-    65000.00,
     'Available'
 ),
 (
     '01950000-0003-7000-8000-000000000004',
     '01950000-0001-7000-8000-000000000001',
     'DL-04-EF-9012',
-    'DL-04-EF-9012',
     'Truck',
-    'Heavy (24ft)',
     'Heavy (24ft)',
     8000.00,
     31200.00,
-    70000.00,
     'Available'
 ),
 (
     '01950000-0003-7000-8000-000000000005',
     '01950000-0001-7000-8000-000000000001',
     'MH-12-GH-3456',
-    'MH-12-GH-3456',
     'Mini',
-    'Small (8ft)',
     'Small (8ft)',
     800.00,
     8400.00,
-    18000.00,
     'Available'
 ),
 (
     '01950000-0003-7000-8000-000000000006',
     '01950000-0001-7000-8000-000000000001',
     'KA-01-JK-7890',
-    'KA-01-JK-7890',
     'Trailer',
-    'Extra Heavy (32ft)',
     'Extra Heavy (32ft)',
     24000.00,
     64500.00,
-    120000.00,
     'Available'
 ),
 (
     '01950000-0003-7000-8000-000000000007',
     '01950000-0001-7000-8000-000000000001',
     'TS-09-LM-2345',
-    'TS-09-LM-2345',
     'Truck',
-    'Heavy (24ft)',
     'Heavy (24ft)',
     6500.00,
     27800.00,
-    55000.00,
     'Available'
 ),
 (
     '01950000-0003-7000-8000-000000000008',
     '01950000-0001-7000-8000-000000000001',
     'GJ-01-NP-6789',
-    'GJ-01-NP-6789',
     'Van',
-    'Medium (14ft)',
     'Medium (14ft)',
     1800.00,
     19200.00,
-    30000.00,
     'Available'
 ),
 -- Beacon Express Vehicles (org_id = 01950000-0001-7000-8000-000000000002)
@@ -352,37 +331,28 @@ INSERT INTO vehicles (
     '01950000-0003-7000-8000-000000000003',
     '01950000-0001-7000-8000-000000000002',
     'KL-07-PQ-4567',
-    'KL-07-PQ-4567',
     'Van',
-    'Medium (14ft)',
     'Medium (14ft)',
     1200.00,
     15000.00,
-    28000.00,
     'Available'
 ),
 (
     '01950000-0003-7000-8000-000000000009',
     '01950000-0001-7000-8000-000000000002',
     'TN-02-RS-8901',
-    'TN-02-RS-8901',
     'Truck',
-    'Heavy (24ft)',
     'Heavy (24ft)',
     7000.00,
     38000.00,
-    62000.00,
     'Available'
 )
 ON CONFLICT (id) DO UPDATE SET
     registration_number = EXCLUDED.registration_number,
-    name = EXCLUDED.name,
     type = EXCLUDED.type,
-    sub_category = EXCLUDED.sub_category,
-    region = EXCLUDED.region,
+    size = EXCLUDED.size,
     max_load_capacity = EXCLUDED.max_load_capacity,
     odometer = EXCLUDED.odometer,
-    acquisition_cost = EXCLUDED.acquisition_cost,
     status = EXCLUDED.status;
 
 -- 6. Insert Trips

@@ -41,8 +41,8 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
 
     // Create vehicle in orgA
     const vehRes = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ($1, 'GPS Fleet Van', 'Van', 2500, 30000, 'Available', $2)
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ($1, 'Van', 2500, 'Available', $2)
       RETURNING id
     `, ['MH-LOC-01', orgA]);
     vehicleAId = vehRes.rows[0].id;

@@ -292,12 +292,9 @@ export default function Vehicles() {
     const payload = {
       registration_number: finalPlate,
       number_plate: finalPlate,
-      name: finalPlate,
       type: resolvedType,
       max_load_capacity: 1000,
-      region: resolvedSize,
       size: resolvedSize,
-      sub_category: resolvedSize,
       status: 'Available'
     };
     if (parsedDistance > 0) {

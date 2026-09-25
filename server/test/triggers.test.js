@@ -50,8 +50,8 @@ describe('TransitOps Database Trigger Invariant Tests', () => {
 
     // Seed vehicle in Org A
     const vehRes = await query(`
-      INSERT INTO vehicles (organization_id, registration_number, name, type, max_load_capacity, acquisition_cost, status)
-      VALUES ($1, $2, 'Trigger Van', 'Van', 1000, 20000, 'Available')
+      INSERT INTO vehicles (organization_id, registration_number, type, max_load_capacity, status)
+      VALUES ($1, $2, 'Van', 1000, 'Available')
       RETURNING id
     `, [testOrgA, testReg]);
     vehicleAId = vehRes.rows[0].id;
@@ -120,8 +120,8 @@ describe('TransitOps Database Trigger Invariant Tests', () => {
 
     // Seed alternate vehicle in Org A
     const altVeh = await query(`
-      INSERT INTO vehicles (organization_id, registration_number, name, type, max_load_capacity, acquisition_cost, status)
-      VALUES ($1, $2, 'Alternate Van', 'Van', 1000, 20000, 'Available')
+      INSERT INTO vehicles (organization_id, registration_number, type, max_load_capacity, status)
+      VALUES ($1, $2, 'Van', 1000, 'Available')
       RETURNING id
     `, [testOrgA, `REG-ALT-${Date.now()}`]);
     const altVehId = altVeh.rows[0].id;
@@ -235,8 +235,8 @@ describe('TransitOps Database Trigger Invariant Tests', () => {
 
     // Alternate vehicle in Org A
     const altVeh = await query(`
-      INSERT INTO vehicles (organization_id, registration_number, name, type, max_load_capacity, acquisition_cost, status)
-      VALUES ($1, $2, 'Trigger Van Alt', 'Van', 1000, 20000, 'Available')
+      INSERT INTO vehicles (organization_id, registration_number, type, max_load_capacity, status)
+      VALUES ($1, $2, 'Van', 1000, 'Available')
       RETURNING id
     `, [testOrgA, `REG-ALT-${Date.now()}`]);
     const mismatchedVehId = altVeh.rows[0].id;

@@ -249,8 +249,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
   test('11. Trips module rejects assigning a driver with an expired license', async () => {
     // Seed vehicle for Org A
     const vRes = await query(`
-      INSERT INTO vehicles (name, registration_number, type, max_load_capacity, status, organization_id)
-      VALUES ('Van A', 'MH-01-DRV-1', 'Van', 1000, 'Available', $1)
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('MH-01-DRV-1', 'Van', 1000, 'Available', $1)
       RETURNING id
     `, [orgA]);
     const vId = vRes.rows[0].id;
@@ -289,8 +289,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
   test('12. Trip completion dynamically increments driver trips_count', async () => {
     // Get fresh vehicle for trip
     const vRes = await query(`
-      INSERT INTO vehicles (name, registration_number, type, max_load_capacity, status, organization_id)
-      VALUES ('Van A2', 'MH-01-DRV-2', 'Van', 1000, 'Available', $1)
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('MH-01-DRV-2', 'Van', 1000, 'Available', $1)
       RETURNING id
     `, [orgA]);
     const vId = vRes.rows[0].id;

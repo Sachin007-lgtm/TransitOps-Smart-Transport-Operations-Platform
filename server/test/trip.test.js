@@ -55,30 +55,30 @@ describe('TransitOps Trip Module Backend Tests', () => {
 
     // 3. Create Org A Vehicles
     const vA1 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-A1', 'Truck Alpha', 'Truck', 5000, 40000, 'Available', 'b0000000-0000-0000-0000-000000000001')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-A1', 'Truck', 5000, 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     vehicleA1Id = vA1.rows[0].id;
 
     const vA2 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-A2', 'Truck Broken', 'Truck', 4000, 35000, 'In Shop', 'b0000000-0000-0000-0000-000000000001')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-A2', 'Truck', 4000, 'In Shop', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     vehicleA2Id = vA2.rows[0].id;
 
     const vA3 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-A3', 'Truck Gamma', 'Truck', 7000, 55000, 'Available', 'b0000000-0000-0000-0000-000000000001')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-A3', 'Truck', 7000, 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     vehicleA3Id = vA3.rows[0].id;
 
     // 4. Create Org B Vehicle
     const vB1 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-B1', 'Truck Beta', 'Truck', 6000, 50000, 'Available', 'b0000000-0000-0000-0000-000000000002')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-B1', 'Truck', 6000, 'Available', 'b0000000-0000-0000-0000-000000000002')
       RETURNING id
     `);
     vehicleB1Id = vB1.rows[0].id;

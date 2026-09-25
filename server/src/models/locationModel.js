@@ -97,7 +97,7 @@ const Location = {
         t.cargo_weight,
         v.id AS vehicle_id,
         v.registration_number AS vehicle_registration,
-        v.name AS vehicle_name,
+        v.registration_number AS vehicle_name,
         v.type AS vehicle_type,
         d.id AS driver_id,
         d.name AS driver_name,

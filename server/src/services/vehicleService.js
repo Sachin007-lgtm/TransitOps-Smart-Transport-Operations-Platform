@@ -39,7 +39,6 @@ const vehicleService = {
       const q = search.trim().toLowerCase();
       vehicles = vehicles.filter(v => 
         (v.registration_number && v.registration_number.toLowerCase().includes(q)) ||
-        (v.name && v.name.toLowerCase().includes(q)) ||
         (v.type && v.type.toLowerCase().includes(q))
       );
     }
@@ -82,7 +81,7 @@ const vehicleService = {
     }
 
     const type = (data.type || data.customType || 'Truck').trim();
-    const size = (data.size || data.sub_category || data.region || 'Standard').trim();
+    const size = (data.size || data.sub_category || 'Standard').trim();
 
     // Distance covered / Odometer validation
     const rawDistance = data.distanceCovered ?? data.distance_covered ?? data.odometer ?? 0;
@@ -95,10 +94,8 @@ const vehicleService = {
 
     const newVehicle = await Vehicle.create({
       registration_number: plate,
-      name: plate,
       type,
-      sub_category: size,
-      region: size,
+      size,
       max_load_capacity: maxLoadCapacity,
       odometer,
       status: 'Available',
@@ -135,7 +132,6 @@ const vehicleService = {
           throw new VehicleServiceError(`Number plate '${newPlate}' is already in use by another vehicle.`, 409);
         }
         updatePayload.registration_number = newPlate;
-        updatePayload.name = newPlate;
       }
     }
 
@@ -176,10 +172,11 @@ const vehicleService = {
       updatePayload.status = targetStatus;
     }
 
-    // Size / sub_category mapping
-    if (data.size !== undefined && data.sub_category === undefined) {
-      updatePayload.sub_category = data.size;
-      updatePayload.region = data.size;
+    // Size mapping
+    if (data.size !== undefined) {
+      updatePayload.size = data.size;
+    } else if (data.sub_category !== undefined) {
+      updatePayload.size = data.sub_category;
     }
 
     const updated = await Vehicle.update(id, updatePayload, user.organization_id);
