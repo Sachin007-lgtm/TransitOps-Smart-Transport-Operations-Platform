@@ -1,7 +1,9 @@
 const validate = require('../middleware/validate');
-
-// Valid license categories per international & local standards
-const LICENSE_CATEGORIES = ['A', 'A1', 'A2', 'B', 'B1', 'BE', 'C', 'C1', 'CE', 'C1E', 'D', 'D1', 'DE', 'D1E', 'LMV', 'HMV', 'MCWG'];
+const {
+  INDIAN_LICENSE_CATEGORIES,
+  normalizeIndianLicenseNumber,
+  normalizeLicenseCategory
+} = require('../utils/license');
 
 // Schema used for POST /api/drivers
 const createDriverSchema = {
@@ -13,11 +15,25 @@ const createDriverSchema = {
   license_number: {
     required: true,
     type: 'string',
-    custom: (val) => (!val || !val.trim() || val.trim().length < 3 ? 'license_number must be at least 3 characters.' : null)
+    custom: (val) => {
+      if (!val || !val.trim()) return 'license_number is required.';
+      const normalized = normalizeIndianLicenseNumber(val);
+      if (!normalized) {
+        return 'Invalid license number format. Must follow Indian driving license format: SS-RR-YYYY-NNNNNNN (e.g. MH-02-2020-0001234).';
+      }
+      return null;
+    }
   },
   license_category: {
     required: false,
-    type: 'string'
+    type: 'string',
+    custom: (val) => {
+      if (val === null || val === undefined || val === '') return null; // Optional
+      if (!normalizeLicenseCategory(val)) {
+        return `license_category must be an official Indian category: ${INDIAN_LICENSE_CATEGORIES.join(', ')}`;
+      }
+      return null;
+    }
   },
   license_expiry_date: {
     required: true,
@@ -32,15 +48,11 @@ const createDriverSchema = {
       return null;
     }
   },
-  safety_score: {
-    required: false,
-    type: 'number',
-    custom: (val) => (val !== undefined && (val < 0 || val > 100) ? 'safety_score must be between 0 and 100.' : null)
-  },
   status: {
     required: false,
     type: 'enum',
-    enum: ['Available', 'On Trip', 'Off Duty', 'Suspended']
+    // 'On Trip' can NEVER be manually assigned upon driver creation
+    enum: ['Available', 'Off Duty', 'Suspended']
   }
 };
 
@@ -54,11 +66,26 @@ const updateDriverSchema = {
   license_number: {
     required: false,
     type: 'string',
-    custom: (val) => (val !== undefined && (!val.trim() || val.trim().length < 3) ? 'license_number must be at least 3 characters.' : null)
+    custom: (val) => {
+      if (val === undefined) return null;
+      if (!val || !val.trim()) return 'license_number cannot be empty.';
+      const normalized = normalizeIndianLicenseNumber(val);
+      if (!normalized) {
+        return 'Invalid license number format. Must follow Indian driving license format: SS-RR-YYYY-NNNNNNN (e.g. MH-02-2020-0001234).';
+      }
+      return null;
+    }
   },
   license_category: {
     required: false,
-    type: 'string'
+    type: 'string',
+    custom: (val) => {
+      if (val === null || val === undefined || val === '') return null; // Optional
+      if (!normalizeLicenseCategory(val)) {
+        return `license_category must be an official Indian category: ${INDIAN_LICENSE_CATEGORIES.join(', ')}`;
+      }
+      return null;
+    }
   },
   license_expiry_date: {
     required: false,
@@ -74,15 +101,11 @@ const updateDriverSchema = {
       return null;
     }
   },
-  safety_score: {
-    required: false,
-    type: 'number',
-    custom: (val) => (val !== undefined && (val < 0 || val > 100) ? 'safety_score must be between 0 and 100.' : null)
-  },
   status: {
     required: false,
     type: 'enum',
-    enum: ['Available', 'On Trip', 'Off Duty', 'Suspended']
+    // 'On Trip' can NEVER be manually updated by manager
+    enum: ['Available', 'Off Duty', 'Suspended']
   }
 };
 
@@ -91,7 +114,8 @@ const updateDriverStatusSchema = {
   status: {
     required: true,
     type: 'enum',
-    enum: ['Available', 'On Trip', 'Off Duty', 'Suspended']
+    // 'On Trip' can NEVER be manually set; only automatically assigned by trip dispatcher
+    enum: ['Available', 'Off Duty', 'Suspended']
   }
 };
 
@@ -99,5 +123,5 @@ module.exports = {
   validateCreateDriver: validate(createDriverSchema),
   validateUpdateDriver: validate(updateDriverSchema),
   validateDriverStatus: validate(updateDriverStatusSchema),
-  LICENSE_CATEGORIES
+  INDIAN_LICENSE_CATEGORIES
 };

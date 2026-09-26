@@ -11,10 +11,10 @@
 
 CREATE TABLE IF NOT EXISTS charges (
   id SERIAL PRIMARY KEY,
-  organization_id VARCHAR(50) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
   -- Optional link to the trip the charge belongs to (e.g. the toll on that run).
-  trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL,
+  trip_id UUID REFERENCES trips(id) ON DELETE SET NULL,
   kind VARCHAR(30) NOT NULL DEFAULT 'MISC'
     CHECK (kind IN ('TOLL', 'LOADING', 'UNLOADING', 'DETENTION', 'DRIVER_ALLOWANCE', 'MISC')),
   description VARCHAR(255) NOT NULL,

@@ -3,51 +3,22 @@ import { createPortal } from 'react-dom';
 import { Plus, Search, ChevronDown, Copy, Edit3, Info } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
+import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
+import EditVehicleModal from '../components/vehicles/EditVehicleModal';
 
 const DEFAULT_TYPES = ['Truck', 'Van', 'Mini'];
+const DEFAULT_SIZES = ['Small (8ft)', 'Medium (14ft)', 'Heavy (24ft)', 'Extra Heavy (32ft)'];
 const VEHICLE_STATUSES = ['All Statuses', 'Available', 'On trip', 'Maintenance'];
-
-const INITIAL_VEHICLES = [
-  {
-    id: 1,
-    number_plate: 'MH-01-AB-1234',
-    type: 'Van',
-    size: 'Medium (12ft)',
-    trips_completed: 0,
-    distance_covered: 12500,
-    last_updated: 'Today, 02:15 PM',
-    status: 'Available'
-  },
-  {
-    id: 2,
-    number_plate: 'MH-01-AB-5678',
-    type: 'Truck',
-    size: 'Heavy (24ft)',
-    trips_completed: 0,
-    distance_covered: 42000,
-    last_updated: 'Yesterday',
-    status: 'On trip'
-  },
-  {
-    id: 3,
-    number_plate: 'MH-01-AB-9999',
-    type: 'Mini',
-    size: 'Small (8ft)',
-    trips_completed: 0,
-    distance_covered: 8400,
-    last_updated: 'Sep 14, 2026',
-    status: 'Maintenance'
-  }
-];
 
 export default function Vehicles() {
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
-  const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
+  const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Custom type storage
+  // Custom type & custom size storage
   const [customTypes, setCustomTypes] = useState([]);
+  const [customSizes, setCustomSizes] = useState([]);
   
   // Filters
   const [typeFilter, setTypeFilter] = useState('All Types');
@@ -65,11 +36,16 @@ export default function Vehicles() {
     numberPlate: '',
     type: 'Truck',
     customType: '',
-    size: '',
+    size: 'Medium (14ft)',
+    customSize: '',
     distanceCovered: ''
   });
   const [isCustomTypeSelected, setIsCustomTypeSelected] = useState(false);
+  const [isCustomSizeSelected, setIsCustomSizeSelected] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+
+  // Edit Vehicle Modal State
+  const [editingVehicle, setEditingVehicle] = useState(null);
 
   // Update Distance Modal State
   const [distanceModalVehicle, setDistanceModalVehicle] = useState(null);
@@ -94,7 +70,7 @@ export default function Vehicles() {
 
       const tripsData = (tripsRes.status === 'fulfilled' && tripsRes.value?.data) ? tripsRes.value.data : [];
 
-      if (vehiclesRes.status === 'fulfilled' && vehiclesRes.value?.data?.length > 0) {
+      if (vehiclesRes.status === 'fulfilled' && Array.isArray(vehiclesRes.value?.data)) {
         const mapped = vehiclesRes.value.data.map(v => {
           // Dynamic calculation of completed trips assigned to this vehicle
           const completedCount = tripsData.filter(t => 
@@ -118,18 +94,12 @@ export default function Vehicles() {
           };
         });
         setVehicles(mapped);
-      } else if (tripsData.length > 0) {
-        // If vehicles are local initial state, count completed trips for local vehicles too
-        setVehicles(prev => prev.map(v => {
-          const completedCount = tripsData.filter(t => 
-            (t.vehicle_id === v.id || t.vehicle_reg === v.number_plate) && 
-            t.status === 'Completed'
-          ).length;
-          return { ...v, trips_completed: completedCount };
-        }));
+      } else {
+        setVehicles([]);
       }
     } catch (err) {
-      console.warn('Backend unavailable, using local vehicles:', err.message);
+      console.warn('Failed to load vehicles from backend:', err.message);
+      setVehicles([]);
     } finally {
       setLoading(false);
     }
@@ -186,14 +156,18 @@ export default function Vehicles() {
 
   const dynamicSizes = [
     'All Sizes',
-    ...Array.from(new Set(vehicles.map(v => v.size).filter(Boolean)))
+    ...Array.from(new Set([...DEFAULT_SIZES, ...customSizes, ...vehicles.map(v => v.size).filter(Boolean)]))
   ];
 
   // Handle status selection directly from the table dropdown
   const handleStatusChange = async (vehicleId, newStatus) => {
+    if (newStatus === 'On trip' || newStatus === 'On Trip') {
+      addToast('Cannot manually set status to On Trip. Status is assigned automatically by trip dispatch.', true);
+      return;
+    }
+
     let backendStatus = 'Available';
-    if (newStatus === 'On trip' || newStatus === 'On Trip') backendStatus = 'On Trip';
-    else if (newStatus === 'Maintenance' || newStatus === 'In shop' || newStatus === 'In Shop') backendStatus = 'In Shop';
+    if (newStatus === 'Maintenance' || newStatus === 'In shop' || newStatus === 'In Shop') backendStatus = 'In Shop';
 
     setVehicles(prev => prev.map(v => {
       if (v.id === vehicleId) {
@@ -215,24 +189,26 @@ export default function Vehicles() {
   const handleAddVehicle = async (e) => {
     e.preventDefault();
     setFormErrors({});
-    const finalPlate = newVehicle.numberPlate.trim().toUpperCase();
-    if (!finalPlate) {
+    
+    const rawPlate = newVehicle.numberPlate.trim().toUpperCase();
+    if (!rawPlate) {
       setFormErrors(prev => ({ ...prev, numberPlate: "Number plate is required" }));
       addToast("Number plate is required", true);
       return;
     }
     
-    // Number plate sequence check (e.g. MH-01-AB-1234 or GJ01AB1234)
-    const plateRegex = /^[A-Z]{2}[ -]?[0-9]{1,2}[ -]?[A-Z]{0,3}[ -]?[0-9]{4}$/;
-    if (!plateRegex.test(finalPlate)) {
-      const msg = "Invalid format. Expected sequence like MH-01-AB-1234 or GJ01AB1234";
-      setFormErrors(prev => ({ ...prev, numberPlate: msg }));
-      addToast(msg, true);
+    // Indian number plate validation (e.g. MH-01-AB-1234)
+    const plateErr = validateIndianNumberPlate(rawPlate);
+    if (plateErr) {
+      setFormErrors(prev => ({ ...prev, numberPlate: plateErr }));
+      addToast(plateErr, true);
       return;
     }
 
+    const finalPlate = formatIndianNumberPlate(rawPlate);
+
     // Uniqueness check
-    if (vehicles.some(v => (v.number_plate || '').toUpperCase() === finalPlate)) {
+    if (vehicles.some(v => (v.number_plate || '').replace(/-/g, '').toUpperCase() === finalPlate.replace(/-/g, ''))) {
       const msg = "Number plate must be unique";
       setFormErrors(prev => ({ ...prev, numberPlate: msg }));
       addToast(msg, true);
@@ -242,6 +218,12 @@ export default function Vehicles() {
     const resolvedType = isCustomTypeSelected ? newVehicle.customType.trim() : newVehicle.type;
     if (!resolvedType) {
       addToast("Please specify a vehicle type", true);
+      return;
+    }
+
+    const resolvedSize = (isCustomSizeSelected ? newVehicle.customSize.trim() : newVehicle.size) || 'Standard';
+    if (!resolvedSize) {
+      addToast("Please specify a vehicle size", true);
       return;
     }
 
@@ -261,18 +243,13 @@ export default function Vehicles() {
       return;
     }
 
-    const resolvedSize = newVehicle.size.trim() || 'Standard';
-
     // Payload configured strictly for backend validator
     const payload = {
       registration_number: finalPlate,
       number_plate: finalPlate,
-      name: finalPlate,
       type: resolvedType,
       max_load_capacity: 1000,
-      region: resolvedSize,
       size: resolvedSize,
-      sub_category: resolvedSize,
       status: 'Available'
     };
     if (parsedDistance > 0) {
@@ -284,6 +261,11 @@ export default function Vehicles() {
       setCustomTypes(prev => Array.from(new Set([...prev, resolvedType])));
     }
 
+    // If custom size added, register it locally
+    if (isCustomSizeSelected && !DEFAULT_SIZES.includes(resolvedSize)) {
+      setCustomSizes(prev => Array.from(new Set([...prev, resolvedSize])));
+    }
+
     try {
       await apiRequest('POST', '/vehicles', payload);
       setIsModalOpen(false);
@@ -291,15 +273,40 @@ export default function Vehicles() {
         numberPlate: '',
         type: 'Truck',
         customType: '',
-        size: '',
+        size: 'Medium (14ft)',
+        customSize: '',
         distanceCovered: ''
       });
       setIsCustomTypeSelected(false);
+      setIsCustomSizeSelected(false);
       addToast("Vehicle added and saved to database!");
       await loadVehicles();
     } catch (err) {
       console.error("Backend error adding vehicle:", err);
       addToast(err.message || "Failed to add vehicle", true);
+    }
+  };
+
+  const handleEditVehicle = async (updatedVehicle) => {
+    try {
+      let backendStatus = updatedVehicle.status;
+      if (backendStatus === 'Maintenance') backendStatus = 'In Shop';
+      
+      const payload = {
+        registration_number: updatedVehicle.numberPlate,
+        type: updatedVehicle.type,
+        size: updatedVehicle.size,
+        odometer: updatedVehicle.distanceCovered,
+        status: backendStatus
+      };
+
+      await apiRequest('PATCH', `/vehicles/${editingVehicle.id}`, payload);
+      addToast(`Vehicle ${updatedVehicle.numberPlate} updated`);
+      setEditingVehicle(null);
+      await loadVehicles();
+    } catch (err) {
+      console.error('Failed to update vehicle:', err);
+      addToast(err.message || 'Failed to update vehicle', true);
     }
   };
 
@@ -481,14 +488,17 @@ export default function Vehicles() {
               ) : filteredVehicles.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="text-center py-12 text-muted">
-                    No vehicles match these filters.
+                    {vehicles.length === 0 
+                      ? 'No vehicles registered in your fleet yet. Click "+ Add vehicle" above to register your first vehicle.' 
+                      : 'No vehicles match these filters.'}
                   </td>
                 </tr>
               ) : (
                 filteredVehicles.map((v, idx) => (
                   <tr 
                     key={v.id} 
-                    className="table-row-animate" 
+                    className="table-row-animate cursor-pointer hover:bg-[#fcfcfc]" 
+                    onClick={() => setEditingVehicle(v)}
                     style={{ 
                       animationDelay: `${idx * 70}ms`,
                       borderLeft: `4px solid ${getLeftBorderColor(v.status)}`,
@@ -543,31 +553,42 @@ export default function Vehicles() {
 
                     {/* Status Dropdown inside the table */}
                     <td>
-                      <select 
-                        className="select" 
-                        style={{ 
-                          padding: '4px 10px', 
-                          fontSize: '0.78rem', 
-                          fontWeight: 600, 
-                          borderRadius: '20px',
-                          cursor: 'pointer',
-                          border: '1px solid var(--border-color, #e5e7eb)',
-                          backgroundColor: 
-                            v.status === 'Available' ? 'rgba(74, 222, 128, 0.15)' :
-                            (v.status === 'On trip' || v.status === 'On Trip') ? 'rgba(96, 165, 250, 0.15)' :
-                            'rgba(251, 146, 60, 0.15)',
-                          color: 
-                            v.status === 'Available' ? '#16a34a' :
-                            (v.status === 'On trip' || v.status === 'On Trip') ? '#2563eb' :
-                            '#ea580c'
-                        }}
-                        value={v.status === 'In shop' || v.status === 'In Shop' ? 'Maintenance' : v.status}
-                        onChange={(e) => handleStatusChange(v.id, e.target.value)}
-                      >
-                        <option value="Available">Available</option>
-                        <option value="On trip">On trip</option>
-                        <option value="Maintenance">Maintenance</option>
-                      </select>
+                      {(() => {
+                        const isOnTrip = v.status === 'On trip' || v.status === 'On Trip';
+                        return (
+                          <select 
+                            className="select" 
+                            style={{ 
+                              padding: '4px 10px', 
+                              fontSize: '0.78rem', 
+                              fontWeight: 600, 
+                              borderRadius: '20px',
+                              cursor: isOnTrip ? 'not-allowed' : 'pointer',
+                              border: '1px solid var(--border-color, #e5e7eb)',
+                              backgroundColor: 
+                                v.status === 'Available' ? 'rgba(74, 222, 128, 0.15)' :
+                                isOnTrip ? 'rgba(96, 165, 250, 0.15)' :
+                                'rgba(251, 146, 60, 0.15)',
+                              color: 
+                                v.status === 'Available' ? '#16a34a' :
+                                isOnTrip ? '#2563eb' :
+                                '#ea580c'
+                            }}
+                            value={isOnTrip ? 'On trip' : (v.status === 'In shop' || v.status === 'In Shop' ? 'Maintenance' : v.status)}
+                            disabled={isOnTrip}
+                            title={
+                              isOnTrip 
+                                ? 'Vehicle is currently On Trip — managed automatically by trip dispatch' 
+                                : 'Change status'
+                            }
+                            onChange={(e) => handleStatusChange(v.id, e.target.value)}
+                          >
+                            {isOnTrip && <option value="On trip">On trip 🔒</option>}
+                            <option value="Available">Available</option>
+                            <option value="Maintenance">Maintenance</option>
+                          </select>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))
@@ -581,6 +602,9 @@ export default function Vehicles() {
       <div className="mt-4 flex items-center gap-6">
         <div className="text-xs text-status-red font-medium flex items-center gap-1">
           <Info size={14} /> Number plate must be unique
+        </div>
+        <div className="text-xs text-muted font-medium flex items-center gap-1">
+          <Info size={14} /> Vehicles marked On Trip 🔒 are dispatched and locked automatically
         </div>
         <div className="text-xs text-muted font-medium flex items-center gap-1">
           <Info size={14} /> Custom types and sizes automatically appear in sort filters
@@ -600,8 +624,8 @@ export default function Vehicles() {
                 <input 
                   required 
                   type="text" 
-                  className="input" 
-                  placeholder="e.g. GJ-01-AB-1234" 
+                  className="input mono text-sm" 
+                  placeholder="e.g. MH-01-AB-1234" 
                   value={newVehicle.numberPlate} 
                   style={{ 
                     textTransform: 'uppercase',
@@ -611,13 +635,16 @@ export default function Vehicles() {
                     const val = e.target.value.toUpperCase();
                     setNewVehicle({...newVehicle, numberPlate: val});
                     if (formErrors.numberPlate) {
-                      const plateRegex = /^[A-Z]{2}[ -]?[0-9]{1,2}[ -]?[A-Z]{0,3}[ -]?[0-9]{4}$/;
-                      if (plateRegex.test(val)) {
+                      const err = validateIndianNumberPlate(val);
+                      if (!err) {
                         setFormErrors(prev => ({ ...prev, numberPlate: '' }));
                       }
                     }
                   }} 
                 />
+                <span className="text-muted text-xs mt-1">
+                  Format: SS-RR-XX-NNNN (e.g. MH-01-AB-1234)
+                </span>
                 {formErrors.numberPlate && (
                   <span style={{ color: '#ef4444', fontSize: '0.78rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>
                     ⚠️ {formErrors.numberPlate}
@@ -661,17 +688,40 @@ export default function Vehicles() {
                 )}
               </div>
 
-              {/* Size - Custom typed input */}
+              {/* Size with Predefined + Custom Option (Same as Type) */}
               <div className="input-group">
                 <label>Size</label>
-                <input 
-                  required 
-                  type="text" 
-                  className="input" 
-                  placeholder="e.g. Medium (14ft), 20 Ton, Heavy, Small..." 
-                  value={newVehicle.size} 
-                  onChange={e => setNewVehicle({...newVehicle, size: e.target.value})} 
-                />
+                <select 
+                  className="select w-full" 
+                  value={isCustomSizeSelected ? '__custom__' : newVehicle.size} 
+                  onChange={e => {
+                    if (e.target.value === '__custom__') {
+                      setIsCustomSizeSelected(true);
+                    } else {
+                      setIsCustomSizeSelected(false);
+                      setNewVehicle({...newVehicle, size: e.target.value});
+                    }
+                  }}
+                >
+                  {DEFAULT_SIZES.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  {customSizes.map(cs => (
+                    <option key={cs} value={cs}>{cs}</option>
+                  ))}
+                  <option value="__custom__">+ Write custom size...</option>
+                </select>
+
+                {isCustomSizeSelected && (
+                  <input 
+                    required
+                    type="text" 
+                    className="input mt-2" 
+                    placeholder="Type custom vehicle size (e.g. 20 Ton, 16ft Container)..." 
+                    value={newVehicle.customSize} 
+                    onChange={e => setNewVehicle({...newVehicle, customSize: e.target.value})} 
+                  />
+                )}
               </div>
 
               {/* Distance Covered */}
@@ -711,6 +761,15 @@ export default function Vehicles() {
         </div>,
         document.body
       )}
+
+      {/* Edit Vehicle Modal (Vehicle Profile) */}
+      <EditVehicleModal 
+        vehicle={editingVehicle} 
+        onClose={() => setEditingVehicle(null)} 
+        onSubmit={handleEditVehicle} 
+        customTypes={customTypes}
+        customSizes={customSizes}
+      />
 
       {/* Manual Distance Update Modal */}
       {distanceModalVehicle && createPortal(

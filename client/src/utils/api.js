@@ -1,8 +1,41 @@
+export const TOKEN_KEY = 'transitops_token';
+export const USER_KEY = 'transitops_user';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
-export async function apiRequest(method, path, body = null) {
-  const token = localStorage.getItem('token');
+export function getStoredToken() {
+  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem('token');
+}
+
+export function getStoredUser() {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+export function storeAuthSession(token, user) {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+  if (user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
+}
+
+export function clearStoredAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem('token');
+  localStorage.removeItem('userRole');
+  localStorage.removeItem('organization_id');
+}
+
+export async function apiRequest(method, path, body = null, explicitToken = null) {
+  const token = explicitToken !== null ? explicitToken : getStoredToken();
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -17,21 +50,28 @@ export async function apiRequest(method, path, body = null) {
   const response = await fetch(`${API_URL}${path}`, options);
   
   if (response.status === 401) {
-    // The session is gone (expired token, or one signed with a different
-    // secret). Drop it, remember where the user was, and send them to sign in
-    // — login hands the page back instead of dumping them on the dashboard.
-    localStorage.removeItem('token');
-    localStorage.removeItem('userRole');
-    if (!window.location.pathname.startsWith('/login')) {
-      localStorage.setItem('redirectAfterLogin', window.location.pathname + window.location.search);
+    // Only dispatch unauthorized event if an authenticated request failed
+    if (token) {
+      clearStoredAuth();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('transitops-unauthorized'));
+      }
     }
-    window.location.href = '/login';
-    throw new Error('Unauthorized');
+    let errorMsg = 'Unauthorized';
+    try {
+      const errJson = await response.json();
+      errorMsg = errJson.error || errJson.message || errorMsg;
+    } catch (_) {}
+    const err = new Error(errorMsg);
+    err.status = 401;
+    throw err;
   }
 
   const json = await response.json();
   if (!response.ok) {
-    throw new Error(json.error || json.message || 'API request failed');
+    const error = new Error(json.error || json.message || 'API request failed');
+    error.status = response.status;
+    throw error;
   }
 
   return json;
@@ -44,16 +84,17 @@ export async function apiRequest(method, path, body = null) {
  * blob URL instead.
  */
 export async function apiOpenDocument(path) {
-  const token = localStorage.getItem('token');
+  const token = getStoredToken();
 
   const response = await fetch(`${API_URL}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
 
   if (response.status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('userRole');
-    window.location.href = '/login';
+    clearStoredAuth();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('transitops-unauthorized'));
+    }
     throw new Error('Unauthorized');
   }
 

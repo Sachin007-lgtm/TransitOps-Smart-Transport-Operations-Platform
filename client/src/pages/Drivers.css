@@ -216,3 +216,87 @@
 .bg-var-blue { background-color: var(--blue); }
 .bg-var-gray { background-color: var(--sub); }
 .bg-var-red { background-color: var(--red); }
+
+/* Status Button Disabled on Trip */
+.status-trigger.disabled-on-trip {
+  cursor: not-allowed !important;
+  opacity: 0.95;
+  box-shadow: none;
+}
+
+/* Action Three-dot Menu */
+.action-menu-container {
+  position: relative;
+  display: inline-block;
+}
+
+.three-dot-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--sub);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.three-dot-btn:hover,
+.three-dot-btn.active {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.action-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background-color: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+  z-index: 100;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.action-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.action-dropdown-item:hover:not(.disabled) {
+  background-color: var(--bg);
+}
+
+.action-dropdown-item.danger {
+  color: var(--red);
+}
+
+.action-dropdown-item.danger:hover:not(.disabled) {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.action-dropdown-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

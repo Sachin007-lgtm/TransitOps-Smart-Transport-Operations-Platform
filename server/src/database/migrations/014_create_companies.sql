@@ -11,7 +11,7 @@
 
 CREATE TABLE IF NOT EXISTS companies (
   id SERIAL PRIMARY KEY,
-  organization_id VARCHAR(50) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   name VARCHAR(255) NOT NULL,
   contact_person VARCHAR(255),
   email VARCHAR(255),

@@ -137,9 +137,9 @@ const tripService = {
       }
     }
 
-    if (status !== 'Draft' && status !== 'Planned' && status !== 'Assigned') {
+    if (status !== 'Draft' && status !== 'Planned') {
       throw new TripServiceError(
-        `Trips can only be created in 'Draft', 'Planned', or 'Assigned' status. Advancing to '${status}' must follow the lifecycle via PATCH /api/trips/:id/status.`,
+        `Trips can only be created in 'Draft' or 'Planned' status. Advancing to '${status}' must follow the lifecycle via PATCH /api/trips/:id/status.`,
         400
       );
     }
@@ -268,7 +268,18 @@ const tripService = {
       const vehicleChanging = fields.vehicle_id !== undefined && fields.vehicle_id !== trip.vehicle_id;
       const driverChanging = fields.driver_id !== undefined && fields.driver_id !== trip.driver_id;
 
-      // Deterministic lock ordering on vehicle rows (ascending ID) to prevent deadlocks
+      if (vehicleChanging || driverChanging) {
+        if (trip.status === 'Completed' || trip.status === 'Cancelled') {
+          throw new TripServiceError(`Cannot reassign vehicle or driver for finalized trip (${trip.status}).`, 400);
+        }
+
+        const locCountRes = await query('SELECT COUNT(*)::int AS count FROM vehicle_locations WHERE trip_id = $1', [id]);
+        if (locCountRes.rows[0] && locCountRes.rows[0].count > 0) {
+          throw new TripServiceError(`Cannot reassign vehicle or driver for trip because ${locCountRes.rows[0].count} telemetry record(s) already exist.`, 400);
+        }
+      }
+
+      // Deterministic lock ordering on vehicle rows (ascending UUID string) to prevent deadlocks
       const vehicleIdsToLock = [];
       if (vehicleChanging && trip.vehicle_id && trip.status === 'Dispatched') {
         vehicleIdsToLock.push(trip.vehicle_id);
@@ -276,7 +287,7 @@ const tripService = {
       if (vehicleChanging && fields.vehicle_id) {
         vehicleIdsToLock.push(fields.vehicle_id);
       }
-      vehicleIdsToLock.sort((a, b) => a - b);
+      vehicleIdsToLock.sort((a, b) => String(a).localeCompare(String(b)));
 
       let newVehicle = null;
       for (const vid of vehicleIdsToLock) {
@@ -306,7 +317,7 @@ const tripService = {
         }
       }
 
-      // Deterministic lock ordering on driver rows (ascending ID) to prevent deadlocks
+      // Deterministic lock ordering on driver rows (ascending UUID string) to prevent deadlocks
       const driverIdsToLock = [];
       if (driverChanging && trip.driver_id && trip.status === 'Dispatched') {
         driverIdsToLock.push(trip.driver_id);
@@ -314,7 +325,7 @@ const tripService = {
       if (driverChanging && fields.driver_id) {
         driverIdsToLock.push(fields.driver_id);
       }
-      driverIdsToLock.sort((a, b) => a - b);
+      driverIdsToLock.sort((a, b) => String(a).localeCompare(String(b)));
 
       let newDriver = null;
       for (const did of driverIdsToLock) {
@@ -438,6 +449,16 @@ const tripService = {
       }
 
       const currentStatus = trip.status;
+
+      // RBAC: Drivers can only update trips assigned to them, and can only advance Assigned -> Dispatched or Dispatched -> Completed
+      if (user.role === 'Driver') {
+        if (!user.driver_id || trip.driver_id !== user.driver_id) {
+          throw new TripServiceError('Forbidden: Drivers may only update the status of trips assigned to them.', 403);
+        }
+        if (nextStatus !== 'Dispatched' && nextStatus !== 'Completed') {
+          throw new TripServiceError("Forbidden: Drivers may only transition trip status to 'Dispatched' or 'Completed'.", 403);
+        }
+      }
 
       // 2. Prevent transitions from terminal states
       if (currentStatus === 'Completed' || currentStatus === 'Cancelled') {

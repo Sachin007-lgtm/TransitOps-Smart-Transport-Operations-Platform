@@ -51,14 +51,14 @@ WHERE trip_date IS NULL;
 -- 4. Per-organization consecutive bill numbering. Invoice numbers must not
 --    repeat or skip within a tenant, which a global sequence cannot promise.
 CREATE TABLE IF NOT EXISTS bill_counters (
-  organization_id VARCHAR(50) PRIMARY KEY REFERENCES organizations(id) ON DELETE RESTRICT,
+  organization_id UUID PRIMARY KEY REFERENCES organizations(id) ON DELETE RESTRICT,
   last_number INTEGER NOT NULL DEFAULT 0
 );
 
 -- 5. Bills. One row per generated bill, carrying the ledger totals.
 CREATE TABLE IF NOT EXISTS bills (
   id SERIAL PRIMARY KEY,
-  organization_id VARCHAR(50) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   bill_no VARCHAR(30) NOT NULL,
   company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
   bill_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -96,7 +96,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS bill_items (
   id SERIAL PRIMARY KEY,
   bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
-  trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL,
+  trip_id UUID REFERENCES trips(id) ON DELETE SET NULL,
   trip_date DATE,
   origin VARCHAR(255),
   destination VARCHAR(255),

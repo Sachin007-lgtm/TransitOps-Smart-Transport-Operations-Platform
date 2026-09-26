@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/authenticate');
+const requireTenantContext = require('../middleware/requireTenantContext');
 const authorize = require('../middleware/authorize');
 const {
   createTrip,
@@ -16,43 +17,44 @@ const {
   validateUpdateTripStatus
 } = require('../validators/tripValidator');
 
-// All trip endpoints require valid JWT authentication
+// All trip endpoints require valid JWT authentication with tenant context
 router.use(authenticate);
+router.use(requireTenantContext);
 
 router.route('/')
   .post(
-    authorize(['Fleet Manager', 'Dispatcher']),
+    authorize(['Owner/Manager']),
     validateCreateTrip,
     createTrip
   )
   .get(
-    authorize(['Fleet Manager', 'Dispatcher', 'Driver']),
+    authorize(['Owner/Manager', 'Driver']),
     getAllTrips
   );
 
 router.route('/:id')
   .get(
-    authorize(['Fleet Manager', 'Dispatcher', 'Driver']),
+    authorize(['Owner/Manager', 'Driver']),
     getTripById
   )
   .patch(
-    authorize(['Fleet Manager', 'Dispatcher']),
+    authorize(['Owner/Manager']),
     validateUpdateTrip,
     updateTrip
   )
   .put(
-    authorize(['Fleet Manager', 'Dispatcher']),
+    authorize(['Owner/Manager']),
     validateUpdateTrip,
     updateTrip
   )
   .delete(
-    authorize(['Fleet Manager']),
+    authorize(['Owner/Manager']),
     deleteTrip
   );
 
 router.route('/:id/status')
   .patch(
-    authorize(['Fleet Manager', 'Dispatcher']),
+    authorize(['Owner/Manager', 'Driver']),
     validateUpdateTripStatus,
     updateTripStatus
   );

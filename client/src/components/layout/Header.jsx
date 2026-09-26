@@ -1,16 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, User, Settings, LogOut, ChevronRight, ShieldAlert, Wrench, FileWarning } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { Search, Bell, User, Settings, LogOut, ChevronRight, ShieldAlert, Wrench, FileWarning, KeyRound } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { useGlobalSearch } from '../../contexts/GlobalSearchContext';
+import { useAuth } from '../../contexts/AuthContext';
+import ChangePasswordModal from '../auth/ChangePasswordModal';
 import './Header.css';
 
 export default function Header() {
   const [openCommand, setOpenCommand] = useState(false);
   const [openPopover, setOpenPopover] = useState(null); // 'bell' | 'user' | null
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
+  const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const isDispatching = location.pathname === '/trips';
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const bellRef = useRef(null);
   const userRef = useRef(null);
@@ -63,7 +73,7 @@ export default function Header() {
         <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--sub)' }} />
         <input 
           type="text" 
-          placeholder="Search vehicles, drivers, trips..." 
+          placeholder={user?.role === 'Platform Admin' ? "Search organizations, managers..." : "Search vehicles, drivers, trips..."} 
           value={globalSearch}
           onChange={(e) => setGlobalSearch(e.target.value)}
           style={{ 
@@ -92,12 +102,12 @@ export default function Header() {
         <div className="relative" ref={bellRef}>
           <button 
             className="btn-outline flex items-center justify-center relative" 
-            style={{ padding: '0.4rem', borderRadius: '50%', border: 'none', cursor: 'pointer' }}
+            style={{ padding: '0.4rem', borderRadius: '50%', border: 'none', cursor: 'pointer', position: 'relative' }}
             onClick={() => togglePopover('bell')}
           >
             <Bell size={20} className="text-muted" />
             {/* Unread Dot */}
-            <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--card)' }}></span>
+            <span style={{ position: 'absolute', top: '6px', right: '6px', width: '8px', height: '8px', background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--card)' }}></span>
           </button>
 
           {openPopover === 'bell' && (
@@ -134,43 +144,81 @@ export default function Header() {
 
         {/* User Block */}
         <div className="relative" ref={userRef}>
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => togglePopover('user')}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#7c4fd6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
-              RK
-            </div>
-            <div className="header-profile-text">
-              <span className="heading" style={{ fontSize: '0.875rem', lineHeight: '1.2' }}>Raven K.</span>
-              <span className="text-muted" style={{ fontSize: '0.75rem', lineHeight: '1.2' }}>Dispatcher</span>
-            </div>
-            <ChevronRight size={14} className="text-muted" style={{ transform: openPopover === 'user' ? 'rotate(90deg)' : 'rotate(0deg)', transition: '0.2s' }} />
-          </div>
+          {(() => {
+            const displayName = user?.name || 'Operations Manager';
+            const displayRole = user?.role || 'Owner/Manager';
+            const displayContact = user?.email || user?.phone_number || 'manager@transitops.com';
+            const initials = displayName
+              .trim()
+              .split(/\s+/)
+              .map(n => n[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase() || 'TO';
 
-          {openPopover === 'user' && (
-            <div className="popover-menu" style={{ width: '220px', right: 0 }}>
-              <div className="px-4 py-3 border-b border-[var(--line)]">
-                <div className="text-sm font-medium">Raven K.</div>
-                <div className="text-xs text-muted">raven@transitops.com</div>
-              </div>
-              <div className="py-1">
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <User size={16} className="text-muted" /> View profile
+            return (
+              <>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => togglePopover('user')}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#7c4fd6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
+                    {initials}
+                  </div>
+                  <div className="header-profile-text">
+                    <span className="heading" style={{ fontSize: '0.875rem', lineHeight: '1.2' }}>{displayName}</span>
+                    <span className="text-muted" style={{ fontSize: '0.75rem', lineHeight: '1.2' }}>{displayRole}</span>
+                  </div>
+                  <ChevronRight size={14} className="text-muted" style={{ transform: openPopover === 'user' ? 'rotate(90deg)' : 'rotate(0deg)', transition: '0.2s' }} />
                 </div>
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <Settings size={16} className="text-muted" /> Account settings
-                </div>
-                <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                  <ShieldAlert size={16} className="text-muted" /> Switch role
-                </div>
-              </div>
-              <div className="border-t border-[var(--line)] py-1">
-                <div className="popover-item px-4 py-2 text-sm text-status-red flex items-center gap-2" onClick={handleUserAction}>
-                  <LogOut size={16} /> Sign out
-                </div>
-              </div>
-            </div>
-          )}
+
+                {openPopover === 'user' && (
+                  <div className="popover-menu" style={{ width: '220px', right: 0 }}>
+                    <div className="px-4 py-3 border-b border-[var(--line)]">
+                      <div className="text-sm font-medium">{displayName}</div>
+                      <div className="text-xs text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayContact}</div>
+                    </div>
+                    <div className="py-1">
+                      <div
+                        className="popover-item px-4 py-2 text-sm flex items-center gap-2"
+                        onClick={() => {
+                          setOpenPopover(null);
+                          if (user?.role === 'Platform Admin') {
+                            setIsChangePasswordOpen(true);
+                          } else {
+                            if (location.pathname === '/settings') {
+                              const el = document.getElementById('security-panel');
+                              if (el) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                el.classList.add('highlight-pulse');
+                                setTimeout(() => el.classList.remove('highlight-pulse'), 2500);
+                              }
+                            } else {
+                              navigate('/settings#security');
+                            }
+                          }
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <Settings size={16} className="text-muted" /> Account settings
+                      </div>
+                    </div>
+                    <div className="border-t border-[var(--line)] py-1">
+                      <div className="popover-item px-4 py-2 text-sm text-status-red flex items-center gap-2" onClick={handleLogout}>
+                        <LogOut size={16} /> Sign out
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
+
       </div>
+
+      {/* Voluntary Password Change Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
 
       {/* Command Palette Overlay */}
       {openCommand && (
@@ -180,15 +228,23 @@ export default function Header() {
               <Command.Input placeholder="Type a command or search..." autoFocus />
               <Command.List>
                 <Command.Empty>No results found.</Command.Empty>
-                <Command.Group heading="Pages">
-                  <Command.Item onSelect={() => { window.location.href='/'; setOpenCommand(false); }}>Control Tower</Command.Item>
-                  <Command.Item onSelect={() => { window.location.href='/vehicles'; setOpenCommand(false); }}>Fleet Registry</Command.Item>
-                  <Command.Item onSelect={() => { window.location.href='/drivers'; setOpenCommand(false); }}>Drivers</Command.Item>
-                </Command.Group>
-                <Command.Group heading="Quick Actions">
-                  <Command.Item onSelect={() => { window.location.href='/'; setOpenCommand(false); }}>New Dispatch</Command.Item>
-                  <Command.Item onSelect={() => { window.location.href='/vehicles?action=add'; setOpenCommand(false); }}>Add Vehicle</Command.Item>
-                </Command.Group>
+                {user?.role === 'Platform Admin' ? (
+                  <Command.Group heading="Platform Superadmin">
+                    <Command.Item onSelect={() => { navigate('/admin'); setOpenCommand(false); }}>Organizations Registry</Command.Item>
+                  </Command.Group>
+                ) : (
+                  <>
+                    <Command.Group heading="Pages">
+                      <Command.Item onSelect={() => { navigate('/'); setOpenCommand(false); }}>Control Tower</Command.Item>
+                      <Command.Item onSelect={() => { navigate('/vehicles'); setOpenCommand(false); }}>Fleet Registry</Command.Item>
+                      <Command.Item onSelect={() => { navigate('/drivers'); setOpenCommand(false); }}>Drivers</Command.Item>
+                    </Command.Group>
+                    <Command.Group heading="Quick Actions">
+                      <Command.Item onSelect={() => { navigate('/'); setOpenCommand(false); }}>New Dispatch</Command.Item>
+                      <Command.Item onSelect={() => { navigate('/vehicles?action=add'); setOpenCommand(false); }}>Add Vehicle</Command.Item>
+                    </Command.Group>
+                  </>
+                )}
               </Command.List>
             </Command>
           </div>

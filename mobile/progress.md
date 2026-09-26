@@ -1,6 +1,6 @@
 # TransitOps Mobile Development Progress
 
-Last updated: 2026-09-21
+Last updated: 2026-09-23
 
 ## Completed
 
@@ -47,30 +47,36 @@ Last updated: 2026-09-21
 - Added Profile details from the authenticated user and secure sign-out from both Home and Profile.
 - TypeScript and mobile diff validation passed for the authenticated app shell.
 - Product architecture and development context saved in `TRANSITOPS_MOBILE_ARCHITECTURE.md`.
+- Teammate built the driver Trips list page (`mobile/src/app/trips.tsx`) with trip cards, empty state, and error handling.
+- Teammate built the `getTrips` API client (`mobile/src/features/trips/tripsApi.ts`) calling `GET /api/trips` with the driver JWT.
+- Teammate's dashboard (`dashboard.tsx`) already shows active trip detection from the trips list.
+- Server trip CRUD and full status lifecycle (`Draft → Planned → Assigned → Dispatched → Completed/Cancelled`) confirmed complete in `tripService.js` and `tripModel.js`.
+- GPS live tracking implementation plan drafted and agreed — see **Live Location Implementation Plan** section below (updated).
 
 ## Current Status
 
-- The Expo server is running on port `8082`. The next manual check is to reload the custom `mobile` development build and verify the centered compact login layout on Android, including smaller screens and keyboard scrolling.
-- The API client is ready but not connected to login until the backend authentication request and response contract is confirmed.
-- The login contract is now connected. Before testing a real login from the phone, create `mobile/.env` from `.env.example` and set `EXPO_PUBLIC_API_URL` to the computer's LAN API URL.
-- The current session is intentionally in memory only; secure device storage and session restoration are still pending and will require a native dependency decision.
-- Secure storage is now implemented, but the installed development APK predates this native dependency. A new development EAS build is required before testing persistence on the phone.
-- Retest: sign in, fully close the newly built app, reopen it, and confirm it opens the dashboard. Use Sign out to intentionally return to login.
-- Additional retest: with the backend running, reopen the app and confirm `/api/auth/me` validates the saved session; then stop the backend, reopen the app, and confirm a temporary network failure does not erase the cached session.
-- Shell retest: sign in, switch between Home, Trips, and Profile, verify the driver identity, then sign out and confirm the app returns to login.
-- Diagnosed phone login connectivity: laptop Wi-Fi address is `10.7.22.144`, and `mobile/.env` now points to `http://10.7.22.144:5001/api`.
-- Backend is reachable on the LAN, but its health response reports `getaddrinfo ENOTFOUND hostname`; the server database URL is still using a placeholder host and must be corrected outside `mobile/` before login can authenticate.
-- `npm run lint` is not currently usable because the starter project has no ESLint configuration. Do not install/configure ESLint unless linting is specifically needed.
-- All future implementation changes must remain inside the `mobile/` directory.
+- Authenticated app shell complete: Home, Trips, Profile navigation working.
+- Trips list page (teammate) fetches real trips from `GET /api/trips` with driver RBAC filtering.
+- Dashboard shows active trip detection (`Dispatched` or `Assigned`) and upcoming trip count.
+- **GPS foreground tracking is implemented:** the mobile app requests foreground permission, watches active-trip coordinates, sends authenticated updates, and the server stores tenant-scoped vehicle locations.
+- **Trip detail and owner map paths are implemented:** drivers can start/end trips, and the web Live Map polls active locations and renders markers and breadcrumbs.
+- **Production GPS work remains pending:** native background-task verification, GPS-disabled handling, backend rate limiting and retention cleanup, and real Android end-to-end verification.
+- A new EAS build is required after `expo-location` or native location configuration changes.
+- `mobile/.env` points to `http://10.7.22.144:5001/api` for LAN testing.
+- `npm run lint` is not usable (no ESLint config). Do not configure unless specifically needed.
+- All future implementation changes must remain inside the `mobile/` directory (server changes go in `server/`).
 
 ## Next Steps
 
-1. Verify the login screen on the Android development build.
-2. Establish the mobile theme and navigation foundation around authentication.
-3. Define the mobile API base URL configuration without hardcoding a final production domain.
-4. Connect login to the shared backend authentication contract when that contract is confirmed.
-5. Add invitation-based account activation and secure session storage.
-6. Build the driver dashboard and today's assignment flow.
+### Immediate — GPS Tracking (Phase L0–L4)
+
+1. **Completed:** server location migration, model, service, controller, routes, and tenant/RBAC integration.
+2. **Completed:** mobile `expo-location` setup, permission-aware service, authenticated API client, tracking hook, trip detail lifecycle, and trips navigation.
+3. **Completed:** owner web Live Map with active-location polling, marker rendering, and trip breadcrumb retrieval.
+4. **Completed:** bounded retry/backoff for transient uploads, GPS-quality gating, and explicit driver offline/stale states without overlapping sends.
+5. **Completed:** background location task, startup task registration, secure active-trip handoff, Android foreground-service configuration, one-time permission checks, and tracking cleanup on trip/session end.
+6. **Completed:** add server timestamp bounds and accuracy/speed/heading validation; rate limiting and location retention cleanup remain pending.
+7. **Pending:** run a new native EAS build and verify the complete flow on a real Android device.
 
 ## Phasewise Implementation Plan
 
@@ -294,6 +300,26 @@ Test the complete lifecycle on a real Android device:
 Location collection should be limited to the operational purpose, active-trip window, and retention policy agreed by the product owners. The app should explain location use before requesting permission.
 
 **Final exit condition:** The mobile, backend, and owner dashboard agree on trip state, location freshness, authorization, failure behavior, and data retention.
+
+## GPS Implementation Status (2026-09-23)
+
+### Completed
+
+- Foreground permission request and permission-state handling on the driver trip screen.
+- Active-trip GPS watcher using Expo Location with a five-second target and five-meter movement filter.
+- Authenticated `POST /api/locations` updates with server-derived driver and vehicle relationships.
+- Tenant-scoped active-location and breadcrumb APIs with driver/owner authorization checks.
+- Owner Live Map polling every six seconds with vehicle markers and breadcrumb trails.
+- Bounded upload retry with 1-second and 3-second backoff; client errors are not retried and uploads remain single-flight.
+- Driver offline/retrying status and owner stale-signal classification based on `captured_at`.
+- Low-quality fixes over 100 meters accuracy are withheld from upload and shown as a driver-facing GPS quality warning.
+
+### Pending
+
+- Native verification of background tracking after app minimize, screen lock, app restart, and force-stop behavior.
+- GPS-disabled and revoked-permission handling on a real Android device.
+- Backend rate limiting, retention policy, and cleanup job.
+- Native EAS rebuild and full mobile-to-server-to-owner acceptance test.
 
 ## Development Commands
 

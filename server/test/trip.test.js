@@ -16,12 +16,12 @@ function createToken(payload) {
 // therefore has to clear the billing tables before an organization can go.
 async function clearBillingRows() {
   await query(
-    "DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('org-test-A', 'org-test-B'))"
+    "DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002'))"
   );
-  await query("UPDATE trips SET bill_id = NULL WHERE organization_id IN ('org-test-A', 'org-test-B')");
-  await query("DELETE FROM bills WHERE organization_id IN ('org-test-A', 'org-test-B')");
-  await query("DELETE FROM companies WHERE organization_id IN ('org-test-A', 'org-test-B')");
-  await query("DELETE FROM bill_counters WHERE organization_id IN ('org-test-A', 'org-test-B')");
+  await query("UPDATE trips SET bill_id = NULL WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+  await query("DELETE FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+  await query("DELETE FROM companies WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+  await query("DELETE FROM bill_counters WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
 }
 
 describe('TransitOps Trip Module Backend Tests', () => {
@@ -54,46 +54,46 @@ describe('TransitOps Trip Module Backend Tests', () => {
     baseUrl = `http://127.0.0.1:${port}/api/trips`;
 
     // 2. Clean previous test artifacts if any
-    await query("DELETE FROM trips WHERE organization_id IN ('org-test-A', 'org-test-B')");
-    await query("DELETE FROM vehicles WHERE organization_id IN ('org-test-A', 'org-test-B')");
-    await query("DELETE FROM drivers WHERE organization_id IN ('org-test-A', 'org-test-B')");
     await clearBillingRows();
-    await query("DELETE FROM organizations WHERE id IN ('org-test-A', 'org-test-B')");
+    await query("DELETE FROM trips WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM vehicles WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM drivers WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM organizations WHERE id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
 
     // Ensure test organizations exist to satisfy referential integrity
     await query(`
       INSERT INTO organizations (id, name, slug, status)
-      VALUES ('org-test-A', 'Org Test A', 'org-test-a', 'Active'),
-             ('org-test-B', 'Org Test B', 'org-test-b', 'Active')
+      VALUES ('b0000000-0000-0000-0000-000000000001', 'Org Test A', 'org-test-a', 'Active'),
+             ('b0000000-0000-0000-0000-000000000002', 'Org Test B', 'org-test-b', 'Active')
       ON CONFLICT (id) DO NOTHING
     `);
 
     // 3. Create Org A Vehicles
     const vA1 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-A1', 'Truck Alpha', 'Truck', 5000, 40000, 'Available', 'org-test-A')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-A1', 'Truck', 5000, 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     vehicleA1Id = vA1.rows[0].id;
 
     const vA2 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-A2', 'Truck Broken', 'Truck', 4000, 35000, 'In Shop', 'org-test-A')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-A2', 'Truck', 4000, 'In Shop', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     vehicleA2Id = vA2.rows[0].id;
 
     const vA3 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-A3', 'Truck Gamma', 'Truck', 7000, 55000, 'Available', 'org-test-A')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-A3', 'Truck', 7000, 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     vehicleA3Id = vA3.rows[0].id;
 
     // 4. Create Org B Vehicle
     const vB1 = await query(`
-      INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-      VALUES ('TEST-REG-B1', 'Truck Beta', 'Truck', 6000, 50000, 'Available', 'org-test-B')
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('TEST-REG-B1', 'Truck', 6000, 'Available', 'b0000000-0000-0000-0000-000000000002')
       RETURNING id
     `);
     vehicleB1Id = vB1.rows[0].id;
@@ -101,21 +101,21 @@ describe('TransitOps Trip Module Backend Tests', () => {
     // 5. Create Org A Drivers
     const dA1 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver One', 'LIC-TEST-A1', 'HMV', '2028-01-01', '+919999990001', 'Available', 'org-test-A')
+      VALUES ('Driver One', 'LIC-TEST-A1', 'HMV / HGMV', '2028-01-01', '+919999990001', 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     driverA1Id = dA1.rows[0].id;
 
     const dA2 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver Bad', 'LIC-TEST-A2', 'HMV', '2028-01-01', '+919999990002', 'Suspended', 'org-test-A')
+      VALUES ('Driver Bad', 'LIC-TEST-A2', 'HMV / HGMV', '2028-01-01', '+919999990002', 'Suspended', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     driverA2Id = dA2.rows[0].id;
 
     const dA3 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver Two', 'LIC-TEST-A3', 'HMV', '2028-01-01', '+919999990003', 'Available', 'org-test-A')
+      VALUES ('Driver Two', 'LIC-TEST-A3', 'HMV / HGMV', '2028-01-01', '+919999990003', 'Available', 'b0000000-0000-0000-0000-000000000001')
       RETURNING id
     `);
     driverA3Id = dA3.rows[0].id;
@@ -123,26 +123,26 @@ describe('TransitOps Trip Module Backend Tests', () => {
     // 6. Create Org B Driver
     const dB1 = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Driver Org B', 'LIC-TEST-B1', 'HMV', '2028-01-01', '+919999990004', 'Available', 'org-test-B')
+      VALUES ('Driver Org B', 'LIC-TEST-B1', 'HMV / HGMV', '2028-01-01', '+919999990004', 'Available', 'b0000000-0000-0000-0000-000000000002')
       RETURNING id
     `);
     driverB1Id = dB1.rows[0].id;
 
     // 7. Create Tokens
-    tokenManagerA = createToken({ id: 101, email: 'managerA@test.com', role: 'Fleet Manager', organization_id: 'org-test-A' });
-    tokenDispatcherA = createToken({ id: 102, email: 'dispA@test.com', role: 'Dispatcher', organization_id: 'org-test-A' });
-    tokenDriverA1 = createToken({ id: 103, email: 'driver1@test.com', role: 'Driver', driver_id: driverA1Id, organization_id: 'org-test-A' });
-    tokenDriverA2 = createToken({ id: 104, email: 'driver2@test.com', role: 'Driver', driver_id: driverA3Id, organization_id: 'org-test-A' });
-    tokenManagerB = createToken({ id: 201, email: 'managerB@test.com', role: 'Fleet Manager', organization_id: 'org-test-B' });
+    tokenManagerA = createToken({ id: '10000000-0000-0000-0000-000000000101', email: 'managerA@test.com', role: 'Owner/Manager', organization_id: 'b0000000-0000-0000-0000-000000000001' });
+    tokenDispatcherA = createToken({ id: '10000000-0000-0000-0000-000000000102', email: 'dispA@test.com', role: 'Owner/Manager', organization_id: 'b0000000-0000-0000-0000-000000000001' });
+    tokenDriverA1 = createToken({ id: '10000000-0000-0000-0000-000000000103', email: 'driver1@test.com', role: 'Driver', driver_id: driverA1Id, organization_id: 'b0000000-0000-0000-0000-000000000001' });
+    tokenDriverA2 = createToken({ id: '10000000-0000-0000-0000-000000000104', email: 'driver2@test.com', role: 'Driver', driver_id: driverA3Id, organization_id: 'b0000000-0000-0000-0000-000000000001' });
+    tokenManagerB = createToken({ id: '20000000-0000-0000-0000-000000000201', email: 'managerB@test.com', role: 'Owner/Manager', organization_id: 'b0000000-0000-0000-0000-000000000002' });
   });
 
   after(async () => {
     // Cleanup test data
-    await query("DELETE FROM trips WHERE organization_id IN ('org-test-A', 'org-test-B')");
-    await query("DELETE FROM vehicles WHERE organization_id IN ('org-test-A', 'org-test-B')");
-    await query("DELETE FROM drivers WHERE organization_id IN ('org-test-A', 'org-test-B')");
     await clearBillingRows();
-    await query("DELETE FROM organizations WHERE id IN ('org-test-A', 'org-test-B')");
+    await query("DELETE FROM trips WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM vehicles WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM drivers WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM organizations WHERE id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
     server.close();
   });
 
@@ -187,7 +187,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
     assert.equal(res.data.success, true);
     assert.equal(res.data.data.origin, 'Mumbai Hub');
     assert.equal(res.data.data.status, 'Draft');
-    assert.equal(res.data.data.organization_id, 'org-test-A');
+    assert.equal(res.data.data.organization_id, 'b0000000-0000-0000-0000-000000000001');
     assert.equal(res.data.data.actual_arrival, null);
   });
 
@@ -257,7 +257,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
       planned_route: 'Route A',
       start_time: '2026-10-01T08:00:00Z',
       expected_arrival: '2026-10-01T12:00:00Z',
-      vehicle_id: 999999
+      vehicle_id: '99999999-9999-9999-9999-999999999999'
     };
     const res = await api('', { method: 'POST', body: payload });
     assert.equal(res.status, 404);
@@ -271,7 +271,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
       planned_route: 'Route A',
       start_time: '2026-10-01T08:00:00Z',
       expected_arrival: '2026-10-01T12:00:00Z',
-      driver_id: 999999
+      driver_id: '99999999-9999-9999-9999-999999999999'
     };
     const res = await api('', { method: 'POST', body: payload });
     assert.equal(res.status, 404);
@@ -749,7 +749,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
   // TEST 25: Trip Update Does Not Falsely Self-Collide
   test('25. A Trip can be updated without falsely conflicting with its own vehicle or driver assignment', async () => {
     // Find active Trip (Trip 1 with vehicleA1, driverA1)
-    const activeTrips = await query("SELECT id FROM trips WHERE organization_id = 'org-test-A' AND status = 'Assigned' LIMIT 1");
+    const activeTrips = await query("SELECT id FROM trips WHERE organization_id = 'b0000000-0000-0000-0000-000000000001' AND status = 'Assigned' LIMIT 1");
     const activeTripId = activeTrips.rows[0].id;
 
     // Update non-resource fields on this Assigned trip
@@ -879,7 +879,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
   // TEST 29: Cancelled and Completed Trips Release Reservations
   test('29. Cancelled and Completed Trips do not incorrectly block future assignments', async () => {
     // Find active Trip 1 (vehicleA1, driverA1) and Cancel it
-    const activeTrips = await query("SELECT id FROM trips WHERE organization_id = 'org-test-A' AND status = 'Assigned' LIMIT 1");
+    const activeTrips = await query("SELECT id FROM trips WHERE organization_id = 'b0000000-0000-0000-0000-000000000001' AND status = 'Assigned' LIMIT 1");
     const activeTripId = activeTrips.rows[0].id;
 
     const cancelRes = await api(`/${activeTripId}/status`, {
@@ -1042,13 +1042,13 @@ describe('TransitOps Trip Module Backend Tests', () => {
       }
     });
     assert.equal(tripRes.status, 201);
-    assert.equal(tripRes.data.data.organization_id, 'org-test-A');
+    assert.equal(tripRes.data.data.organization_id, 'b0000000-0000-0000-0000-000000000001');
     assert.equal(tripRes.data.data.organization_name, 'Org Test A');
 
     const tripId = tripRes.data.data.id;
     const getRes = await api(`/${tripId}`, { method: 'GET' });
     assert.equal(getRes.status, 200);
-    assert.equal(getRes.data.data.organization_id, 'org-test-A');
+    assert.equal(getRes.data.data.organization_id, 'b0000000-0000-0000-0000-000000000001');
     assert.equal(getRes.data.data.organization_name, 'Org Test A');
 
     const listRes = await api('', { method: 'GET' });

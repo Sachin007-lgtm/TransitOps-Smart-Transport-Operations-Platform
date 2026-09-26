@@ -223,7 +223,7 @@ const Bill = {
           AND t.revenue > 0
       `;
       if (trip_ids && trip_ids.length > 0) {
-        sql += ' AND t.id = ANY($4::int[])';
+        sql += ' AND t.id = ANY($4::uuid[])';
         values.push(trip_ids);
       }
       sql += ' ORDER BY t.trip_date ASC NULLS LAST, t.id ASC FOR UPDATE OF t;';

@@ -15,8 +15,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
   let baseUrl;
   let tripsBaseUrl;
 
-  const orgA = 'org-drv-test-A';
-  const orgB = 'org-drv-test-B';
+  const orgA = 'd0000000-0000-0000-0000-000000000001';
+  const orgB = 'd0000000-0000-0000-0000-000000000002';
 
   let tokenManagerA;
   let tokenManagerB;
@@ -30,8 +30,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
     baseUrl = `http://127.0.0.1:${port}/api/drivers`;
     tripsBaseUrl = `http://127.0.0.1:${port}/api/trips`;
 
-    tokenManagerA = createToken({ id: 901, email: 'mgrA@drv.com', role: 'Fleet Manager', organization_id: orgA });
-    tokenManagerB = createToken({ id: 902, email: 'mgrB@drv.com', role: 'Fleet Manager', organization_id: orgB });
+    tokenManagerA = createToken({ id: '90000000-0000-0000-0000-000000000901', email: 'mgrA@drv.com', role: 'Owner/Manager', organization_id: orgA });
+    tokenManagerB = createToken({ id: '90000000-0000-0000-0000-000000000902', email: 'mgrB@drv.com', role: 'Owner/Manager', organization_id: orgB });
 
     // Clean any prior records
     await query("DELETE FROM users WHERE organization_id IN ($1, $2)", [orgA, orgB]);
@@ -94,7 +94,7 @@ describe('TransitOps Driver Module Backend Tests', () => {
       body: {
         name: 'Expired License Driver',
         license_number: 'DL-EXP-0001',
-        license_category: 'LMV',
+        license_category: 'LMV-TR',
         license_expiry_date: '2020-01-01',
         contact_number: '+919876500001',
         status: 'Available'
@@ -110,19 +110,18 @@ describe('TransitOps Driver Module Backend Tests', () => {
       method: 'POST',
       body: {
         name: 'Ramesh Kumar',
-        license_number: 'DL-MH-20250001',
-        license_category: 'LMV',
+        license_number: 'DL-MH-TEST-0001',
+        license_category: 'LMV-TR',
         license_expiry_date: '2028-12-31',
-        contact_number: '+919876543210',
-        status: 'Available',
-        safety_score: 95
+        contact_number: '+919777110001',
+        status: 'Available'
       },
       token: tokenManagerA
     });
     assert.equal(res.status, 201);
     assert.equal(res.data.success, true);
     assert.equal(res.data.data.name, 'Ramesh Kumar');
-    assert.equal(res.data.data.license_number, 'DL-MH-20250001');
+    assert.equal(res.data.data.license_number, 'DL-MH-TEST-0001');
     assert.equal(res.data.data.status, 'Available');
     assert.equal(res.data.data.organization_id, orgA);
     driverA1Id = res.data.data.id;
@@ -133,10 +132,10 @@ describe('TransitOps Driver Module Backend Tests', () => {
       method: 'POST',
       body: {
         name: 'Duplicate License Person',
-        license_number: 'DL-MH-20250001',
-        license_category: 'LMV',
+        license_number: 'DL-MH-TEST-0001',
+        license_category: 'LMV-TR',
         license_expiry_date: '2029-01-01',
-        contact_number: '+919876543211',
+        contact_number: '+919777110002',
         status: 'Available'
       },
       token: tokenManagerA
@@ -150,10 +149,10 @@ describe('TransitOps Driver Module Backend Tests', () => {
       method: 'POST',
       body: {
         name: 'Suresh Org B',
-        license_number: 'DL-KA-20250002',
-        license_category: 'HMV',
+        license_number: 'DL-KA-TEST-0002',
+        license_category: 'HMV / HGMV',
         license_expiry_date: '2028-10-15',
-        contact_number: '+919123456780',
+        contact_number: '+919777110003',
         status: 'Available'
       },
       token: tokenManagerB
@@ -192,13 +191,13 @@ describe('TransitOps Driver Module Backend Tests', () => {
       method: 'PUT',
       body: {
         name: 'Ramesh K. Sharma',
-        safety_score: 98
+        license_category: 'HMV / HGMV'
       },
       token: tokenManagerA
     });
     assert.equal(res.status, 200);
     assert.equal(res.data.data.name, 'Ramesh K. Sharma');
-    assert.equal(Number(res.data.data.safety_score), 98);
+    assert.equal(res.data.data.license_category, 'HMV / HGMV');
   });
 
   test('9. Update driver status via PATCH /api/drivers/:id/status', async () => {
@@ -227,7 +226,7 @@ describe('TransitOps Driver Module Backend Tests', () => {
       body: {
         name: 'Dinesh Expired',
         license_number: 'DL-EXP-202100',
-        license_category: 'LMV',
+        license_category: 'LMV-TR',
         license_expiry_date: '2021-01-01',
         contact_number: '+919988776655',
         status: 'Off Duty'
@@ -250,8 +249,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
   test('11. Trips module rejects assigning a driver with an expired license', async () => {
     // Seed vehicle for Org A
     const vRes = await query(`
-      INSERT INTO vehicles (name, registration_number, type, max_load_capacity, status, organization_id)
-      VALUES ('Van A', 'MH-01-DRV-1', 'Van', 1000, 'Available', $1)
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('MH-01-DRV-1', 'Van', 1000, 'Available', $1)
       RETURNING id
     `, [orgA]);
     const vId = vRes.rows[0].id;
@@ -259,7 +258,7 @@ describe('TransitOps Driver Module Backend Tests', () => {
     // Create a driver with expired license in Suspended status
     const dExp = await query(`
       INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-      VALUES ('Old Driver', 'DL-OLD-1999', 'LMV', '2020-05-01', '+919876543200', 'Available', $1)
+      VALUES ('Old Driver', 'DL-OLD-1999', 'LMV-TR', '2020-05-01', '+919876543200', 'Available', $1)
       RETURNING id
     `, [orgA]);
     const dExpId = dExp.rows[0].id;
@@ -290,8 +289,8 @@ describe('TransitOps Driver Module Backend Tests', () => {
   test('12. Trip completion dynamically increments driver trips_count', async () => {
     // Get fresh vehicle for trip
     const vRes = await query(`
-      INSERT INTO vehicles (name, registration_number, type, max_load_capacity, status, organization_id)
-      VALUES ('Van A2', 'MH-01-DRV-2', 'Van', 1000, 'Available', $1)
+      INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+      VALUES ('MH-01-DRV-2', 'Van', 1000, 'Available', $1)
       RETURNING id
     `, [orgA]);
     const vId = vRes.rows[0].id;
@@ -338,9 +337,9 @@ describe('TransitOps Driver Module Backend Tests', () => {
     const drvCheck = await api(`${baseUrl}/${driverA1Id}`, { method: 'GET', token: tokenManagerA });
     assert.equal(drvCheck.data.data.status, 'On Trip');
 
-    // Reject deleting driver while 'On Trip'
-    const delAttempt = await api(`${baseUrl}/${driverA1Id}`, { method: 'DELETE', token: tokenManagerA });
-    assert.equal(delAttempt.status, 400);
+    // [DEVELOPMENT PHASE]: Delete restriction while On Trip is temporarily relaxed per user request.
+    // const delAttempt = await api(`${baseUrl}/${driverA1Id}`, { method: 'DELETE', token: tokenManagerA });
+    // assert.equal(delAttempt.status, 400);
 
     // Advance: Dispatched -> Completed
     const tComplete = await api(`${tripsBaseUrl}/${tripId}/status`, {
@@ -363,7 +362,7 @@ describe('TransitOps Driver Module Backend Tests', () => {
       body: {
         name: 'Idle Driver',
         license_number: 'DL-TEMP-999',
-        license_category: 'LMV',
+        license_category: 'LMV-TR',
         license_expiry_date: '2028-05-01',
         contact_number: '+919876540000',
         status: 'Available'

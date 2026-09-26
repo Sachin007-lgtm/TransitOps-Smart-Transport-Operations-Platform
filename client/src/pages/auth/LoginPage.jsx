@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Eye, EyeOff, ChevronDown, Shield, Truck, BarChart3, Users, AlertCircle } from 'lucide-react';
-import { apiRequest } from '../../utils/api';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import './LoginPage.css';
 
 // Custom Hook for count up
@@ -21,7 +21,6 @@ function useCountUp(end, duration = 2000, startDelay = 0) {
         setCount(Math.min(end, Math.floor((progress / duration) * end)));
         animationFrame = requestAnimationFrame(updateCount);
       } else {
-        // format with decimal if needed
         setCount(end);
       }
     };
@@ -46,32 +45,22 @@ const taglines = [
   "One dashboard. Your whole fleet."
 ];
 
-const rolesData = [
-  { id: 'Fleet Manager', title: 'Fleet manager', desc: 'Full access', icon: Truck },
-  { id: 'Dispatcher', title: 'Dispatcher', desc: 'Trips + fleet', icon: Users },
-  { id: 'Safety Officer', title: 'Safety officer', desc: 'Compliance', icon: Shield },
-  { id: 'Financial Analyst', title: 'Financial analyst', desc: 'Reports only', icon: BarChart3 }
-];
-
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [role, setRole] = useState(rolesData[1]); // Default Dispatcher
-  const [email, setEmail] = useState('');
+  const { login } = useAuth();
+
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [taglineIdx, setTaglineIdx] = useState(0);
   const [fadeTagline, setFadeTagline] = useState(true);
-  
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-  const [isLoading, setIsLoading] = useState(false);
 
   const vehiclesTracked = useCountUp(118, 1500, 0);
-  const fleetUptime = useCountUp(99, 1500, 300); // We'll manually append .2% below for simplicity
+  const fleetUptime = useCountUp(99, 1500, 300);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -79,55 +68,35 @@ export default function LoginPage() {
       setTimeout(() => {
         setTaglineIdx((prev) => (prev + 1) % taglines.length);
         setFadeTagline(true);
-      }, 500); // 500ms fade out duration
+      }, 500);
     }, 3200);
     return () => clearInterval(interval);
   }, []);
 
-  // Click outside listener for dropdown
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (isLoading) return;
-    setIsLoading(true);
     setError('');
 
+    const trimmed = identifier.trim();
+    if (!trimmed || !password) {
+      setError('Please enter your email or phone number and password.');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      // Real sign-in: the API issues the token and reports the account's role.
-      // The role picker above stays a presentation of what each role can do —
-      // access is decided by the account, not by this choice, so nobody can
-      // grant themselves more rights from the login screen.
-      const res = await apiRequest('POST', '/auth/login', {
-        email: email.trim(),
-        password
-      });
-      const { token, user } = res.data;
-
-      localStorage.setItem('token', token);
-      localStorage.setItem('userRole', user.role);
-      localStorage.setItem('organization_id', user.organization_id);
-      if (user.name) localStorage.setItem('userName', user.name);
-      if (user.email) localStorage.setItem('userEmail', user.email);
-
-      // Return the user to what they were actually trying to reach: the route
-      // guard's state first, then the path remembered by a 401 redirect.
-      const remembered = localStorage.getItem('redirectAfterLogin');
-      const target = location.state?.from?.pathname || remembered || '/';
-      localStorage.removeItem('redirectAfterLogin');
-      navigate(target === '/login' ? '/' : target, { replace: true });
+      const authUser = await login(trimmed, password);
+      let destination = location.state?.from?.pathname;
+      if (!destination || destination === '/login' || (authUser?.role === 'Platform Admin' && destination === '/')) {
+        destination = authUser?.role === 'Platform Admin' ? '/admin' : '/';
+      } else if (authUser?.role !== 'Platform Admin' && destination.startsWith('/admin')) {
+        destination = '/';
+      }
+      navigate(destination, { replace: true });
     } catch (err) {
-      setError(err.message || 'Sign in failed. Check your email and password.');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -137,7 +106,6 @@ export default function LoginPage() {
       <div className="login-left">
         <div className="login-branding">
           <div className="new-logo-badge">
-            {/* Custom Route Mark SVG */}
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 12h4l3-9 5 18 3-9h3" />
               <circle cx="21" cy="12" r="2" fill="var(--accent-primary)" />
@@ -194,10 +162,37 @@ export default function LoginPage() {
             Sign in to dispatch, track, and manage every vehicle in one place.
           </p>
 
+          {error && (
+            <div style={{
+              backgroundColor: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#ff8080',
+              padding: '0.75rem 1rem',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem'
+            }}>
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="login-form">
             <div className="input-group">
-              <label>EMAIL</label>
-              <input type="email" className="login-input" value={email} onChange={e => setEmail(e.target.value)} required placeholder="name@company.com" />
+              <label>EMAIL OR PHONE NUMBER</label>
+              <input 
+                type="text" 
+                className="login-input" 
+                value={identifier} 
+                onChange={e => setIdentifier(e.target.value)} 
+                required 
+                placeholder="name@company.com or phone"
+                autoComplete="username"
+                disabled={isSubmitting}
+              />
             </div>
 
             <div className="input-group" style={{ position: 'relative' }}>
@@ -211,51 +206,17 @@ export default function LoginPage() {
                   onChange={e => setPassword(e.target.value)} 
                   required 
                   placeholder="••••••••"
+                  autoComplete="current-password"
+                  disabled={isSubmitting}
                 />
                 <button 
                   type="button" 
                   onClick={() => setShowPassword(!showPassword)}
                   style={{ position: 'absolute', right: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
                 </button>
-              </div>
-            </div>
-
-            <div className="input-group" style={{ position: 'relative' }} ref={dropdownRef}>
-              <label>ROLE (RBAC DEMO — your account decides actual access)</label>
-              <div className="custom-select-container">
-                <div 
-                  className={`custom-select-trigger ${isDropdownOpen ? 'open' : ''}`}
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                >
-                  <div className="flex items-center gap-2">
-                    <role.icon size={18} className="text-muted" />
-                    <span className="font-medium text-sm">{role.title}</span>
-                  </div>
-                  <ChevronDown size={18} className="chevron" />
-                </div>
-                
-                {isDropdownOpen && (
-                  <div className="custom-select-dropdown">
-                    {rolesData.map((r) => (
-                      <div 
-                        key={r.id} 
-                        className="custom-select-option"
-                        onClick={() => {
-                          setRole(r);
-                          setIsDropdownOpen(false);
-                        }}
-                      >
-                        <r.icon size={20} className="icon" />
-                        <div>
-                          <span className="title">{r.title}</span>
-                          <span className="desc">{r.desc}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -263,17 +224,10 @@ export default function LoginPage() {
               <label className="custom-checkbox-wrapper">
                 <input type="checkbox" className="custom-checkbox" defaultChecked /> Remember me
               </label>
-              <a href="#" className="forgot-password">Forgot password?</a>
             </div>
 
-            {error && (
-              <div className="login-error" role="alert">
-                <AlertCircle size={15} /> {error}
-              </div>
-            )}
-
-            <button type="submit" className="btn-amber" disabled={isLoading}>
-              {isLoading ? (
+            <button type="submit" className="btn-amber" disabled={isSubmitting}>
+              {isSubmitting ? (
                 <>
                   <div className="spinner"></div>
                   Signing in...

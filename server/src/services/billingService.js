@@ -145,9 +145,7 @@ const billingService = {
     try {
       deleted = await Company.delete(id, orgId);
     } catch (err) {
-      // trips_company_id_fkey is ON DELETE SET NULL, but bills RESTRICT: a
-      // company with billing history must stay on record.
-      if (err.code === '23503') {
+      if (err.code === '23503' || err.code === '23001') {
         throw new BillingServiceError(
           'This company has bills and cannot be deleted. Mark it Inactive instead.',
           409
@@ -355,7 +353,7 @@ const billingService = {
       organization_id: orgId,
       company_id: Number(company_id),
       statuses: allowed,
-      trip_ids: Array.isArray(trip_ids) && trip_ids.length > 0 ? trip_ids.map(Number) : null,
+      trip_ids: Array.isArray(trip_ids) && trip_ids.length > 0 ? trip_ids.map(String) : null,
       charge_ids: Array.isArray(charge_ids) && charge_ids.length > 0 ? charge_ids.map(Number) : null,
       note: note || null,
       bill_date: bill_date || null

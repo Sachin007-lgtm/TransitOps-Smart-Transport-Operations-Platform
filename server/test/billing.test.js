@@ -23,7 +23,7 @@ function createToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
-const TEST_ORGS = ['org-bill-A', 'org-bill-B'];
+const TEST_ORGS = ['d0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000002'];
 
 describe('TransitOps Company Billing Backend Tests', () => {
   let server;
@@ -124,70 +124,69 @@ describe('TransitOps Company Billing Backend Tests', () => {
 
     // Clean any previous run, in dependency order.
     await query(
-      `DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id = ANY($1::text[]))`,
+      `DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id = ANY($1::uuid[]))`,
       [TEST_ORGS]
     );
-    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bills WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM trips WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM companies WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM vehicles WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM drivers WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM organizations WHERE id = ANY($1::text[])`, [TEST_ORGS]);
+    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bills WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM trips WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM companies WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM vehicles WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM drivers WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [TEST_ORGS]);
 
     await query(
       `INSERT INTO organizations (id, name, slug, status)
-       VALUES ('org-bill-A', 'Billing Test Org A', 'billing-test-a', 'Active'),
-              ('org-bill-B', 'Billing Test Org B', 'billing-test-b', 'Active')
+       VALUES ('d0000000-0000-0000-0000-000000000001', 'Billing Test Org A', 'billing-test-a', 'Active'),
+              ('d0000000-0000-0000-0000-000000000002', 'Billing Test Org B', 'billing-test-b', 'Active')
        ON CONFLICT (id) DO NOTHING;`
     );
 
     const vA1 = await query(
-      `INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-       VALUES ('BILL-REG-A1', 'Billing Truck Alpha', 'Truck', 5000, 40000, 'Available', 'org-bill-A')
+      `INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+       VALUES ('BILL-REG-A1', 'Truck', 5000, 'Available', 'd0000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     vehicleA1Id = vA1.rows[0].id;
 
     const vA2 = await query(
-      `INSERT INTO vehicles (registration_number, name, type, max_load_capacity, acquisition_cost, status, organization_id)
-       VALUES ('BILL-REG-A2', 'Billing Truck Beta', 'Truck', 5000, 40000, 'Available', 'org-bill-A')
+      `INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
+       VALUES ('BILL-REG-A2', 'Truck', 5000, 'Available', 'd0000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     vehicleA2Id = vA2.rows[0].id;
 
     const dA1 = await query(
       `INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-       VALUES ('Billing Driver One', 'LIC-BILL-A1', 'HMV', '2030-01-01', '+919000000101', 'Available', 'org-bill-A')
+       VALUES ('Billing Driver One', 'LIC-BILL-A1', 'HMV / HGMV', '2030-01-01', '+919000000101', 'Available', 'd0000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     driverA1Id = dA1.rows[0].id;
 
     const dA2 = await query(
       `INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-       VALUES ('Billing Driver Two', 'LIC-BILL-A2', 'HMV', '2030-01-01', '+919000000102', 'Available', 'org-bill-A')
+       VALUES ('Billing Driver Two', 'LIC-BILL-A2', 'HMV / HGMV', '2030-01-01', '+919000000102', 'Available', 'd0000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     driverA2Id = dA2.rows[0].id;
 
-    tokenManagerA = createToken({ id: 901, email: 'billmgrA@test.com', role: 'Fleet Manager', organization_id: 'org-bill-A' });
-    tokenDispatcherA = createToken({ id: 902, email: 'billdispA@test.com', role: 'Dispatcher', organization_id: 'org-bill-A' });
-    tokenAnalystA = createToken({ id: 903, email: 'billfinA@test.com', role: 'Financial Analyst', organization_id: 'org-bill-A' });
-    tokenManagerB = createToken({ id: 904, email: 'billmgrB@test.com', role: 'Fleet Manager', organization_id: 'org-bill-B' });
+    tokenManagerA = createToken({ id: '90000000-0000-0000-0000-000000000901', email: 'billmgrA@test.com', role: 'Owner/Manager', organization_id: 'd0000000-0000-0000-0000-000000000001' });
+    tokenDispatcherA = createToken({ id: '90000000-0000-0000-0000-000000000902', email: 'billdispA@test.com', role: 'Dispatcher', organization_id: 'd0000000-0000-0000-0000-000000000001' });
+    tokenAnalystA = createToken({ id: '90000000-0000-0000-0000-000000000903', email: 'billfinA@test.com', role: 'Financial Analyst', organization_id: 'd0000000-0000-0000-0000-000000000001' });
+    tokenManagerB = createToken({ id: '90000000-0000-0000-0000-000000000904', email: 'billmgrB@test.com', role: 'Owner/Manager', organization_id: 'd0000000-0000-0000-0000-000000000002' });
   });
 
   after(async () => {
-    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bills WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM trips WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM companies WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM vehicles WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM drivers WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM organizations WHERE id = ANY($1::text[])`, [TEST_ORGS]);
+    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bills WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM trips WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM companies WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM vehicles WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM drivers WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [TEST_ORGS]);
     server.close();
-    await pool.end();
   });
 
   // ---------------------------------------------------------------------
@@ -440,7 +439,7 @@ describe('TransitOps Company Billing Backend Tests', () => {
 
     // The trips left the unbilled pool and point at this bill.
     const billed = await query(
-      'SELECT id, billing_status, bill_id FROM trips WHERE id = ANY($1::int[]) ORDER BY id',
+      'SELECT id, billing_status, bill_id FROM trips WHERE id = ANY($1::uuid[]) ORDER BY id',
       [[lifecycleTripId, sharmaTripL2.id]]
     );
     assert.equal(billed.rows.length, 2);
@@ -466,7 +465,7 @@ describe('TransitOps Company Billing Backend Tests', () => {
     assert.match(res.json.message, /not in a billable status/i);
 
     const trips = await query(
-      `SELECT billing_status FROM trips WHERE company_id = $1 AND id = ANY($2::int[])`,
+      `SELECT billing_status FROM trips WHERE company_id = $1 AND id = ANY($2::uuid[])`,
       [sharmaCompanyId, [lifecycleTripId, sharmaTripL2.id]]
     );
     assert.equal(trips.rows.filter((r) => r.billing_status === 'Billed').length, 2);

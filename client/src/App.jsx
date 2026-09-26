@@ -1,13 +1,17 @@
 import React from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Vehicles from './pages/Vehicles';
 import Drivers from './pages/Drivers';
 import LoginPage from './pages/auth/LoginPage';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute, PublicOnlyRoute, PlatformAdminRoute, TenantManagerRoute } from './components/auth/ProtectedRoute';
 import { GlobalSearchProvider } from './contexts/GlobalSearchContext';
+import PlatformAdmin from './pages/PlatformAdmin';
 
 import TripDispatcher from './pages/TripDispatcher';
+import LiveMap from './pages/LiveMap';
 import Billing from './pages/Billing';
 import Maintenance from './pages/Maintenance';
 import FuelExpenses from './pages/FuelExpenses';
@@ -62,48 +66,48 @@ function GlobalToast() {
   );
 }
 
-// Every in-app route needs a session. Without this guard a signed-out visitor
-// renders the app shell, every page's API call answers 401, and the 401 handler
-// bounces them to the login screen — which is why navigating between pages felt
-// like being logged out. Sending them to /login directly also lets the login
-// screen hand back the page they asked for.
-function RequireAuth({ children }) {
-  const location = useLocation();
-
-  if (!localStorage.getItem('token')) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  return children;
-}
-
 function App() {
   return (
     <ErrorBoundary>
-      <GlobalSearchProvider>
-        <GlobalToast />
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <AppLayout />
-              </RequireAuth>
-            }
-          >
-            <Route index element={<Dashboard />} />
-            <Route path="vehicles" element={<Vehicles />} />
-            <Route path="drivers" element={<Drivers />} />
-            <Route path="trips" element={<TripDispatcher />} />
-            <Route path="billing" element={<Billing />} />
-            <Route path="maintenance" element={<Maintenance />} />
-            <Route path="fuel" element={<FuelExpenses />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="settings" element={<Settings />} />
-          </Route>
-        </Routes>
-      </GlobalSearchProvider>
+      <AuthProvider>
+        <GlobalSearchProvider>
+          <GlobalToast />
+          <Routes>
+            <Route 
+              path="/login" 
+              element={
+                <PublicOnlyRoute>
+                  <LoginPage />
+                </PublicOnlyRoute>
+              } 
+            />
+            {/* Platform Superadmin Route */}
+            <Route element={<PlatformAdminRoute />}>
+              <Route path="/admin" element={<AppLayout />}>
+                <Route index element={<PlatformAdmin />} />
+              </Route>
+            </Route>
+
+            {/* Tenant Fleet Manager Routes */}
+            <Route element={<TenantManagerRoute />}>
+              <Route path="/" element={<AppLayout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="vehicles" element={<Vehicles />} />
+                <Route path="drivers" element={<Drivers />} />
+                <Route path="trips" element={<TripDispatcher />} />
+                <Route path="live-map" element={<LiveMap />} />
+                <Route path="billing" element={<Billing />} />
+                <Route path="maintenance" element={<Maintenance />} />
+                <Route path="fuel" element={<FuelExpenses />} />
+                <Route path="analytics" element={<Analytics />} />
+                <Route path="settings" element={<Settings />} />
+              </Route>
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </GlobalSearchProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

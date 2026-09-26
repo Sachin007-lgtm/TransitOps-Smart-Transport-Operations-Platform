@@ -14,8 +14,17 @@ const isStatusList = (val) => {
   return null;
 };
 
-const isIdList = (val) => {
+const isTripIdList = (val) => {
   if (!Array.isArray(val)) return 'must be an array of trip ids.';
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (val.some((id) => !(typeof id === 'string' && uuidRegex.test(id)) && (!Number.isInteger(Number(id)) || Number(id) <= 0))) {
+    return 'must contain valid trip ids.';
+  }
+  return null;
+};
+
+const isChargeIdList = (val) => {
+  if (!Array.isArray(val)) return 'must be an array of charge ids.';
   if (val.some((id) => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
     return 'must contain positive ids.';
   }
@@ -49,8 +58,8 @@ const generateBillSchema = {
   note: { required: false, type: 'string' },
   bill_date: { required: false, type: 'date' },
   statuses: { required: false, custom: isStatusList },
-  trip_ids: { required: false, custom: isIdList },
-  charge_ids: { required: false, custom: isIdList }
+  trip_ids: { required: false, custom: isTripIdList },
+  charge_ids: { required: false, custom: isChargeIdList }
 };
 
 const recordPaymentSchema = {

@@ -20,8 +20,8 @@ function createToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
-const ORG_A = 'org-stmt-A';
-const ORG_B = 'org-stmt-B';
+const ORG_A = 'e0000000-0000-0000-0000-000000000001';
+const ORG_B = 'e0000000-0000-0000-0000-000000000002';
 const TEST_ORGS = [ORG_A, ORG_B];
 
 describe('TransitOps Customer Statement Backend Tests', () => {
@@ -87,28 +87,28 @@ describe('TransitOps Customer Statement Backend Tests', () => {
     tripsUrl = `http://127.0.0.1:${port}/api/trips`;
 
     await query(
-      `DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id = ANY($1::text[]))`,
+      `DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id = ANY($1::uuid[]))`,
       [TEST_ORGS]
     );
-    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bills WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM charges WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM trips WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM companies WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM organizations WHERE id = ANY($1::text[])`, [TEST_ORGS]);
+    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bills WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM charges WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM trips WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM companies WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [TEST_ORGS]);
 
     await query(
       `INSERT INTO organizations (id, name, slug, status)
-       VALUES ('org-stmt-A', 'Statement Test Org A', 'stmt-test-a', 'Active'),
-              ('org-stmt-B', 'Statement Test Org B', 'stmt-test-b', 'Active')
+       VALUES ('e0000000-0000-0000-0000-000000000001', 'Statement Test Org A', 'stmt-test-a', 'Active'),
+              ('e0000000-0000-0000-0000-000000000002', 'Statement Test Org B', 'stmt-test-b', 'Active')
        ON CONFLICT (id) DO NOTHING;`
     );
 
-    tokenManagerA = createToken({ id: 801, email: 'stmtA@test.com', role: 'Fleet Manager', organization_id: ORG_A });
-    tokenDispatcherA = createToken({ id: 802, email: 'stmtdispA@test.com', role: 'Dispatcher', organization_id: ORG_A });
-    tokenManagerB = createToken({ id: 803, email: 'stmtB@test.com', role: 'Fleet Manager', organization_id: ORG_B });
+    tokenManagerA = createToken({ id: '80000000-0000-0000-0000-000000000801', email: 'stmtA@test.com', role: 'Owner/Manager', organization_id: ORG_A });
+    tokenDispatcherA = createToken({ id: '80000000-0000-0000-0000-000000000802', email: 'stmtdispA@test.com', role: 'Dispatcher', organization_id: ORG_A });
+    tokenManagerB = createToken({ id: '80000000-0000-0000-0000-000000000803', email: 'stmtB@test.com', role: 'Owner/Manager', organization_id: ORG_B });
 
     const sharma = await call('POST', '/companies', {
       token: tokenManagerA,
@@ -125,16 +125,15 @@ describe('TransitOps Customer Statement Backend Tests', () => {
   });
 
   after(async () => {
-    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bills WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM charges WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM trips WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM companies WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM organizations WHERE id = ANY($1::text[])`, [TEST_ORGS]);
+    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bills WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM charges WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM trips WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM companies WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [TEST_ORGS]);
     server.close();
-    await pool.end();
   });
 
   // ---------------------------------------------------------------------
