@@ -1,6 +1,11 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    # PostgreSQL 18 is required, not optional: the baseline schema defaults
+    # primary keys with uuidv7(), which only exists from PG 18. On 17 the first
+    # migration fails with 'function uuidv7() does not exist'. If you already
+    # have a volume from an older image, recreate it (the data directory is not
+    # downgrade-compatible): docker compose down -v && docker compose up -d.
+    image: postgres:18-alpine
     container_name: transitops-postgres
     restart: unless-stopped
 

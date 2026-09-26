@@ -147,7 +147,11 @@ const billingService = {
     } catch (err) {
       // trips_company_id_fkey is ON DELETE SET NULL, but bills RESTRICT: a
       // company with billing history must stay on record.
-      if (err.code === '23503') {
+      //
+      // 23001 (restrict_violation) is what PostgreSQL 16+ reports when a DELETE
+      // hits a RESTRICT reference; 23503 is the older foreign_key_violation code
+      // for the same mistake. Both must be caught or this degrades to a 500.
+      if (err.code === '23503' || err.code === '23001') {
         throw new BillingServiceError(
           'This company has bills and cannot be deleted. Mark it Inactive instead.',
           409
@@ -244,7 +248,7 @@ const billingService = {
       }
     }
 
-    return Charge.create({ ...payload, organization_id: orgId, company_id: Number(companyId) });
+    return Charge.create({ ...payload, organization_id: orgId, company_id: companyId });
   },
 
   updateCharge: async (orgId, id, payload) => {
@@ -293,14 +297,14 @@ const billingService = {
   listCharges: async (orgId, { company_id, billing_status } = {}) =>
     Charge.findAll({
       organization_id: orgId,
-      company_id: company_id ? Number(company_id) : undefined,
+      company_id: company_id || undefined,
       billing_status
     }),
 
   listBills: async (orgId, { company_id, status } = {}) =>
     Bill.findAll({
       organization_id: orgId,
-      company_id: company_id ? Number(company_id) : undefined,
+      company_id: company_id || undefined,
       status
     }),
 
@@ -322,14 +326,14 @@ const billingService = {
     // Ownership first: a company belonging to another organization must read
     // as "not found" (404), never as "nothing to issue" (400), which would
     // confirm the row exists to a stranger.
-    const company = await Company.findById(Number(company_id), orgId);
+    const company = await Company.findById(company_id, orgId);
     if (!company) throw new BillingServiceError('Company not found.', 404);
 
     // Same pool the statement showed, so an empty statement explains itself
     // rather than failing with a generic message.
-    const trips = await Bill.findUnbilledTrips(orgId, Number(company_id));
+    const trips = await Bill.findUnbilledTrips(orgId, company_id);
     const pool = buildPool(trips, allowed);
-    const charges = await Charge.findUnbilled(orgId, Number(company_id));
+    const charges = await Charge.findUnbilled(orgId, company_id);
 
     if (pool.billable.length === 0 && charges.length === 0) {
       if (pool.waiting.length > 0) {
@@ -353,10 +357,12 @@ const billingService = {
 
     return Bill.generate({
       organization_id: orgId,
-      company_id: Number(company_id),
+      company_id,
       statuses: allowed,
-      trip_ids: Array.isArray(trip_ids) && trip_ids.length > 0 ? trip_ids.map(Number) : null,
-      charge_ids: Array.isArray(charge_ids) && charge_ids.length > 0 ? charge_ids.map(Number) : null,
+      // Ids pass through untouched: they are UUIDs, and mapping them through
+      // Number() would hand the database "NaN".
+      trip_ids: Array.isArray(trip_ids) && trip_ids.length > 0 ? trip_ids : null,
+      charge_ids: Array.isArray(charge_ids) && charge_ids.length > 0 ? charge_ids : null,
       note: note || null,
       bill_date: bill_date || null
     });
@@ -368,7 +374,7 @@ const billingService = {
   recordPayment: async (orgId, billId, { amount, mode, payment_date, note }) =>
     Bill.recordPayment({
       organization_id: orgId,
-      bill_id: Number(billId),
+      bill_id: billId,
       amount,
       mode,
       payment_date: payment_date || null,

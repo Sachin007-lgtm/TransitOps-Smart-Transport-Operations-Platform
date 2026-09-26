@@ -36,7 +36,7 @@ const createTripSchema = {
   revenue: { required: false, type: 'number' },
   status: { required: false, type: 'enum', enum: ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed', 'Cancelled'] },
   // Billing fields (see billingValidator for the company/bill side).
-  company_id: { required: false, type: 'integer', positive: true },
+  company_id: { required: false, type: 'uuid' },
   trip_date: { required: false, type: 'date' },
   advance_received: { required: false, type: 'number', custom: notNegative('advance_received') }
 };
@@ -63,7 +63,7 @@ const updateTripSchema = {
   cargo_weight: { required: false, type: 'number' },
   actual_distance: { required: false, type: 'number' },
   revenue: { required: false, type: 'number' },
-  company_id: { required: false, type: 'integer', positive: true },
+  company_id: { required: false, type: 'uuid' },
   trip_date: { required: false, type: 'date' },
   advance_received: { required: false, type: 'number', custom: notNegative('advance_received') }
 };

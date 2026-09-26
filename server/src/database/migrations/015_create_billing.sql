@@ -8,16 +8,20 @@
 --   balance_due      = previous_balance + subtotal - total_advance
 --   previous_balance = company.opening_balance + outstanding of prior bills
 --
+-- Identifiers follow the repo-wide convention: UUID primary keys defaulted
+-- with uuidv7() (requires PostgreSQL 18), organization_id and every foreign
+-- key as UUID.
+--
 -- Idempotent: migrate.js re-runs every migration file on each invocation.
 
 -- 1. Trips carry the billing link and the per-trip figures the paper
 --    statement's columns need (trip date, fare, advance, rate basis).
-ALTER TABLE trips ADD COLUMN IF NOT EXISTS company_id INTEGER;
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS company_id UUID;
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_date DATE;
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS advance_received DECIMAL(12, 2) NOT NULL DEFAULT 0.00;
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS rate_basis VARCHAR(255);
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS billing_status VARCHAR(20) NOT NULL DEFAULT 'Unbilled';
-ALTER TABLE trips ADD COLUMN IF NOT EXISTS bill_id INTEGER;
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS bill_id UUID;
 
 DO $$
 BEGIN
@@ -51,16 +55,16 @@ WHERE trip_date IS NULL;
 -- 4. Per-organization consecutive bill numbering. Invoice numbers must not
 --    repeat or skip within a tenant, which a global sequence cannot promise.
 CREATE TABLE IF NOT EXISTS bill_counters (
-  organization_id VARCHAR(50) PRIMARY KEY REFERENCES organizations(id) ON DELETE RESTRICT,
+  organization_id UUID PRIMARY KEY REFERENCES organizations(id) ON DELETE RESTRICT,
   last_number INTEGER NOT NULL DEFAULT 0
 );
 
 -- 5. Bills. One row per generated bill, carrying the ledger totals.
 CREATE TABLE IF NOT EXISTS bills (
-  id SERIAL PRIMARY KEY,
-  organization_id VARCHAR(50) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   bill_no VARCHAR(30) NOT NULL,
-  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
   bill_date DATE NOT NULL DEFAULT CURRENT_DATE,
   -- Amount already owed by the company when this bill was generated.
   previous_balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
@@ -94,9 +98,9 @@ END $$;
 --    Deliberately denormalized: an issued bill must never change because a
 --    trip was later edited or deleted.
 CREATE TABLE IF NOT EXISTS bill_items (
-  id SERIAL PRIMARY KEY,
-  bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
-  trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL,
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  bill_id UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+  trip_id UUID REFERENCES trips(id) ON DELETE SET NULL,
   trip_date DATE,
   origin VARCHAR(255),
   destination VARCHAR(255),
@@ -110,8 +114,8 @@ CREATE TABLE IF NOT EXISTS bill_items (
 
 -- 7. Settlement records against a bill (mode + date, as on the paper ledger).
 CREATE TABLE IF NOT EXISTS payments (
-  id SERIAL PRIMARY KEY,
-  bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  bill_id UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
   amount DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
   mode VARCHAR(30) NOT NULL DEFAULT 'Cash'
     CHECK (mode IN ('Cash', 'UPI', 'NEFT', 'IMPS', 'RTGS', 'Cheque', 'Bank Transfer', 'Other')),

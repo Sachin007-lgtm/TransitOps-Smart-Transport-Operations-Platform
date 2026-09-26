@@ -49,7 +49,7 @@ function deriveTripDate(startTime) {
  * company — created on first use — which is what turns "all trips of the same
  * company" into a real grouping a bill can be composed from.
  *
- * @returns {Promise<number|null>} company id, or null when the trip names no customer
+ * @returns {Promise<string|null>} company id (a UUID), or null when the trip names no customer
  */
 async function resolveCompanyId({ company_id, external_party_name, organization_id, client = null }) {
   if (company_id !== undefined && company_id !== null && company_id !== '') {
@@ -60,7 +60,7 @@ async function resolveCompanyId({ company_id, external_party_name, organization_
     if (found.rows[0].organization_id !== organization_id) {
       throw new TripServiceError('Company belongs to another organization.', 400);
     }
-    return Number(company_id);
+    return company_id;
   }
 
   if (external_party_name && String(external_party_name).trim()) {
@@ -198,14 +198,18 @@ const tripService = {
     const filters = {
       organization_id: user.organization_id,
       status: queryParams.status,
-      vehicle_id: queryParams.vehicle_id ? Number(queryParams.vehicle_id) : undefined,
-      driver_id: queryParams.driver_id ? Number(queryParams.driver_id) : undefined,
+      // Ids are UUIDs: Number() would make them NaN, which is falsy, which
+      // silently drops the filter and lists everything.
+      vehicle_id: queryParams.vehicle_id || undefined,
+      driver_id: queryParams.driver_id || undefined,
       external_party_type: queryParams.external_party_type,
       from_date: queryParams.from_date,
       to_date: queryParams.to_date,
       // Billing filters: which customer's trips, and whether they are already
       // on a bill. Used by the trips list and the billing screens.
-      company_id: queryParams.company_id ? Number(queryParams.company_id) : undefined,
+      // Never Number(): a UUID cast to a number is NaN, which is falsy, which
+      // would silently drop the filter and list every company's trips.
+      company_id: queryParams.company_id || undefined,
       billing_status: queryParams.billing_status
     };
 

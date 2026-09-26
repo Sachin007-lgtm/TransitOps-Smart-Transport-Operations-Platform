@@ -14,10 +14,14 @@ const isStatusList = (val) => {
   return null;
 };
 
+// Mirrors the UUID rule in middleware/validate.js for the array shapes that
+// middleware cannot type-check. Ids are UUIDs repo-wide.
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const isIdList = (val) => {
-  if (!Array.isArray(val)) return 'must be an array of trip ids.';
-  if (val.some((id) => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
-    return 'must contain positive ids.';
+  if (!Array.isArray(val)) return 'must be an array of ids.';
+  if (val.some((id) => typeof id !== 'string' || !UUID_REGEX.test(id.trim()))) {
+    return 'must contain UUID ids.';
   }
   return null;
 };
@@ -45,7 +49,7 @@ const updateCompanySchema = {
 };
 
 const generateBillSchema = {
-  company_id: { required: true, type: 'integer', positive: true },
+  company_id: { required: true, type: 'uuid' },
   note: { required: false, type: 'string' },
   bill_date: { required: false, type: 'date' },
   statuses: { required: false, custom: isStatusList },

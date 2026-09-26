@@ -7,11 +7,14 @@
 -- Multi-tenant: a company belongs to exactly one organization, so the same
 -- customer name can exist independently under two organizations.
 --
+-- Identifiers follow the repo-wide convention: UUID primary keys defaulted with
+-- uuidv7() (requires PostgreSQL 18), and organization_id as UUID.
+--
 -- Idempotent: migrate.js re-runs every migration file on each invocation.
 
 CREATE TABLE IF NOT EXISTS companies (
-  id SERIAL PRIMARY KEY,
-  organization_id VARCHAR(50) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   name VARCHAR(255) NOT NULL,
   contact_person VARCHAR(255),
   email VARCHAR(255),

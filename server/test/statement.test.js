@@ -20,9 +20,38 @@ function createToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
-const ORG_A = 'org-stmt-A';
-const ORG_B = 'org-stmt-B';
+const ORG_A = '90000000-0000-0000-0000-0000000000b1';
+const ORG_B = '90000000-0000-0000-0000-0000000000b2';
 const TEST_ORGS = [ORG_A, ORG_B];
+
+const { hashPassword } = require('../src/utils/credentials');
+
+// dev's authenticate verifies the token against a real user row (active, role
+// and organization must match the claims), so every token below belongs to a
+// seeded user rather than a synthetic one.
+// A Driver account is not just a row: dev's enforce_user_role_invariants trigger
+// requires an organization, a linked driver profile AND a phone number (that is
+// the mobile login), so driver users pass all three.
+const seedUser = async (orgId, roleId, email, name, passwordHash, driverId = null, phone = null) => {
+  const res = await query(
+    `INSERT INTO users (name, email, phone_number, password_hash, role_id, organization_id, driver_id, must_change_password, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, TRUE)
+     RETURNING id`,
+    [name, email, phone, passwordHash, roleId, orgId, driverId]
+  );
+  return res.rows[0].id;
+};
+
+const roleIds = async () => {
+  const res = await query('SELECT id, name FROM roles');
+  const find = (name) => {
+    const row = res.rows.find((r) => r.name === name);
+    if (!row) throw new Error(`role '${name}' is missing - run the seed before this suite`);
+    return row.id;
+  };
+  return { manager: find('Owner/Manager'), driver: find('Driver') };
+};
+
 
 describe('TransitOps Customer Statement Backend Tests', () => {
   let server;
@@ -30,7 +59,7 @@ describe('TransitOps Customer Statement Backend Tests', () => {
   let tripsUrl; // /api/trips
 
   let tokenManagerA;
-  let tokenDispatcherA;
+  let tokenDriverA;
   let tokenManagerB;
 
   let sharmaId;
@@ -87,28 +116,48 @@ describe('TransitOps Customer Statement Backend Tests', () => {
     tripsUrl = `http://127.0.0.1:${port}/api/trips`;
 
     await query(
-      `DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id = ANY($1::text[]))`,
+      `DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id = ANY($1::uuid[]))`,
       [TEST_ORGS]
     );
-    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bills WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM charges WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM trips WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM companies WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM organizations WHERE id = ANY($1::text[])`, [TEST_ORGS]);
+    await query(`DELETE FROM users WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM drivers WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bills WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM charges WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM trips WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM companies WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [TEST_ORGS]);
 
     await query(
       `INSERT INTO organizations (id, name, slug, status)
-       VALUES ('org-stmt-A', 'Statement Test Org A', 'stmt-test-a', 'Active'),
-              ('org-stmt-B', 'Statement Test Org B', 'stmt-test-b', 'Active')
+       VALUES ('90000000-0000-0000-0000-0000000000b1', 'Statement Test Org A', 'stmt-test-a', 'Active'),
+              ('90000000-0000-0000-0000-0000000000b2', 'Statement Test Org B', 'stmt-test-b', 'Active')
        ON CONFLICT (id) DO NOTHING;`
     );
 
-    tokenManagerA = createToken({ id: 801, email: 'stmtA@test.com', role: 'Fleet Manager', organization_id: ORG_A });
-    tokenDispatcherA = createToken({ id: 802, email: 'stmtdispA@test.com', role: 'Dispatcher', organization_id: ORG_A });
-    tokenManagerB = createToken({ id: 803, email: 'stmtB@test.com', role: 'Fleet Manager', organization_id: ORG_B });
+    const drvRow = await query(
+      `INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
+       VALUES ('Statement Driver A', 'LIC-STMT-A1', 'HMV / HGMV', '2030-01-01', '+919876500201', 'Available', $1)
+       RETURNING id;`,
+      [ORG_A]
+    );
+    const statementDriverId = drvRow.rows[0].id;
+
+    const roles = await roleIds();
+    const passwordHash = await hashPassword('password123');
+
+    const mgrA = await seedUser(ORG_A, roles.manager, 'stmtA@test.com', 'Statement Manager A', passwordHash);
+    const drvA = await seedUser(ORG_A, roles.driver, null, 'Statement Driver Login A', passwordHash, statementDriverId, '+919876500201');
+    const mgrB = await seedUser(ORG_B, roles.manager, 'stmtB@test.com', 'Statement Manager B', passwordHash);
+
+    // A driver token stands in for the old Dispatcher one: dev's roles are
+    // exactly Platform Admin / Owner/Manager / Driver, and statements are not a
+    // driver's business.
+    tokenManagerA = createToken({ id: mgrA, email: 'stmtA@test.com', role: 'Owner/Manager', organization_id: ORG_A });
+    tokenDriverA = createToken({ id: drvA, email: 'stmtdrvA@test.com', role: 'Driver', organization_id: ORG_A });
+    tokenManagerB = createToken({ id: mgrB, email: 'stmtB@test.com', role: 'Owner/Manager', organization_id: ORG_B });
 
     const sharma = await call('POST', '/companies', {
       token: tokenManagerA,
@@ -125,14 +174,16 @@ describe('TransitOps Customer Statement Backend Tests', () => {
   });
 
   after(async () => {
-    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bills WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM charges WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM trips WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM companies WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::text[])`, [TEST_ORGS]);
-    await query(`DELETE FROM organizations WHERE id = ANY($1::text[])`, [TEST_ORGS]);
+    await query(`DELETE FROM users WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM drivers WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`UPDATE trips SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`UPDATE charges SET bill_id = NULL WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bills WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM charges WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM trips WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM companies WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM bill_counters WHERE organization_id = ANY($1::uuid[])`, [TEST_ORGS]);
+    await query(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [TEST_ORGS]);
     server.close();
     await pool.end();
   });
@@ -141,13 +192,16 @@ describe('TransitOps Customer Statement Backend Tests', () => {
   // Access + the shape of the open statement
   // ---------------------------------------------------------------------
 
-  test('1. The statement is protected and readable by the roles that run the work', async () => {
+  test('1. The statement is protected and readable by the owner/manager', async () => {
     const unauth = await call('GET', `/companies/${sharmaId}/statement`);
     assert.equal(unauth.status, 401);
 
-    const dispatcher = await statement(sharmaId, tokenDispatcherA);
-    assert.equal(dispatcher.status, 200);
-    assert.equal(dispatcher.json.data.status, 'Open');
+    const drivers = await statement(sharmaId, tokenDriverA);
+    assert.equal(drivers.status, 403, 'a driver may not read customer statements');
+
+    const manager = await statement(sharmaId);
+    assert.equal(manager.status, 200);
+    assert.equal(manager.json.data.status, 'Open');
   });
 
   test('2. A brand new customer has an empty, zeroed open statement', async () => {
@@ -226,16 +280,16 @@ describe('TransitOps Customer Statement Backend Tests', () => {
     });
     assert.equal(crossCustomer.status, 400);
 
-    const unknownCompany = await call('POST', '/companies/999999/charges', {
+    const unknownCompany = await call('POST', '/companies/90000000-0000-0000-0000-00000000dead/charges', {
       token: tokenManagerA,
       body: { description: 'Nowhere', amount: 200 }
     });
     assert.equal(unknownCompany.status, 404);
   });
 
-  test('5. A Dispatcher can read the statement but not put money on it', async () => {
+  test('5. A driver can neither read the statement nor put money on it', async () => {
     const res = await call('POST', `/companies/${sharmaId}/charges`, {
-      token: tokenDispatcherA,
+      token: tokenDriverA,
       body: { description: 'Should not be allowed', amount: 500 }
     });
     assert.equal(res.status, 403);

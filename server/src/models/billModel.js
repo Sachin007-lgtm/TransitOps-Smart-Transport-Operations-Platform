@@ -120,7 +120,7 @@ const Bill = {
              -- in another timezone.
              to_char(t.trip_date, 'YYYY-MM-DD') AS trip_date,
              v.registration_number AS vehicle_registration,
-             v.name AS vehicle_name,
+             v.registration_number AS vehicle_name,
              d.name AS driver_name
       FROM trips t
       LEFT JOIN vehicles v ON t.vehicle_id = v.id
@@ -223,7 +223,7 @@ const Bill = {
           AND t.revenue > 0
       `;
       if (trip_ids && trip_ids.length > 0) {
-        sql += ' AND t.id = ANY($4::int[])';
+        sql += ' AND t.id = ANY($4::uuid[])';
         values.push(trip_ids);
       }
       sql += ' ORDER BY t.trip_date ASC NULLS LAST, t.id ASC FOR UPDATE OF t;';
@@ -242,7 +242,7 @@ const Bill = {
         WHERE organization_id = $1 AND company_id = $2 AND billing_status = 'Unbilled'
       `;
       if (charge_ids && charge_ids.length > 0) {
-        chargeSql += ' AND id = ANY($3::int[])';
+        chargeSql += ' AND id = ANY($3::uuid[])';
         chargeValues.push(charge_ids);
       }
       chargeSql += ' ORDER BY charge_date ASC NULLS LAST, id ASC FOR UPDATE;';

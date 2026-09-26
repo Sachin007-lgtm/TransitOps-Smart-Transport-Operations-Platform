@@ -11,7 +11,7 @@ const createChargeSchema = {
   amount: { required: true, type: 'number', custom: nonZeroAmount },
   kind: { required: false, type: 'enum', enum: CHARGE_KINDS },
   charge_date: { required: false, type: 'date' },
-  trip_id: { required: false, type: 'integer', positive: true }
+  trip_id: { required: false, type: 'uuid' }
 };
 
 const updateChargeSchema = {
@@ -19,15 +19,17 @@ const updateChargeSchema = {
   amount: { required: false, type: 'number', custom: nonZeroAmount },
   kind: { required: false, type: 'enum', enum: CHARGE_KINDS },
   charge_date: { required: false, type: 'date' },
-  trip_id: { required: false, type: 'integer', positive: true }
+  trip_id: { required: false, type: 'uuid' }
 };
 
 // The shared validate middleware only type-checks scalars, so the id lists are
 // enforced through `custom` rules.
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const isIdList = (val) => {
   if (!Array.isArray(val)) return 'must be an array of ids.';
-  if (val.some((id) => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
-    return 'must contain positive ids.';
+  if (val.some((id) => typeof id !== 'string' || !UUID_REGEX.test(id.trim()))) {
+    return 'must contain UUID ids.';
   }
   return null;
 };

@@ -40,6 +40,19 @@ describe('TransitOps Trip Module Backend Tests', () => {
     baseUrl = `http://127.0.0.1:${port}/api/trips`;
 
     // 2. Clean previous test artifacts if any
+    // Billing tables must go before organizations: companies and bills
+    // reference organizations with ON DELETE RESTRICT (the billing module
+    // auto-creates a company for every customer name a trip carries).
+    await query("DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002'))");
+    await query("DELETE FROM bill_charges WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002'))");
+    await query("DELETE FROM bill_items WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002'))");
+    await query("UPDATE trips SET bill_id = NULL WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("UPDATE charges SET bill_id = NULL WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM charges WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM companies WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM bill_counters WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM users WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
     await query("DELETE FROM trips WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
     await query("DELETE FROM vehicles WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
     await query("DELETE FROM drivers WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
@@ -123,6 +136,19 @@ describe('TransitOps Trip Module Backend Tests', () => {
 
   after(async () => {
     // Cleanup test data
+    // Billing tables must go before organizations: companies and bills
+    // reference organizations with ON DELETE RESTRICT (the billing module
+    // auto-creates a company for every customer name a trip carries).
+    await query("DELETE FROM payments WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002'))");
+    await query("DELETE FROM bill_charges WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002'))");
+    await query("DELETE FROM bill_items WHERE bill_id IN (SELECT id FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002'))");
+    await query("UPDATE trips SET bill_id = NULL WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("UPDATE charges SET bill_id = NULL WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM bills WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM charges WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM companies WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM bill_counters WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
+    await query("DELETE FROM users WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
     await query("DELETE FROM trips WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
     await query("DELETE FROM vehicles WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");
     await query("DELETE FROM drivers WHERE organization_id IN ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002')");

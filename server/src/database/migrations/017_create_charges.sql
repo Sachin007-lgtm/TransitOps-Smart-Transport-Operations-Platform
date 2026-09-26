@@ -10,11 +10,11 @@
 -- Idempotent: migrate.js re-runs every migration file on each invocation.
 
 CREATE TABLE IF NOT EXISTS charges (
-  id SERIAL PRIMARY KEY,
-  organization_id VARCHAR(50) NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
-  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
   -- Optional link to the trip the charge belongs to (e.g. the toll on that run).
-  trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL,
+  trip_id UUID REFERENCES trips(id) ON DELETE SET NULL,
   kind VARCHAR(30) NOT NULL DEFAULT 'MISC'
     CHECK (kind IN ('TOLL', 'LOADING', 'UNLOADING', 'DETENTION', 'DRIVER_ALLOWANCE', 'MISC')),
   description VARCHAR(255) NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS charges (
   charge_date DATE NOT NULL DEFAULT CURRENT_DATE,
   billing_status VARCHAR(20) NOT NULL DEFAULT 'Unbilled'
     CHECK (billing_status IN ('Unbilled', 'Billed')),
-  bill_id INTEGER REFERENCES bills(id) ON DELETE SET NULL,
+  bill_id UUID REFERENCES bills(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -38,9 +38,9 @@ ALTER TABLE bills ADD COLUMN IF NOT EXISTS charges_total DECIMAL(12, 2) NOT NULL
 
 -- Immutable snapshot of each charge at issue time, like bill_items for trips.
 CREATE TABLE IF NOT EXISTS bill_charges (
-  id SERIAL PRIMARY KEY,
-  bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
-  charge_id INTEGER REFERENCES charges(id) ON DELETE SET NULL,
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  bill_id UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+  charge_id UUID REFERENCES charges(id) ON DELETE SET NULL,
   kind VARCHAR(30) NOT NULL DEFAULT 'MISC',
   description VARCHAR(255) NOT NULL,
   amount DECIMAL(12, 2) NOT NULL,
