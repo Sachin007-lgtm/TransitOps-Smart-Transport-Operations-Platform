@@ -77,3 +77,55 @@ export async function apiRequest(method, path, body = null, explicitToken = null
   return json;
 }
 
+/**
+ * Open a server-rendered document (e.g. a print-ready bill) in a new tab.
+ *
+ * The document endpoint is JWT-protected, so it cannot be reached with a plain
+ * <a href>; the token travels with the request and the result is opened from a
+ * blob URL instead. Follows the same token and 401 conventions as apiRequest so
+ * a stale session behaves identically whichever call hits it first.
+ */
+export async function apiOpenDocument(path, explicitToken = null) {
+  const token = explicitToken !== null ? explicitToken : getStoredToken();
+
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+
+  if (response.status === 401) {
+    clearStoredAuth();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('transitops-unauthorized'));
+    }
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+
+  if (!response.ok) {
+    let message = 'Could not load the document.';
+    try {
+      const json = await response.json();
+      message = json.error || json.message || message;
+    } catch (_) {
+      /* non-JSON error body */
+    }
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+
+  const html = await response.text();
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  const opened = window.open(url, '_blank');
+  if (opened) {
+    // Revoke later: revoking immediately can cancel the load in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } else {
+    URL.revokeObjectURL(url);
+  }
+  return opened;
+}
+

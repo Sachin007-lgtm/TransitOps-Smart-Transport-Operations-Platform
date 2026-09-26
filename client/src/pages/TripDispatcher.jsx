@@ -242,8 +242,12 @@ export default function TripDispatcher() {
   const [vehicleId,       setVehicleId]       = useState('');
   const [driverId,        setDriverId]        = useState('');
   const [cargoWeight,     setCargoWeight]      = useState('');
-  const [plannedDistance, setPlannedDistance]  = useState('');
-  const [revenue,         setRevenue]          = useState('');
+  const [revenue,         setRevenue]         = useState('');
+  // Billing fields: which customer this trip is billed to and the fare
+  // already received up front.
+  const [company,         setCompany]         = useState('');
+  const [advanceReceived, setAdvanceReceived] = useState('');
+  const [companyOptions,  setCompanyOptions]  = useState([]);
   const [startTime,       setStartTime]        = useState('');
   const [expectedArrival, setExpectedArrival]  = useState('');
   const [initialStatus,   setInitialStatus]    = useState('Draft');
@@ -264,15 +268,20 @@ export default function TripDispatcher() {
     if (!silent) setIsLoading(true); else setIsRefreshing(true);
     try {
       setGeneralError(null);
-      const [tripsRes, driversRes, vehiclesRes] = await Promise.all([
+      const [tripsRes, driversRes, vehiclesRes, companiesRes] = await Promise.all([
         apiRequest('GET', '/trips'),
         apiRequest('GET', '/drivers').catch(() => ({ data: [] })),
-        apiRequest('GET', '/vehicles').catch(() => ({ data: [] }))
+        apiRequest('GET', '/vehicles').catch(() => ({ data: [] })),
+        // Customers registered for billing — used to suggest names so the same
+        // company is not entered twice under different spellings. Absence is
+        // tolerated: the field stays free text.
+        apiRequest('GET', '/billing/companies').catch(() => ({ data: [] }))
       ]);
       const loaded = tripsRes.data || [];
       setTrips(loaded);
       if (driversRes?.data)              setDrivers(driversRes.data);
       if (vehiclesRes?.data?.length > 0) setVehicles(vehiclesRes.data);
+      if (companiesRes?.data?.length > 0) setCompanyOptions(companiesRes.data.map(c => c.name));
       if (loaded.length > 0 && !selectedTripId) {
         setSelectedTripId(loaded[0].id);
       }
@@ -681,8 +690,9 @@ export default function TripDispatcher() {
       setVehicleId(editingTrip.vehicle_id || '');
       setDriverId(editingTrip.driver_id || '');
       setCargoWeight(editingTrip.cargo_weight || '');
-      setPlannedDistance(editingTrip.planned_distance || '');
       setRevenue(editingTrip.revenue || '');
+      setCompany(editingTrip.external_party_name || '');
+      setAdvanceReceived(editingTrip.advance_received || '');
       setInitialStatus(editingTrip.status || 'Draft');
     }
   }, [editingTrip]);
@@ -690,7 +700,8 @@ export default function TripDispatcher() {
   const resetForm = () => {
     originAC.clear(); destAC.clear();
     setVehicleId(''); setDriverId(''); setCargoWeight('');
-    setPlannedDistance(''); setRevenue(''); setInitialStatus('Draft');
+    setRevenue(''); setInitialStatus('Draft');
+    setCompany(''); setAdvanceReceived('');
     setConflictError(null);
     setEditingTrip(null);
     setDrawerOpen(false);
@@ -703,7 +714,6 @@ export default function TripDispatcher() {
     setIsSubmitting(true); setConflictError(null);
 
     const weightNum   = parseFloat(cargoWeight);
-    const distanceNum = parseFloat(plannedDistance);
 
     const hasVehicleAndDriver = vehicleId && driverId;
     let calculatedStatus = initialStatus;
@@ -724,8 +734,12 @@ export default function TripDispatcher() {
       vehicle_id:      vehicleId ? String(vehicleId) : null,
       driver_id:       driverId  ? String(driverId)  : null,
       cargo_weight:    weightNum  > 0 ? weightNum  : null,
-      planned_distance: distanceNum > 0 ? distanceNum : null,
-      revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null
+      revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null,
+      // Billing: the customer name links this trip to a company, and the fare
+      // is what a generated bill charges for it.
+      external_party_name: company.trim() || undefined,
+      external_party_type: company.trim() ? 'CUSTOMER' : undefined,
+      advance_received: parseFloat(advanceReceived) > 0 ? parseFloat(advanceReceived) : 0
     };
 
     try {
@@ -760,7 +774,7 @@ export default function TripDispatcher() {
     try {
       await apiRequest('PATCH', `/trips/${trip.id}/status`, {
         status: 'Completed',
-        actual_distance: parseFloat(actualDistance) || Number(trip.planned_distance) || 0,
+        actual_distance: parseFloat(actualDistance) || 0,
         actual_arrival:  actualArrival ? new Date(actualArrival).toISOString() : new Date().toISOString()
       });
       showToast(`Trip #${trip.id} completed!`);
@@ -892,6 +906,60 @@ export default function TripDispatcher() {
                     <span>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'ETA Pending'}</span>
                   </div>
 
+                  {/* Billing line: who this trip is billed to, the fare, and
+                      whether it has already been put on a bill. */}
+                  {(t.external_party_name || parseFloat(t.revenue) > 0) && (
+                    <div className="tc-billing-row" title="Customer / fare / billing status">
+                      <span className="tc-billing-company">{t.external_party_name || 'No customer set'}</span>
+                      <span className="tc-billing-fare">
+                        {parseFloat(t.revenue) > 0 ? `₹${Number(t.revenue).toLocaleString('en-IN')}` : 'No fare'}
+                      </span>
+                      <span className={`tc-billing-tag ${t.billing_status === 'Billed' ? 'billed' : ''}`}>
+                        {t.billing_status === 'Billed' ? 'Billed' : 'Unbilled'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Lifecycle actions. A trip only becomes billable once it
+                      is Completed, so the path to Completed has to be
+                      reachable from here — these were missing entirely and
+                      trips could never leave 'Assigned'. */}
+                  <div className="tc-actions-row" onClick={e => e.stopPropagation()}>
+                    {(t.status === 'Draft' || t.status === 'Planned') && (
+                      <button
+                        className="tc-act"
+                        onClick={() => setAssignModal({
+                          open: true,
+                          trip: t,
+                          vehicleId: t.vehicle_id || '',
+                          driverId: t.driver_id || ''
+                        })}
+                      >
+                        <Truck size={12} /> Assign vehicle &amp; driver
+                      </button>
+                    )}
+
+                    {t.status === 'Assigned' && (
+                      <button className="tc-act" onClick={() => handleAdvanceStatus(t, 'Dispatched')}>
+                        <Navigation size={12} /> Dispatch
+                      </button>
+                    )}
+
+                    {t.status === 'Dispatched' && (
+                      <button
+                        className="tc-act primary"
+                        onClick={() => setCompleteModal({
+                          open: true,
+                          trip: t,
+                          actualDistance: t.actual_distance || '',
+                          actualArrival: ''
+                        })}
+                      >
+                        <Check size={12} /> Mark Completed
+                      </button>
+                    )}
+                  </div>
+
                   <div className="tc-progress-wrap">
                     <span className="tc-start-dot" />
                     <div className="tc-progress-track">
@@ -1006,10 +1074,33 @@ export default function TripDispatcher() {
                   <label className="field-label">Cargo Weight (kg)</label>
                   <input type="number" className="field-input" value={cargoWeight} onChange={e => setCargoWeight(e.target.value)} placeholder="500" />
                 </div>
+              </div>
+
+              {/* Billing details: the customer named here decides which bill
+                  this trip lands on, and the fare is what that bill charges. */}
+              <div className="form-row-2">
                 <div className="field-wrap">
-                  <label className="field-label">Planned Distance (km)</label>
-                  <input type="number" className="field-input" value={plannedDistance} onChange={e => setPlannedDistance(e.target.value)} placeholder="45" />
+                  <label className="field-label">Company (customer billed)</label>
+                  <input
+                    className="field-input"
+                    list="trip-company-options"
+                    value={company}
+                    onChange={e => setCompany(e.target.value)}
+                    placeholder="e.g. Sharma Logistics"
+                  />
+                  <datalist id="trip-company-options">
+                    {companyOptions.map(name => <option key={name} value={name} />)}
+                  </datalist>
                 </div>
+                <div className="field-wrap">
+                  <label className="field-label">Fare (₹)</label>
+                  <input type="number" className="field-input" value={revenue} onChange={e => setRevenue(e.target.value)} placeholder="25000" />
+                </div>
+              </div>
+
+              <div className="field-wrap">
+                <label className="field-label">Advance received (₹)</label>
+                <input type="number" className="field-input" value={advanceReceived} onChange={e => setAdvanceReceived(e.target.value)} placeholder="0" />
               </div>
 
               <div className="drawer-actions">
@@ -1065,7 +1156,7 @@ export default function TripDispatcher() {
                 <label className="field-label">Select Vehicle</label>
                 <select className="field-select" value={assignModal.vehicleId} onChange={e => setAssignModal({ ...assignModal, vehicleId: e.target.value })}>
                   <option value="">Select vehicle...</option>
-                  {vehicles.map(v => (
+                  {vehicles.filter(v => v.status === 'Available').map(v => (
                     <option key={v.id} value={v.id}>{v.name} ({v.type})</option>
                   ))}
                 </select>
@@ -1074,7 +1165,7 @@ export default function TripDispatcher() {
                 <label className="field-label">Select Driver</label>
                 <select className="field-select" value={assignModal.driverId} onChange={e => setAssignModal({ ...assignModal, driverId: e.target.value })}>
                   <option value="">Select driver...</option>
-                  {drivers.map(d => (
+                  {drivers.filter(d => d.status === 'Available').map(d => (
                     <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
                   ))}
                 </select>
@@ -1085,12 +1176,18 @@ export default function TripDispatcher() {
               <button className="btn-submit" onClick={async () => {
                 if (!assignModal.vehicleId || !assignModal.driverId) return;
                 try {
-                  await apiRequest('PATCH', `/trips/${assignModal.trip.id}/status`, {
+                  const tripId = assignModal.trip.id;
+                  // Resources and the status change go in one call: the status
+                  // endpoint accepts vehicle_id/driver_id and validates both the
+                  // assets' ownership and their current status itself. The old
+                  // two-step version (resources first, status second) 400s here,
+                  // because Assigned -> Assigned is not a legal transition.
+                  await apiRequest('PATCH', `/trips/${tripId}/status`, {
                     status: 'Assigned',
                     vehicle_id: assignModal.vehicleId,
                     driver_id: assignModal.driverId
                   });
-                  showToast(`Trip #${assignModal.trip.id} assigned!`);
+                  showToast(`Trip #${tripId} assigned!`);
                   setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
                   await loadData(true);
                 } catch(e) { showToast(`Error: ${e.message}`); }

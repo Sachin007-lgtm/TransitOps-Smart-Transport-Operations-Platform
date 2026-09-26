@@ -331,6 +331,49 @@
   padding-top: 6px;
 }
 
+/* Billing line on a trip card: customer, fare, and whether it is already on a bill */
+.tc-billing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--bg-app);
+  font-size: 11px;
+}
+
+.tc-billing-company {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tc-billing-fare {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.tc-billing-tag {
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.tc-billing-tag.billed {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
 /* Route Progress Bar (matching reference mockup!) */
 .tc-progress-wrap {
   display: flex;
@@ -1644,4 +1687,37 @@
 .dq-row strong {
   color: var(--text);
   font-weight: 500;
+}
+
+/* Lifecycle actions on a trip card (Assign / Dispatch / Mark Completed) */
+.tc-actions-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tc-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tc-act:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-app);
+}
+
+.tc-act.primary {
+  border-color: var(--green);
+  background: var(--green-bg);
+  color: var(--green);
 }

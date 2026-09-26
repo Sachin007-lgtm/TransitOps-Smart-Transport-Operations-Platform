@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Truck, Users, Map, Radio, Wrench, Droplet, BarChart2, Settings, ChevronLeft, LogOut } from 'lucide-react';
+import { LayoutDashboard, Truck, Users, Map, Radio, Wrench, Droplet, BarChart2, Settings, ChevronLeft, LogOut, IndianRupee } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import './Sidebar.css';
 
@@ -65,6 +65,11 @@ export default function Sidebar() {
         <NavLink to="/live-map" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Radio size={20} className="nav-icon" />
           <span className="nav-label">Live Fleet</span>
+        </NavLink>
+
+        <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <IndianRupee size={20} className="nav-icon" />
+          <span className="nav-label">Billing</span>
         </NavLink>
 
         <NavLink to="/maintenance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
