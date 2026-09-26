@@ -4,57 +4,15 @@ import { Plus, Search, ChevronDown, Copy, Edit3, Info } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
+import EditVehicleModal from '../components/vehicles/EditVehicleModal';
 
 const DEFAULT_TYPES = ['Truck', 'Van', 'Mini'];
 const DEFAULT_SIZES = ['Small (8ft)', 'Medium (14ft)', 'Heavy (24ft)', 'Extra Heavy (32ft)'];
 const VEHICLE_STATUSES = ['All Statuses', 'Available', 'On trip', 'Maintenance'];
 
-const INITIAL_VEHICLES = [
-  {
-    id: '01950000-0003-7000-8000-000000000001',
-    number_plate: 'MH-01-AB-1234',
-    type: 'Van',
-    size: 'Medium (14ft)',
-    trips_completed: 0,
-    distance_covered: 12500,
-    last_updated: 'Today, 02:15 PM',
-    status: 'Available'
-  },
-  {
-    id: '01950000-0003-7000-8000-000000000002',
-    number_plate: 'MH-02-CD-5678',
-    type: 'Truck',
-    size: 'Heavy (24ft)',
-    trips_completed: 0,
-    distance_covered: 42000,
-    last_updated: 'Yesterday',
-    status: 'Available'
-  },
-  {
-    id: '01950000-0003-7000-8000-000000000004',
-    number_plate: 'DL-04-EF-9012',
-    type: 'Truck',
-    size: 'Heavy (24ft)',
-    trips_completed: 0,
-    distance_covered: 31200,
-    last_updated: 'Sep 14, 2026',
-    status: 'Available'
-  },
-  {
-    id: '01950000-0003-7000-8000-000000000005',
-    number_plate: 'MH-12-GH-3456',
-    type: 'Mini',
-    size: 'Small (8ft)',
-    trips_completed: 0,
-    distance_covered: 8400,
-    last_updated: 'Sep 20, 2026',
-    status: 'Available'
-  }
-];
-
 export default function Vehicles() {
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
-  const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
+  const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -86,6 +44,9 @@ export default function Vehicles() {
   const [isCustomSizeSelected, setIsCustomSizeSelected] = useState(false);
   const [formErrors, setFormErrors] = useState({});
 
+  // Edit Vehicle Modal State
+  const [editingVehicle, setEditingVehicle] = useState(null);
+
   // Update Distance Modal State
   const [distanceModalVehicle, setDistanceModalVehicle] = useState(null);
   const [newDistanceInput, setNewDistanceInput] = useState('');
@@ -109,7 +70,7 @@ export default function Vehicles() {
 
       const tripsData = (tripsRes.status === 'fulfilled' && tripsRes.value?.data) ? tripsRes.value.data : [];
 
-      if (vehiclesRes.status === 'fulfilled' && vehiclesRes.value?.data?.length > 0) {
+      if (vehiclesRes.status === 'fulfilled' && Array.isArray(vehiclesRes.value?.data)) {
         const mapped = vehiclesRes.value.data.map(v => {
           // Dynamic calculation of completed trips assigned to this vehicle
           const completedCount = tripsData.filter(t => 
@@ -133,18 +94,12 @@ export default function Vehicles() {
           };
         });
         setVehicles(mapped);
-      } else if (tripsData.length > 0) {
-        // If vehicles are local initial state, count completed trips for local vehicles too
-        setVehicles(prev => prev.map(v => {
-          const completedCount = tripsData.filter(t => 
-            (t.vehicle_id === v.id || t.vehicle_reg === v.number_plate) && 
-            t.status === 'Completed'
-          ).length;
-          return { ...v, trips_completed: completedCount };
-        }));
+      } else {
+        setVehicles([]);
       }
     } catch (err) {
-      console.warn('Backend unavailable, using local vehicles:', err.message);
+      console.warn('Failed to load vehicles from backend:', err.message);
+      setVehicles([]);
     } finally {
       setLoading(false);
     }
@@ -332,6 +287,29 @@ export default function Vehicles() {
     }
   };
 
+  const handleEditVehicle = async (updatedVehicle) => {
+    try {
+      let backendStatus = updatedVehicle.status;
+      if (backendStatus === 'Maintenance') backendStatus = 'In Shop';
+      
+      const payload = {
+        registration_number: updatedVehicle.numberPlate,
+        type: updatedVehicle.type,
+        size: updatedVehicle.size,
+        odometer: updatedVehicle.distanceCovered,
+        status: backendStatus
+      };
+
+      await apiRequest('PATCH', `/vehicles/${editingVehicle.id}`, payload);
+      addToast(`Vehicle ${updatedVehicle.numberPlate} updated`);
+      setEditingVehicle(null);
+      await loadVehicles();
+    } catch (err) {
+      console.error('Failed to update vehicle:', err);
+      addToast(err.message || 'Failed to update vehicle', true);
+    }
+  };
+
   // Update distance modal open
   const openDistanceModal = (v) => {
     setDistanceModalVehicle(v);
@@ -510,14 +488,17 @@ export default function Vehicles() {
               ) : filteredVehicles.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="text-center py-12 text-muted">
-                    No vehicles match these filters.
+                    {vehicles.length === 0 
+                      ? 'No vehicles registered in your fleet yet. Click "+ Add vehicle" above to register your first vehicle.' 
+                      : 'No vehicles match these filters.'}
                   </td>
                 </tr>
               ) : (
                 filteredVehicles.map((v, idx) => (
                   <tr 
                     key={v.id} 
-                    className="table-row-animate" 
+                    className="table-row-animate cursor-pointer hover:bg-[#fcfcfc]" 
+                    onClick={() => setEditingVehicle(v)}
                     style={{ 
                       animationDelay: `${idx * 70}ms`,
                       borderLeft: `4px solid ${getLeftBorderColor(v.status)}`,
@@ -780,6 +761,15 @@ export default function Vehicles() {
         </div>,
         document.body
       )}
+
+      {/* Edit Vehicle Modal (Vehicle Profile) */}
+      <EditVehicleModal 
+        vehicle={editingVehicle} 
+        onClose={() => setEditingVehicle(null)} 
+        onSubmit={handleEditVehicle} 
+        customTypes={customTypes}
+        customSizes={customSizes}
+      />
 
       {/* Manual Distance Update Modal */}
       {distanceModalVehicle && createPortal(

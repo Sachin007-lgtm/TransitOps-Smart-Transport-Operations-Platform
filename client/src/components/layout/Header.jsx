@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, User, Settings, LogOut, ChevronRight, ShieldAlert, Wrench, FileWarning } from 'lucide-react';
+import { Search, Bell, User, Settings, LogOut, ChevronRight, ShieldAlert, Wrench, FileWarning, KeyRound } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { useGlobalSearch } from '../../contexts/GlobalSearchContext';
 import { useAuth } from '../../contexts/AuthContext';
+import ChangePasswordModal from '../auth/ChangePasswordModal';
 import './Header.css';
 
 export default function Header() {
   const [openCommand, setOpenCommand] = useState(false);
   const [openPopover, setOpenPopover] = useState(null); // 'bell' | 'user' | null
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -71,7 +73,7 @@ export default function Header() {
         <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--sub)' }} />
         <input 
           type="text" 
-          placeholder="Search vehicles, drivers, trips..." 
+          placeholder={user?.role === 'Platform Admin' ? "Search organizations, managers..." : "Search vehicles, drivers, trips..."} 
           value={globalSearch}
           onChange={(e) => setGlobalSearch(e.target.value)}
           style={{ 
@@ -174,10 +176,27 @@ export default function Header() {
                       <div className="text-xs text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayContact}</div>
                     </div>
                     <div className="py-1">
-                      <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
-                        <User size={16} className="text-muted" /> View profile
-                      </div>
-                      <div className="popover-item px-4 py-2 text-sm flex items-center gap-2" onClick={handleUserAction}>
+                      <div
+                        className="popover-item px-4 py-2 text-sm flex items-center gap-2"
+                        onClick={() => {
+                          setOpenPopover(null);
+                          if (user?.role === 'Platform Admin') {
+                            setIsChangePasswordOpen(true);
+                          } else {
+                            if (location.pathname === '/settings') {
+                              const el = document.getElementById('security-panel');
+                              if (el) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                el.classList.add('highlight-pulse');
+                                setTimeout(() => el.classList.remove('highlight-pulse'), 2500);
+                              }
+                            } else {
+                              navigate('/settings#security');
+                            }
+                          }
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <Settings size={16} className="text-muted" /> Account settings
                       </div>
                     </div>
@@ -195,6 +214,12 @@ export default function Header() {
 
       </div>
 
+      {/* Voluntary Password Change Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
+
       {/* Command Palette Overlay */}
       {openCommand && (
         <div className="command-palette-overlay" onClick={() => setOpenCommand(false)}>
@@ -203,15 +228,23 @@ export default function Header() {
               <Command.Input placeholder="Type a command or search..." autoFocus />
               <Command.List>
                 <Command.Empty>No results found.</Command.Empty>
-                <Command.Group heading="Pages">
-                  <Command.Item onSelect={() => { window.location.href='/'; setOpenCommand(false); }}>Control Tower</Command.Item>
-                  <Command.Item onSelect={() => { window.location.href='/vehicles'; setOpenCommand(false); }}>Fleet Registry</Command.Item>
-                  <Command.Item onSelect={() => { window.location.href='/drivers'; setOpenCommand(false); }}>Drivers</Command.Item>
-                </Command.Group>
-                <Command.Group heading="Quick Actions">
-                  <Command.Item onSelect={() => { window.location.href='/'; setOpenCommand(false); }}>New Dispatch</Command.Item>
-                  <Command.Item onSelect={() => { window.location.href='/vehicles?action=add'; setOpenCommand(false); }}>Add Vehicle</Command.Item>
-                </Command.Group>
+                {user?.role === 'Platform Admin' ? (
+                  <Command.Group heading="Platform Superadmin">
+                    <Command.Item onSelect={() => { navigate('/admin'); setOpenCommand(false); }}>Organizations Registry</Command.Item>
+                  </Command.Group>
+                ) : (
+                  <>
+                    <Command.Group heading="Pages">
+                      <Command.Item onSelect={() => { navigate('/'); setOpenCommand(false); }}>Control Tower</Command.Item>
+                      <Command.Item onSelect={() => { navigate('/vehicles'); setOpenCommand(false); }}>Fleet Registry</Command.Item>
+                      <Command.Item onSelect={() => { navigate('/drivers'); setOpenCommand(false); }}>Drivers</Command.Item>
+                    </Command.Group>
+                    <Command.Group heading="Quick Actions">
+                      <Command.Item onSelect={() => { navigate('/'); setOpenCommand(false); }}>New Dispatch</Command.Item>
+                      <Command.Item onSelect={() => { navigate('/vehicles?action=add'); setOpenCommand(false); }}>Add Vehicle</Command.Item>
+                    </Command.Group>
+                  </>
+                )}
               </Command.List>
             </Command>
           </div>

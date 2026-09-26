@@ -313,16 +313,19 @@ tbody tr:hover { background-color: var(--bg-app); }
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
-  z-index: 100;
+  z-index: 1000;
+  padding: 1rem;
   animation: fadeIn 0.2s ease-out;
 }
 
 .modal-content {
   background: var(--bg-card);
   border-radius: 12px;
-  padding: 2rem;
+  padding: 1.75rem;
   width: 100%;
-  max-width: 500px;
+  max-width: 520px;
+  max-height: 85vh;
+  overflow-y: auto;
   box-shadow: var(--shadow-lg);
   animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   transform-origin: center;

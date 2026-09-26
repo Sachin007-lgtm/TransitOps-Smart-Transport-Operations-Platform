@@ -85,8 +85,13 @@ export default function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      await login(trimmed, password);
-      const destination = location.state?.from?.pathname || '/';
+      const authUser = await login(trimmed, password);
+      let destination = location.state?.from?.pathname;
+      if (!destination || destination === '/login' || (authUser?.role === 'Platform Admin' && destination === '/')) {
+        destination = authUser?.role === 'Platform Admin' ? '/admin' : '/';
+      } else if (authUser?.role !== 'Platform Admin' && destination.startsWith('/admin')) {
+        destination = '/';
+      }
       navigate(destination, { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed. Please check your credentials.');

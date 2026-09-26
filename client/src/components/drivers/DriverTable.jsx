@@ -45,7 +45,7 @@ export default function DriverTable({
               ) : drivers.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="text-center py-12 text-muted">
-                    No drivers match these filters.
+                    No drivers registered in your roster yet. Click "+ Add Driver" above to register your first driver.
                   </td>
                 </tr>
               ) : (
@@ -57,7 +57,8 @@ export default function DriverTable({
                   return (
                     <tr
                       key={d.id || idx}
-                      className="table-row-animate"
+                      className="table-row-animate cursor-pointer hover:bg-[#fcfcfc]"
+                      onClick={() => onEdit(d)}
                       style={{
                         animationDelay: `${idx * 40}ms`,
                         borderLeft: `4px solid ${getLeftBorderColor(d.status)}`
@@ -163,6 +164,7 @@ export default function DriverTable({
                           }}
                           value={isOnTrip ? 'On Trip' : d.status || 'Available'}
                           disabled={isOnTrip}
+                          onClick={(e) => e.stopPropagation()}
                           title={
                             isOnTrip
                               ? 'Driver is currently On Trip — managed automatically by trip dispatch'

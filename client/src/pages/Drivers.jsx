@@ -6,12 +6,12 @@ import DriverTable from '../components/drivers/DriverTable';
 import AddDriverModal from '../components/drivers/AddDriverModal';
 import EditDriverModal from '../components/drivers/EditDriverModal';
 import CredentialModal from '../components/drivers/CredentialModal';
-import { INITIAL_DRIVERS, isLicenseExpired } from '../components/drivers/driverConstants';
+import { isLicenseExpired } from '../components/drivers/driverConstants';
 import './Drivers.css';
 
 export default function Drivers() {
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
-  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
+  const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -30,9 +30,12 @@ export default function Drivers() {
       const data = await apiRequest('GET', '/drivers');
       if (data && Array.isArray(data.data)) {
         setDrivers(data.data);
+      } else {
+        setDrivers([]);
       }
     } catch (err) {
-      console.warn('Backend unavailable, using active roster:', err.message);
+      console.warn('Failed to fetch drivers from backend:', err.message);
+      setDrivers([]);
     } finally {
       setLoading(false);
     }
@@ -114,17 +117,11 @@ export default function Drivers() {
       );
       await loadDrivers();
     } catch (err) {
-      // Local addition fallback
-      const localNewDriver = {
-        id: `drv-${Date.now()}`,
-        ...driverPayload,
-        trips_count: 0,
-        must_change_password: true
-      };
-      setDrivers((prev) => [localNewDriver, ...prev]);
-      setIsAddModalOpen(false);
       window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: `${driverPayload.name} added to roster` })
+        new CustomEvent('app-toast', {
+          detail: err.message || 'Failed to register driver.',
+          type: 'error'
+        })
       );
     }
   };
@@ -139,20 +136,11 @@ export default function Drivers() {
       );
       await loadDrivers();
     } catch (err) {
-      setDrivers((prev) =>
-        prev.map((d) =>
-          d.id === editingDriver.id
-            ? {
-                ...d,
-                ...payload,
-                status: editingDriver.status === 'On Trip' ? 'On Trip' : payload.status || d.status
-              }
-            : d
-        )
-      );
-      setEditingDriver(null);
       window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: `${payload.name}'s profile updated` })
+        new CustomEvent('app-toast', {
+          detail: err.message || 'Failed to update driver profile.',
+          type: 'error'
+        })
       );
     }
   };

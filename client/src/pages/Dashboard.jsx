@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
-import { Zap, ChevronDown, Lock, Search, AlertCircle, Clock, CheckCircle2, Navigation, AlertTriangle, User, Wrench } from 'lucide-react';
+import { Zap, ChevronDown, Lock, Search, AlertCircle, Clock, CheckCircle2, Navigation, AlertTriangle, User, Wrench, FileText } from 'lucide-react';
+import { apiRequest } from '../utils/api';
 import './Dashboard.css';
 
 // --- Helpers ---
@@ -63,8 +64,19 @@ export default function Dashboard() {
   const [regionFilter, setRegionFilter] = useState('All regions');
 
   const [openFilter, setOpenFilter] = useState(null); // 'type' | 'status' | 'region'
+  const [alerts, setAlerts] = useState([]);
 
   useEffect(() => {
+    const fetchAlerts = async () => {
+      try {
+        const res = await apiRequest('GET', '/documents/alerts');
+        setAlerts(res || []);
+      } catch (err) {
+        console.error('Failed to load alerts', err);
+      }
+    };
+    fetchAlerts();
+
     const timer = setTimeout(() => setLoading(false), 800);
     return () => clearTimeout(timer);
   }, []);
@@ -439,33 +451,29 @@ export default function Dashboard() {
         <div className="card">
           <div className="flex justify-between items-center mb-4">
             <h2 className="heading text-lg">Alerts & Compliance</h2>
-            <span className="pill pill-red">3 action required</span>
+            <span className="pill pill-red">{alerts.length} action required</span>
           </div>
           
-          <div className="flex flex-col gap-3">
-            <div className="alert-card bg-red-bg border border-[var(--red)] rounded-md p-3 flex gap-3">
-              <AlertCircle size={18} className="text-[var(--red)] mt-0.5" />
-              <div>
-                <div className="text-sm font-medium text-text">License Expiry</div>
-                <div className="text-xs text-muted">Driver Priya's license expires in 3 days.</div>
-              </div>
-            </div>
-            
-            <div className="alert-card bg-amber-bg border border-[var(--amber)] rounded-md p-3 flex gap-3">
-              <AlertTriangle size={18} className="text-[var(--amber)] mt-0.5" />
-              <div>
-                <div className="text-sm font-medium text-text">Vehicle Locked</div>
-                <div className="text-xs text-muted">MINI-03 requires safety inspection.</div>
-              </div>
-            </div>
-
-            <div className="alert-card bg-gray-bg border border-[var(--line)] rounded-md p-3 flex gap-3">
-              <Wrench size={18} className="text-muted mt-0.5" />
-              <div>
-                <div className="text-sm font-medium text-text">Service Due</div>
-                <div className="text-xs text-muted">VAN-05 odometer reached 50,000 km.</div>
-              </div>
-            </div>
+          <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto">
+            {alerts.length === 0 ? (
+              <div className="text-sm text-muted">All documents are up to date!</div>
+            ) : (
+              alerts.map(alert => (
+                <div key={alert.id} className={`alert-card border rounded-md p-3 flex gap-3 ${alert.status === 'Expired' ? 'bg-red-bg border-[var(--red)]' : 'bg-amber-bg border-[var(--amber)]'}`}>
+                  {alert.status === 'Expired' ? (
+                    <AlertCircle size={18} className="text-[var(--red)] mt-0.5" />
+                  ) : (
+                    <AlertTriangle size={18} className="text-[var(--amber)] mt-0.5" />
+                  )}
+                  <div>
+                    <div className="text-sm font-medium text-text">{alert.document_type} {alert.status}</div>
+                    <div className="text-xs text-muted">
+                      {alert.entity_type === 'DRIVER' ? `Driver ${alert.entity_name}` : `Vehicle ${alert.entity_name}`}'s {alert.document_type.toLowerCase()} {alert.status === 'Expired' ? 'has expired' : 'is expiring soon'}.
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

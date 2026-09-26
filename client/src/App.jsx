@@ -6,8 +6,9 @@ import Vehicles from './pages/Vehicles';
 import Drivers from './pages/Drivers';
 import LoginPage from './pages/auth/LoginPage';
 import { AuthProvider } from './contexts/AuthContext';
-import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
+import { ProtectedRoute, PublicOnlyRoute, PlatformAdminRoute, TenantManagerRoute } from './components/auth/ProtectedRoute';
 import { GlobalSearchProvider } from './contexts/GlobalSearchContext';
+import PlatformAdmin from './pages/PlatformAdmin';
 
 import TripDispatcher from './pages/TripDispatcher';
 import LiveMap from './pages/LiveMap';
@@ -80,7 +81,15 @@ function App() {
                 </PublicOnlyRoute>
               }
             />
-            <Route element={<ProtectedRoute />}>
+            {/* Platform Superadmin Route */}
+            <Route element={<PlatformAdminRoute />}>
+              <Route path="/admin" element={<AppLayout />}>
+                <Route index element={<PlatformAdmin />} />
+              </Route>
+            </Route>
+
+            {/* Tenant Fleet Manager Routes */}
+            <Route element={<TenantManagerRoute />}>
               <Route path="/" element={<AppLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="vehicles" element={<Vehicles />} />
@@ -94,6 +103,7 @@ function App() {
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </GlobalSearchProvider>

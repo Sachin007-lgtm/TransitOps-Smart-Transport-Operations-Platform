@@ -11,22 +11,32 @@ const createOrganization = asyncWrapper(async (req, res) => {
   if (!name || !name.trim()) {
     return apiResponse.error(res, 'Organization name is required.', 400);
   }
-  if (!slug || !slug.trim()) {
-    return apiResponse.error(res, 'Organization slug is required.', 400);
-  }
   if (!owner || !owner.name || !owner.email) {
     return apiResponse.error(res, 'Initial Owner/Manager details (name and email) are required.', 400);
   }
 
-  const normalizedSlug = slug.trim().toLowerCase();
+  // Derive and guarantee unique organization slug
+  const slugify = (text) => String(text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  let baseSlug = (slug && slug.trim()) ? slugify(slug) : slugify(name);
+  if (!baseSlug) baseSlug = 'org';
+
+  let normalizedSlug = baseSlug;
+  let counter = 1;
+  while (true) {
+    const existingOrg = await query('SELECT id FROM organizations WHERE slug = $1 LIMIT 1', [normalizedSlug]);
+    if (existingOrg.rows.length === 0) break;
+    counter++;
+    normalizedSlug = `${baseSlug}-${counter}`;
+  }
+
   const normalizedEmail = owner.email.trim().toLowerCase();
   const normalizedPhone = owner.phone_number ? normalizePhoneNumber(owner.phone_number) : null;
-
-  // Pre-check slug uniqueness
-  const existingOrg = await query('SELECT id FROM organizations WHERE slug = $1 LIMIT 1', [normalizedSlug]);
-  if (existingOrg.rows.length > 0) {
-    return apiResponse.error(res, `Organization slug '${normalizedSlug}' is already taken.`, 409);
-  }
 
   // Pre-check owner email uniqueness
   const existingUser = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', [normalizedEmail]);
@@ -91,7 +101,12 @@ const listOrganizations = asyncWrapper(async (req, res) => {
     SELECT o.*,
            COUNT(DISTINCT v.id)::int AS vehicles_count,
            COUNT(DISTINCT d.id)::int AS drivers_count,
-           COUNT(DISTINCT u.id)::int AS users_count
+           COUNT(DISTINCT u.id)::int AS users_count,
+           (SELECT u2.name FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_name,
+           (SELECT u2.email FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_email,
+           (SELECT u2.phone_number FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_phone,
+           (SELECT u2.id FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_user_id,
+           (SELECT u2.must_change_password FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_must_change_password
     FROM organizations o
     LEFT JOIN vehicles v ON v.organization_id = o.id
     LEFT JOIN drivers d ON d.organization_id = o.id
@@ -108,7 +123,12 @@ const getOrganizationById = asyncWrapper(async (req, res) => {
     SELECT o.*,
            COUNT(DISTINCT v.id)::int AS vehicles_count,
            COUNT(DISTINCT d.id)::int AS drivers_count,
-           COUNT(DISTINCT u.id)::int AS users_count
+           COUNT(DISTINCT u.id)::int AS users_count,
+           (SELECT u2.name FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_name,
+           (SELECT u2.email FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_email,
+           (SELECT u2.phone_number FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_phone,
+           (SELECT u2.id FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_user_id,
+           (SELECT u2.must_change_password FROM users u2 JOIN roles r2 ON u2.role_id = r2.id WHERE u2.organization_id = o.id AND r2.name = 'Owner/Manager' LIMIT 1) AS owner_must_change_password
     FROM organizations o
     LEFT JOIN vehicles v ON v.organization_id = o.id
     LEFT JOIN drivers d ON d.organization_id = o.id
@@ -172,9 +192,88 @@ const updateOrganizationStatus = asyncWrapper(async (req, res) => {
   }
 });
 
+const resetManagerPassword = asyncWrapper(async (req, res) => {
+  const { id } = req.params;
+
+  // 1. Verify organization exists
+  const orgResult = await query('SELECT id, name, status FROM organizations WHERE id = $1', [id]);
+  if (orgResult.rows.length === 0) {
+    return apiResponse.error(res, 'Organization not found.', 404);
+  }
+  const organization = orgResult.rows[0];
+
+  // 2. Find Owner/Manager account for this organization
+  const ownerResult = await query(`
+    SELECT u.id, u.name, u.email, u.phone_number, u.is_active
+    FROM users u
+    JOIN roles r ON u.role_id = r.id
+    WHERE u.organization_id = $1 AND r.name = 'Owner/Manager'
+    ORDER BY u.created_at ASC
+    LIMIT 1
+  `, [id]);
+
+  if (ownerResult.rows.length === 0) {
+    return apiResponse.error(res, 'No Owner/Manager account found for this organization.', 404);
+  }
+  const owner = ownerResult.rows[0];
+
+  // 3. Generate secure temporary password and hash with bcrypt (12 rounds)
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  // 4. Update owner credential with must_change_password = TRUE
+  await query(`
+    UPDATE users
+    SET password_hash = $1,
+        must_change_password = TRUE,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = $2
+  `, [passwordHash, owner.id]);
+
+  return apiResponse.success(res, {
+    organization: {
+      id: organization.id,
+      name: organization.name
+    },
+    owner: {
+      id: owner.id,
+      name: owner.name,
+      email: owner.email,
+      phone_number: owner.phone_number
+    },
+    temporary_password: temporaryPassword
+  }, `Temporary password generated for manager ${owner.email}. Revealed strictly once.`);
+});
+
+const getPlatformStats = asyncWrapper(async (req, res) => {
+  const orgsRes = await query(`
+    SELECT 
+      COUNT(*)::int AS total_organizations,
+      COUNT(CASE WHEN status = 'Active' THEN 1 END)::int AS active_organizations,
+      COUNT(CASE WHEN status = 'Suspended' THEN 1 END)::int AS suspended_organizations
+    FROM organizations
+  `);
+  const vehRes = await query(`SELECT COUNT(*)::int AS total_vehicles FROM vehicles`);
+  const drvRes = await query(`SELECT COUNT(*)::int AS total_drivers FROM drivers`);
+  const usrRes = await query(`SELECT COUNT(*)::int AS total_users FROM users`);
+
+  const stats = {
+    total_organizations: orgsRes.rows[0]?.total_organizations || 0,
+    active_organizations: orgsRes.rows[0]?.active_organizations || 0,
+    suspended_organizations: orgsRes.rows[0]?.suspended_organizations || 0,
+    total_vehicles: vehRes.rows[0]?.total_vehicles || 0,
+    total_drivers: drvRes.rows[0]?.total_drivers || 0,
+    total_users: usrRes.rows[0]?.total_users || 0
+  };
+
+  return apiResponse.success(res, stats, 'Platform statistics retrieved successfully.');
+});
+
 module.exports = {
   createOrganization,
   listOrganizations,
   getOrganizationById,
-  updateOrganizationStatus
+  updateOrganizationStatus,
+  resetManagerPassword,
+  getPlatformStats
 };
