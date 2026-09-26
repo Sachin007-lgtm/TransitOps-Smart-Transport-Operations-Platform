@@ -217,9 +217,9 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     try {
       await query(`
         INSERT INTO trips (
-          origin, destination, planned_route, cargo_weight, planned_distance, start_time, expected_arrival
+          origin, destination, planned_route, cargo_weight, start_time, expected_arrival
         ) VALUES (
-          'Test Origin', 'Test Dest', 'Route 1', 100, 50, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour'
+          'Test Origin', 'Test Dest', 'Route 1', 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour'
         )
       `);
       assert.fail('Expected insert omitting organization_id to fail');
@@ -546,11 +546,11 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     await query(`
       INSERT INTO trips (
         organization_id, origin, destination, planned_route,
-        vehicle_id, cargo_weight, planned_distance, actual_distance,
+        vehicle_id, cargo_weight, actual_distance,
         start_time, expected_arrival, actual_arrival, status
       ) VALUES (
         $1, 'Point A', 'Point B', 'Route 1',
-        $2, 100, 50, 50,
+        $2, 100, 50,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', CURRENT_TIMESTAMP + INTERVAL '1 hour', 'Completed'
       )
     `, [orgA, testVehicleAId]);
@@ -563,11 +563,11 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     await query(`
       INSERT INTO trips (
         organization_id, origin, destination, planned_route,
-        vehicle_id, cargo_weight, planned_distance,
+        vehicle_id, cargo_weight,
         start_time, expected_arrival, status
       ) VALUES (
         $1, 'Point A', 'Point C', 'Route 2',
-        $2, 100, 50,
+        $2, 100,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', 'Cancelled'
       )
     `, [orgA, testVehicleAId]);
@@ -576,11 +576,11 @@ describe('Multi-Tenant Organization Isolation Verification', () => {
     await query(`
       INSERT INTO trips (
         organization_id, origin, destination, planned_route,
-        vehicle_id, cargo_weight, planned_distance,
+        vehicle_id, cargo_weight,
         start_time, expected_arrival, status
       ) VALUES (
         $1, 'Point A', 'Point D', 'Route 3',
-        $2, 100, 50,
+        $2, 100,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', 'Dispatched'
       )
     `, [orgA, testVehicleAId]);

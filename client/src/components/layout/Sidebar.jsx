@@ -12,7 +12,8 @@ import {
   Settings, 
   ChevronLeft, 
   LogOut,
-  Building2
+  Building2,
+  IndianRupee
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import './Sidebar.css';
@@ -26,12 +27,6 @@ export default function Sidebar() {
   const handleLogout = () => {
     logout();
     navigate('/login');
-  };
-
-  const handleUnimplemented = (e, name) => {
-    e.preventDefault();
-    const evt = new CustomEvent('app-toast', { detail: `Would navigate to ${name}...` });
-    window.dispatchEvent(evt);
   };
 
   return (
@@ -88,6 +83,11 @@ export default function Sidebar() {
               <span className="nav-label">Trips</span>
             </NavLink>
 
+            <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <IndianRupee size={20} className="nav-icon" />
+              <span className="nav-label">Billing</span>
+            </NavLink>
+
             <NavLink to="/live-map" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Radio size={20} className="nav-icon" />
               <span className="nav-label">Live Fleet</span>
@@ -114,7 +114,6 @@ export default function Sidebar() {
             </NavLink>
           </>
         )}
-        
 
         <div style={{ marginTop: 'auto' }}>
           <button 

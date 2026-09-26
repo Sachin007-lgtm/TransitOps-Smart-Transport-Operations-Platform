@@ -8,7 +8,7 @@
     "dev": "nodemon src/index.js",
     "db:migrate": "node src/database/migrate.js",
     "db:backfill-driver-accounts": "node src/database/backfillDriverAccounts.js",
-    "test": "node --test test/**/*.test.js"
+    "test": "node --test --test-concurrency=3 test/**/*.test.js"
   },
   "keywords": [
     "express",

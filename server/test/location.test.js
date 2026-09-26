@@ -66,10 +66,10 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     // Create trip in orgA (Assigned status)
     const tripRes = await query(`
       INSERT INTO trips (
-        origin, destination, planned_route, vehicle_id, driver_id, cargo_weight, planned_distance, status,
+        origin, destination, planned_route, vehicle_id, driver_id, cargo_weight, status,
         start_time, expected_arrival, organization_id
       ) VALUES (
-        'Depot A', 'Terminal B', 'Direct Highway 1', $1, $2, 1000, 25.5, 'Assigned',
+        'Depot A', 'Terminal B', 'Direct Highway 1', $1, $2, 1000, 'Assigned',
         NOW(), NOW() + INTERVAL '2 hours', $3
       ) RETURNING id
     `, [vehicleAId, driverA1Id, orgA]);

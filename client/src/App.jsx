@@ -12,6 +12,7 @@ import PlatformAdmin from './pages/PlatformAdmin';
 
 import TripDispatcher from './pages/TripDispatcher';
 import LiveMap from './pages/LiveMap';
+import Billing from './pages/Billing';
 import Maintenance from './pages/Maintenance';
 import FuelExpenses from './pages/FuelExpenses';
 import Analytics from './pages/Analytics';
@@ -95,6 +96,7 @@ function App() {
                 <Route path="drivers" element={<Drivers />} />
                 <Route path="trips" element={<TripDispatcher />} />
                 <Route path="live-map" element={<LiveMap />} />
+                <Route path="billing" element={<Billing />} />
                 <Route path="maintenance" element={<Maintenance />} />
                 <Route path="fuel" element={<FuelExpenses />} />
                 <Route path="analytics" element={<Analytics />} />

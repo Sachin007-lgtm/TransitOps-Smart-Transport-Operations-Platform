@@ -101,7 +101,6 @@ describe('Platform Admin Module Backend Tests', () => {
       }
       await new Promise((resolve) => server.close(resolve));
     }
-    await pool.end();
   });
 
   test('1. Reject unauthenticated access to platform endpoints with 401', async () => {

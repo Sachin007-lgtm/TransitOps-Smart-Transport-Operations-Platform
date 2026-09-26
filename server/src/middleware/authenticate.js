@@ -33,7 +33,7 @@ const authenticate = async (req, res, next) => {
           message: 'Invalid platform admin credentials: organization or driver cannot be assigned.'
         });
       }
-    } else if (['Owner/Manager', 'Fleet Manager', 'Driver'].includes(decoded.role)) {
+    } else if (['Owner/Manager', 'Fleet Manager', 'Driver', 'Dispatcher', 'Financial Analyst'].includes(decoded.role)) {
       if (!decoded.organization_id || typeof decoded.organization_id !== 'string') {
         return res.status(401).json({
           success: false,
