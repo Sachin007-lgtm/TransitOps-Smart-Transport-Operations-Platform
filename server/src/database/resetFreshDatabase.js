@@ -78,7 +78,10 @@ async function resetFreshDatabase() {
       DROP TABLE IF EXISTS expenses CASCADE;
       DROP TABLE IF EXISTS bills CASCADE;
       DROP TABLE IF EXISTS bill_items CASCADE;
+      DROP TABLE IF EXISTS bill_charges CASCADE;
+      DROP TABLE IF EXISTS bill_counters CASCADE;
       DROP TABLE IF EXISTS payments CASCADE;
+      DROP TABLE IF EXISTS charges CASCADE;
       DROP TABLE IF EXISTS documents CASCADE;
       DROP TABLE IF EXISTS companies CASCADE;
     `);
@@ -90,6 +93,25 @@ async function resetFreshDatabase() {
     const schemaSql = fs.readFileSync(schemaFile, 'utf8');
     await client.query(schemaSql);
     console.log('✅ Baseline schema and triggers applied successfully.\n');
+
+    // The baseline is only part of the schema: every numbered migration after it
+    // (the billing module's 014-018 today) has to be applied too, or this script
+    // hands back a database that is missing whole modules. That failure is
+    // silent here and surfaces much later, as a query error like
+    // 'column "company_id" of relation "trips" does not exist'. Same ordering
+    // rule as migrate.js: by filename, everything except the baseline.
+    const migrationsDir = path.join(__dirname, 'migrations');
+    const schemaBase = path.basename(schemaFile);
+    const laterMigrations = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql') && file !== schemaBase)
+      .sort();
+
+    console.log('🚀 Applying migrations on top of the baseline...');
+    for (const file of laterMigrations) {
+      console.log(`  Applying: ${file}`);
+      await client.query(fs.readFileSync(path.join(migrationsDir, file), 'utf8'));
+    }
+    console.log('✅ Migrations applied successfully.\n');
 
     console.log('🌱 Seeding deterministic test data...');
     const seedFile = path.join(__dirname, 'seeds', '001_development_seed.sql');
