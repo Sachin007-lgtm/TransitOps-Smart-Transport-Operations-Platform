@@ -23,7 +23,7 @@ function createToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
-const TEST_ORGS = ['d0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000002'];
+const TEST_ORGS = ['bb000000-0000-0000-0000-000000000001', 'bb000000-0000-0000-0000-000000000002'];
 
 describe('TransitOps Company Billing Backend Tests', () => {
   let server;
@@ -138,43 +138,43 @@ describe('TransitOps Company Billing Backend Tests', () => {
 
     await query(
       `INSERT INTO organizations (id, name, slug, status)
-       VALUES ('d0000000-0000-0000-0000-000000000001', 'Billing Test Org A', 'billing-test-a', 'Active'),
-              ('d0000000-0000-0000-0000-000000000002', 'Billing Test Org B', 'billing-test-b', 'Active')
+       VALUES ('bb000000-0000-0000-0000-000000000001', 'Billing Test Org A', 'billing-test-a', 'Active'),
+              ('bb000000-0000-0000-0000-000000000002', 'Billing Test Org B', 'billing-test-b', 'Active')
        ON CONFLICT (id) DO NOTHING;`
     );
 
     const vA1 = await query(
       `INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
-       VALUES ('BILL-REG-A1', 'Truck', 5000, 'Available', 'd0000000-0000-0000-0000-000000000001')
+       VALUES ('BILL-REG-A1', 'Truck', 5000, 'Available', 'bb000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     vehicleA1Id = vA1.rows[0].id;
 
     const vA2 = await query(
       `INSERT INTO vehicles (registration_number, type, max_load_capacity, status, organization_id)
-       VALUES ('BILL-REG-A2', 'Truck', 5000, 'Available', 'd0000000-0000-0000-0000-000000000001')
+       VALUES ('BILL-REG-A2', 'Truck', 5000, 'Available', 'bb000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     vehicleA2Id = vA2.rows[0].id;
 
     const dA1 = await query(
       `INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-       VALUES ('Billing Driver One', 'LIC-BILL-A1', 'HMV / HGMV', '2030-01-01', '+919000000101', 'Available', 'd0000000-0000-0000-0000-000000000001')
+       VALUES ('Billing Driver One', 'LIC-BILL-A1', 'HMV / HGMV', '2030-01-01', '+919000000101', 'Available', 'bb000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     driverA1Id = dA1.rows[0].id;
 
     const dA2 = await query(
       `INSERT INTO drivers (name, license_number, license_category, license_expiry_date, contact_number, status, organization_id)
-       VALUES ('Billing Driver Two', 'LIC-BILL-A2', 'HMV / HGMV', '2030-01-01', '+919000000102', 'Available', 'd0000000-0000-0000-0000-000000000001')
+       VALUES ('Billing Driver Two', 'LIC-BILL-A2', 'HMV / HGMV', '2030-01-01', '+919000000102', 'Available', 'bb000000-0000-0000-0000-000000000001')
        RETURNING id;`
     );
     driverA2Id = dA2.rows[0].id;
 
-    tokenManagerA = createToken({ id: '90000000-0000-0000-0000-000000000901', email: 'billmgrA@test.com', role: 'Owner/Manager', organization_id: 'd0000000-0000-0000-0000-000000000001' });
-    tokenDispatcherA = createToken({ id: '90000000-0000-0000-0000-000000000902', email: 'billdispA@test.com', role: 'Dispatcher', organization_id: 'd0000000-0000-0000-0000-000000000001' });
-    tokenAnalystA = createToken({ id: '90000000-0000-0000-0000-000000000903', email: 'billfinA@test.com', role: 'Financial Analyst', organization_id: 'd0000000-0000-0000-0000-000000000001' });
-    tokenManagerB = createToken({ id: '90000000-0000-0000-0000-000000000904', email: 'billmgrB@test.com', role: 'Owner/Manager', organization_id: 'd0000000-0000-0000-0000-000000000002' });
+    tokenManagerA = createToken({ id: '90000000-0000-0000-0000-000000000901', email: 'billmgrA@test.com', role: 'Owner/Manager', organization_id: 'bb000000-0000-0000-0000-000000000001' });
+    tokenDispatcherA = createToken({ id: '90000000-0000-0000-0000-000000000902', email: 'billdispA@test.com', role: 'Dispatcher', organization_id: 'bb000000-0000-0000-0000-000000000001' });
+    tokenAnalystA = createToken({ id: '90000000-0000-0000-0000-000000000903', email: 'billfinA@test.com', role: 'Financial Analyst', organization_id: 'bb000000-0000-0000-0000-000000000001' });
+    tokenManagerB = createToken({ id: '90000000-0000-0000-0000-000000000904', email: 'billmgrB@test.com', role: 'Owner/Manager', organization_id: 'bb000000-0000-0000-0000-000000000002' });
   });
 
   after(async () => {

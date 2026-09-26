@@ -20,8 +20,8 @@ function createToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
-const ORG_A = 'e0000000-0000-0000-0000-000000000001';
-const ORG_B = 'e0000000-0000-0000-0000-000000000002';
+const ORG_A = 'ee000000-0000-0000-0000-000000000001';
+const ORG_B = 'ee000000-0000-0000-0000-000000000002';
 const TEST_ORGS = [ORG_A, ORG_B];
 
 describe('TransitOps Customer Statement Backend Tests', () => {
@@ -101,8 +101,8 @@ describe('TransitOps Customer Statement Backend Tests', () => {
 
     await query(
       `INSERT INTO organizations (id, name, slug, status)
-       VALUES ('e0000000-0000-0000-0000-000000000001', 'Statement Test Org A', 'stmt-test-a', 'Active'),
-              ('e0000000-0000-0000-0000-000000000002', 'Statement Test Org B', 'stmt-test-b', 'Active')
+       VALUES ('ee000000-0000-0000-0000-000000000001', 'Statement Test Org A', 'stmt-test-a', 'Active'),
+              ('ee000000-0000-0000-0000-000000000002', 'Statement Test Org B', 'stmt-test-b', 'Active')
        ON CONFLICT (id) DO NOTHING;`
     );
 
