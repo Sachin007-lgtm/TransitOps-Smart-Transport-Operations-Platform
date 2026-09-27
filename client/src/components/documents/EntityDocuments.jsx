@@ -42,7 +42,7 @@ export default function EntityDocuments({ entityType, entityId }) {
   const handleSave = async (e, docType) => {
     e.preventDefault();
     if (!expiryDate || !fileUrl) {
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: 'File URL and Expiry Date are required', type: 'error' }));
+      window.showToast('File URL and Expiry Date are required', 'error');
       return;
     }
 
@@ -56,7 +56,7 @@ export default function EntityDocuments({ entityType, entityId }) {
         expiry_date: expiryDate
       });
       
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: `${docType} document updated` }));
+      window.showToast(`${docType} document updated`, 'success');
       setUploadingDoc(null);
       setFileUrl('');
       setIssueDate('');
@@ -64,7 +64,7 @@ export default function EntityDocuments({ entityType, entityId }) {
       loadDocuments();
     } catch (err) {
       console.error('Save failed', err);
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: 'Failed to save document', type: 'error' }));
+      window.showToast('Failed to save document', 'error');
     }
   };
 

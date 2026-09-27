@@ -285,3 +285,33 @@
   line-height: 1.4;
   margin-top: 0.5rem;
 }
+
+.map-theme-switcher {
+  display: flex;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.2rem;
+  gap: 0.1rem;
+}
+
+.theme-btn {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.55rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--sub);
+}
+
+.theme-btn:hover {
+  background: #f4f1f6;
+  color: var(--text);
+}
+
+.theme-btn.active {
+  background: #e6f7ef;
+  color: #22a06b;
+}

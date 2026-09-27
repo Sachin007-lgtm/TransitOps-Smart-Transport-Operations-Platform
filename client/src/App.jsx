@@ -3,7 +3,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Vehicles from './pages/Vehicles';
+import VehicleProfile from './pages/VehicleProfile';
 import Drivers from './pages/Drivers';
+import DriverProfile from './pages/DriverProfile';
 import LoginPage from './pages/auth/LoginPage';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute, PublicOnlyRoute, PlatformAdminRoute, TenantManagerRoute } from './components/auth/ProtectedRoute';
@@ -40,31 +42,73 @@ class ErrorBoundary extends React.Component {
 }
 
 function GlobalToast() {
-  const [toast, setToast] = React.useState(null);
+  const [toasts, setToasts] = React.useState([]);
 
   React.useEffect(() => {
-    const handleToast = (e) => {
-      setToast({ message: e.detail, type: e.type || 'info', id: Date.now() });
-      setTimeout(() => setToast(null), 2700);
+    const addToast = (message, type = 'success') => {
+      const id = Date.now() + Math.random();
+      setToasts(prev => [...prev, { message: String(message), type, id }]);
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
     };
+
+    // Expose a global helper for clean usage: window.showToast('msg', 'error')
+    window.showToast = addToast;
+
+    const handleToast = (e) => {
+      const raw = e.detail;
+      if (raw && typeof raw === 'object') {
+        // { message, type } object pattern
+        addToast(raw.message || raw.detail || JSON.stringify(raw), raw.toastType || raw.type || 'success');
+      } else {
+        // plain string — always success unless we can infer from text
+        addToast(raw, 'success');
+      }
+    };
+
     window.addEventListener('app-toast', handleToast);
-    return () => window.removeEventListener('app-toast', handleToast);
+    return () => {
+      window.removeEventListener('app-toast', handleToast);
+      delete window.showToast;
+    };
   }, []);
 
-  if (!toast) return null;
+  if (toasts.length === 0) return null;
+
+  const styles = {
+    error:   { bg: '#fef2f2', border: '#fca5a5', text: '#b91c1c', icon: '✕' },
+    success: { bg: '#f0fdf4', border: '#86efac', text: '#15803d', icon: '✓' },
+    info:    { bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8', icon: 'ℹ' },
+    warning: { bg: '#fffbeb', border: '#fcd34d', text: '#92400e', icon: '⚠' },
+  };
 
   return (
     <div style={{
-      position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)',
-      backgroundColor: toast.type === 'error' ? 'var(--red)' : '#2b2530',
-      color: 'white', padding: '0.75rem 1.5rem', borderRadius: '8px',
-      boxShadow: '0 4px 15px rgba(0,0,0,0.2)', zIndex: 9999,
-      fontSize: '0.875rem', fontWeight: 500, animation: 'slideInRow 0.3s ease-out'
+      position: 'fixed', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)',
+      zIndex: 99999, display: 'flex', flexDirection: 'column', gap: '0.5rem',
+      alignItems: 'center', pointerEvents: 'none'
     }}>
-      {toast.message}
+      {toasts.map(toast => {
+        const c = styles[toast.type] || styles.success;
+        return (
+          <div key={toast.id} style={{
+            backgroundColor: c.bg, border: `1px solid ${c.border}`, color: c.text,
+            padding: '0.55rem 1.1rem', borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+            fontSize: '0.85rem', fontWeight: 500,
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            animation: 'slideInRow 0.25s ease-out',
+            pointerEvents: 'auto', whiteSpace: 'nowrap',
+            maxWidth: '480px', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            <span style={{ fontWeight: 700 }}>{c.icon}</span>
+            {toast.message}
+          </div>
+        );
+      })}
     </div>
   );
 }
+
 
 function App() {
   return (
@@ -93,7 +137,9 @@ function App() {
               <Route path="/" element={<AppLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="vehicles" element={<Vehicles />} />
+                <Route path="vehicles/:id" element={<VehicleProfile />} />
                 <Route path="drivers" element={<Drivers />} />
+                <Route path="drivers/:id" element={<DriverProfile />} />
                 <Route path="trips" element={<TripDispatcher />} />
                 <Route path="live-map" element={<LiveMap />} />
                 <Route path="billing" element={<Billing />} />

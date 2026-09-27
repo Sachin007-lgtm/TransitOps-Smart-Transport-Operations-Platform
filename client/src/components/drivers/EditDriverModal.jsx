@@ -40,30 +40,24 @@ export default function EditDriverModal({ driver, onClose, onSubmit }) {
     e.preventDefault();
 
     if (!formData.name.trim() || !formData.license.trim() || !formData.expiry.trim() || !formData.contact.trim()) {
-      window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: 'All fields marked with * are required.', type: 'error' })
-      );
+      window.showToast('All fields marked with * are required.', 'error');
       return;
     }
 
     const licenseErr = validateIndianLicenseNumber(formData.license);
     if (licenseErr) {
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: licenseErr, type: 'error' }));
+      window.showToast(licenseErr, 'error');
       return;
     }
 
     const editPhoneDigits = formData.contact.replace(/\D/g, '');
     if (editPhoneDigits.length < 10) {
-      window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: 'Please enter a valid 10-digit contact number.', type: 'error' })
-      );
+      window.showToast('Please enter a valid 10-digit contact number.', 'error');
       return;
     }
 
     if (isLicenseExpired(formData.expiry) && formData.status === 'Available') {
-      window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: 'Cannot set status to Available when license is expired.', type: 'error' })
-      );
+      window.showToast('Cannot set status to Available when license is expired.', 'error');
       return;
     }
 

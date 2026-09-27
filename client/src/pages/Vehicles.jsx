@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Search, ChevronDown, Copy, Edit3, Info } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
-import EditVehicleModal from '../components/vehicles/EditVehicleModal';
 
 const DEFAULT_TYPES = ['Truck', 'Van', 'Mini'];
 const DEFAULT_SIZES = ['Small (8ft)', 'Medium (14ft)', 'Heavy (24ft)', 'Extra Heavy (32ft)'];
 const VEHICLE_STATUSES = ['All Statuses', 'Available', 'On trip', 'Maintenance'];
 
 export default function Vehicles() {
+  const navigate = useNavigate();
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -498,7 +499,7 @@ export default function Vehicles() {
                   <tr 
                     key={v.id} 
                     className="table-row-animate cursor-pointer hover:bg-[#fcfcfc]" 
-                    onClick={() => setEditingVehicle(v)}
+                    onClick={() => navigate(`/vehicles/${v.id}`)}
                     style={{ 
                       animationDelay: `${idx * 70}ms`,
                       borderLeft: `4px solid ${getLeftBorderColor(v.status)}`,
@@ -761,15 +762,6 @@ export default function Vehicles() {
         </div>,
         document.body
       )}
-
-      {/* Edit Vehicle Modal (Vehicle Profile) */}
-      <EditVehicleModal 
-        vehicle={editingVehicle} 
-        onClose={() => setEditingVehicle(null)} 
-        onSubmit={handleEditVehicle} 
-        customTypes={customTypes}
-        customSizes={customSizes}
-      />
 
       {/* Manual Distance Update Modal */}
       {distanceModalVehicle && createPortal(

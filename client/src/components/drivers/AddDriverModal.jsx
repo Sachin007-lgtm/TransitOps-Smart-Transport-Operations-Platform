@@ -23,30 +23,24 @@ export default function AddDriverModal({ isOpen, onClose, onSubmit, existingDriv
     e.preventDefault();
 
     if (!formData.name.trim() || !formData.license.trim() || !formData.expiry.trim() || !formData.contact.trim()) {
-      window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: 'All fields marked with * are required.', type: 'error' })
-      );
+      window.showToast('All fields marked with * are required.', 'error');
       return;
     }
 
     const licenseErr = validateIndianLicenseNumber(formData.license);
     if (licenseErr) {
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: licenseErr, type: 'error' }));
+      window.showToast(licenseErr, 'error');
       return;
     }
 
     const phoneDigits = formData.contact.replace(/\D/g, '');
     if (phoneDigits.length < 10) {
-      window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: 'Please enter a valid 10-digit contact number.', type: 'error' })
-      );
+      window.showToast('Please enter a valid 10-digit contact number.', 'error');
       return;
     }
 
     if (isLicenseExpired(formData.expiry) && formData.status === 'Available') {
-      window.dispatchEvent(
-        new CustomEvent('app-toast', { detail: 'Cannot set initial status to Available with an expired license.', type: 'error' })
-      );
+      window.showToast('Cannot set initial status to Available with an expired license.', 'error');
       return;
     }
 
@@ -57,7 +51,7 @@ export default function AddDriverModal({ isOpen, onClose, onSubmit, existingDriv
         (d) => d.license_number.replace(/-/g, '').toLowerCase() === formattedLicense.replace(/-/g, '').toLowerCase()
       )
     ) {
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: 'License number must be unique', type: 'error' }));
+      window.showToast('License number must be unique', 'error');
       return;
     }
 

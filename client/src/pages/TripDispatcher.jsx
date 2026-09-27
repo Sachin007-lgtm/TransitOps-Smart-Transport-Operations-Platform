@@ -232,6 +232,7 @@ export default function TripDispatcher() {
   // ── Map References ──
   const mapContainerRef = useRef(null);
   const mapInstanceRef  = useRef(null);
+  const prevSelectedTripIdRef = useRef(null);
 
   // ── Drawer & Form State ──
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -645,9 +646,12 @@ export default function TripDispatcher() {
         ...(mTruck ? [mTruck] : [])
       );
 
-      // Fit map view bounds dynamically from START to END coordinates of the route!
-      const bounds = L.latLngBounds(routePath);
-      map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14, animate: true });
+      // Fit map view bounds ONLY if we switched to a new trip (don't auto-pan continuously as GPS updates)
+      if (prevSelectedTripIdRef.current !== selectedTrip.id) {
+        const bounds = L.latLngBounds(routePath);
+        map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14, animate: true });
+        prevSelectedTripIdRef.current = selectedTrip.id;
+      }
     };
 
     updateRoute();
@@ -714,13 +718,12 @@ export default function TripDispatcher() {
     setIsSubmitting(true); setConflictError(null);
 
     const weightNum   = parseFloat(cargoWeight);
-
     const hasVehicleAndDriver = vehicleId && driverId;
-    let calculatedStatus = initialStatus;
-    // Only auto-advance to Assigned on create if Draft/Planned
-    if (!editingTrip && hasVehicleAndDriver && (initialStatus === 'Draft' || initialStatus === 'Planned')) {
-      calculatedStatus = 'Assigned';
-    }
+
+    // Backend only accepts Draft or Planned on creation.
+    // If driver+vehicle are set we still create as Draft/Planned,
+    // then immediately advance to Assigned via the lifecycle PATCH.
+    const creationStatus = initialStatus === 'Planned' ? 'Planned' : 'Draft';
 
     const payload = {
       origin:          originAC.query.trim(),
@@ -728,15 +731,13 @@ export default function TripDispatcher() {
       origin_coords:   originAC.selectedLocation?.center || await resolveCoordsAsync(originAC.query.trim(), true),
       dest_coords:     destAC.selectedLocation?.center   || await resolveCoordsAsync(destAC.query.trim(), false),
       planned_route:   `${originAC.query.trim()} -> ${destAC.query.trim()}`,
-      status:          calculatedStatus,
+      status:          editingTrip ? initialStatus : creationStatus,
       start_time:      startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
       expected_arrival: expectedArrival ? new Date(expectedArrival).toISOString() : new Date(Date.now() + 7200000).toISOString(),
       vehicle_id:      vehicleId ? String(vehicleId) : null,
       driver_id:       driverId  ? String(driverId)  : null,
       cargo_weight:    weightNum  > 0 ? weightNum  : null,
       revenue:          parseFloat(revenue) > 0 ? parseFloat(revenue) : null,
-      // Billing: the customer name links this trip to a company, and the fare
-      // is what a generated bill charges for it.
       external_party_name: company.trim() || undefined,
       external_party_type: company.trim() ? 'CUSTOMER' : undefined,
       advance_received: parseFloat(advanceReceived) > 0 ? parseFloat(advanceReceived) : 0
@@ -748,8 +749,19 @@ export default function TripDispatcher() {
         showToast(`Trip #${editingTrip.id} updated successfully.`);
       } else {
         const res = await apiRequest('POST', '/trips', payload);
-        showToast(`Trip #${res.data.id} created (${res.data.status}).`);
-        if (res.data?.id) setSelectedTripId(res.data.id);
+        const newTripId = res.data?.id || res.id;
+        // If driver+vehicle were assigned, advance status via the lifecycle endpoint
+        if (newTripId && hasVehicleAndDriver && creationStatus !== 'Assigned') {
+          try {
+            await apiRequest('PATCH', `/trips/${newTripId}/status`, { status: 'Assigned' });
+            showToast(`Trip #${newTripId} created and assigned.`);
+          } catch {
+            showToast(`Trip #${newTripId} created as ${creationStatus}.`, 'info');
+          }
+        } else {
+          showToast(`Trip #${newTripId} created (${res.data?.status || creationStatus}).`);
+        }
+        if (newTripId) setSelectedTripId(newTripId);
       }
       resetForm(); await loadData(true);
     } catch (err) {

@@ -36,14 +36,14 @@ export default function EditVehicleModal({ vehicle, onClose, onSubmit, customTyp
     const rawPlate = formData.numberPlate.trim().toUpperCase();
     if (!rawPlate) {
       setFormErrors(prev => ({ ...prev, numberPlate: "Number plate is required" }));
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: "Number plate is required", type: 'error' }));
+      window.showToast('Number plate is required', 'error');
       return;
     }
 
     const plateErr = validateIndianNumberPlate(rawPlate);
     if (plateErr) {
       setFormErrors(prev => ({ ...prev, numberPlate: plateErr }));
-      window.dispatchEvent(new CustomEvent('app-toast', { detail: plateErr, type: 'error' }));
+      window.showToast(plateErr, 'error');
       return;
     }
 

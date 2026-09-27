@@ -38,6 +38,7 @@ const Document = {
     const sql = `
       SELECT *,
         CASE 
+          WHEN expiry_date IS NULL THEN 'No Expiry'
           WHEN expiry_date < CURRENT_DATE THEN 'Expired'
           WHEN expiry_date < CURRENT_DATE + INTERVAL '30 days' THEN 'Expiring Soon'
           ELSE 'Valid' 
@@ -59,6 +60,7 @@ const Document = {
     const sql = `
       SELECT d.*,
         CASE 
+          WHEN d.expiry_date IS NULL THEN 'No Expiry'
           WHEN d.expiry_date < CURRENT_DATE THEN 'Expired'
           ELSE 'Expiring Soon'
         END as status,
@@ -67,6 +69,7 @@ const Document = {
       LEFT JOIN drivers dr ON d.entity_type = 'DRIVER' AND dr.id = d.entity_id
       LEFT JOIN vehicles v ON d.entity_type = 'VEHICLE' AND v.id = d.entity_id
       WHERE d.organization_id = $1 
+        AND d.expiry_date IS NOT NULL
         AND d.expiry_date < CURRENT_DATE + INTERVAL '30 days'
       ORDER BY d.expiry_date ASC
     `;
