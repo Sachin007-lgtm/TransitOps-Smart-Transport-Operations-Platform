@@ -49,6 +49,14 @@ export type LastBackgroundLocation = {
   sentAt: number;
 };
 
+let backgroundOperation: Promise<void> = Promise.resolve();
+
+function queueBackgroundOperation(operation: () => Promise<void>): Promise<void> {
+  const nextOperation = backgroundOperation.then(operation, operation);
+  backgroundOperation = nextOperation.catch(() => undefined);
+  return nextOperation;
+}
+
 // ─── Permission APIs ─────────────────────────────────────────────────────────
 
 export async function requestLocationPermissions(): Promise<LocationPermissionResult> {
@@ -76,16 +84,52 @@ export async function getLocationPermissions(): Promise<LocationPermissionResult
   };
 }
 
+export async function requestTripLocationPermissions(): Promise<LocationPermissionResult> {
+  if (IS_WEB) {
+    return { granted: true, canAskAgain: true, status: 'granted' };
+  }
+
+  const foreground = await Location!.getForegroundPermissionsAsync();
+  const foregroundResult = foreground.granted
+    ? foreground
+    : await Location!.requestForegroundPermissionsAsync();
+
+  if (!foregroundResult.granted) {
+    return {
+      granted: false,
+      canAskAgain: foregroundResult.canAskAgain,
+      status: foregroundResult.status,
+    };
+  }
+
+  const background = await Location!.getBackgroundPermissionsAsync();
+  const backgroundResult = background.granted
+    ? background
+    : await Location!.requestBackgroundPermissionsAsync();
+
+  return {
+    granted: backgroundResult.granted,
+    canAskAgain: backgroundResult.canAskAgain,
+    status: backgroundResult.status,
+  };
+}
+
 // ─── Background location (native-only) ───────────────────────────────────────
 
 export async function startBackgroundLocationUpdates(
   tripId: number | string,
   token: string
 ): Promise<void> {
-  await setItem(ACTIVE_TRIP_ID_KEY, String(tripId));
-  await setItem(ACTIVE_TRIP_TOKEN_KEY, token);
+  return queueBackgroundOperation(() => startBackgroundLocationUpdatesInternal(tripId, token));
+}
 
+async function startBackgroundLocationUpdatesInternal(
+  tripId: number | string,
+  token: string
+): Promise<void> {
   if (IS_WEB) {
+    await setItem(ACTIVE_TRIP_ID_KEY, String(tripId));
+    await setItem(ACTIVE_TRIP_TOKEN_KEY, token);
     // Background location tasks are not available on web — silently skip.
     console.info('[LocationService] Background tracking not supported on web; using foreground only.');
     return;
@@ -104,6 +148,9 @@ export async function startBackgroundLocationUpdates(
     throw new Error('Background location permission is required to keep sharing while the app is closed.');
   }
 
+  await setItem(ACTIVE_TRIP_ID_KEY, String(tripId));
+  await setItem(ACTIVE_TRIP_TOKEN_KEY, token);
+
   const alreadyStarted = await Location!.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
   if (!alreadyStarted) {
     await Location!.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
@@ -121,6 +168,10 @@ export async function startBackgroundLocationUpdates(
 }
 
 export async function stopBackgroundLocationUpdates(): Promise<void> {
+  return queueBackgroundOperation(stopBackgroundLocationUpdatesInternal);
+}
+
+async function stopBackgroundLocationUpdatesInternal(): Promise<void> {
   if (!IS_WEB) {
     const started = await Location!.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     if (started) {

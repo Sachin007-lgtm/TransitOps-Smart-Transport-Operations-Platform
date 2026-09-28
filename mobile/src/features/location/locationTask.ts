@@ -33,8 +33,9 @@ if (Platform.OS !== 'web') {
     const previousValue = await getItem(LAST_BACKGROUND_LOCATION_KEY);
     if (previousValue) {
       try {
-        const previous = JSON.parse(previousValue) as { latitude: number; longitude: number };
-        if (distanceInMeters(previous.latitude, previous.longitude, location.coords.latitude, location.coords.longitude) < 5) {
+        const previous = JSON.parse(previousValue) as { latitude: number; longitude: number; sentAt?: number };
+        const heartbeatDue = !previous.sentAt || Date.now() - previous.sentAt >= 30000;
+        if (!heartbeatDue && distanceInMeters(previous.latitude, previous.longitude, location.coords.latitude, location.coords.longitude) < 5) {
           return;
         }
       } catch {

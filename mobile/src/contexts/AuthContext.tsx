@@ -3,6 +3,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useState } fro
 
 import { ApiError } from '@/utils/api';
 import { AuthUser, changePassword, getCurrentUser, login } from '@/features/auth/authApi';
+import { stopBackgroundLocationUpdates } from '@/features/location/locationService';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -97,6 +98,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   async function signOut() {
     setUser(null);
     setToken(null);
+    await stopBackgroundLocationUpdates();
     await Promise.all([
       deleteItem(TOKEN_KEY),
       deleteItem(USER_KEY),
@@ -111,6 +113,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 }
 
 async function clearStoredSession() {
+  await stopBackgroundLocationUpdates();
   await Promise.all([
     deleteItem(TOKEN_KEY),
     deleteItem(USER_KEY),

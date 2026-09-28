@@ -243,13 +243,13 @@ export default function LiveMap() {
 
     activeTrips.forEach((trip) => {
       if (trip.latitude == null || trip.longitude == null) return;
+      if (isLocationStale(trip)) return;
       const lat = parseFloat(trip.latitude);
       const lng = parseFloat(trip.longitude);
       if (isNaN(lat) || isNaN(lng)) return;
 
       const isSelected = trip.trip_id === selectedTripId;
-      const stale = isLocationStale(trip);
-      const icon = createVehicleIcon(trip, isSelected, stale);
+      const icon = createVehicleIcon(trip, isSelected, false);
 
       const popup = `
         <div style="font-family: Inter, sans-serif; padding: 4px; min-width: 200px;">
@@ -265,8 +265,8 @@ export default function LiveMap() {
           <p style="margin: 0 0 4px 0; font-size: 12px; color: #555;">
             <strong>Speed:</strong> ${trip.speed != null ? `${trip.speed} km/h` : '—'}
           </p>
-          <p style="margin: 0; font-size: 11px; color: ${stale ? '#d97706' : '#22a06b'}; font-weight: 700;">
-            ${stale ? '⚠ Stale location' : '● Live GPS'}
+          <p style="margin: 0; font-size: 11px; color: #22a06b; font-weight: 700;">
+            ● Live GPS
             &nbsp;·&nbsp;${trip.captured_at ? new Date(trip.captured_at).toLocaleTimeString() : 'No update'}
           </p>
         </div>
@@ -287,7 +287,7 @@ export default function LiveMap() {
   // ─── Fly to selected trip location ───────────────────────────────────────
   const handleSelectTrip = (trip) => {
     setSelectedTripId(trip.trip_id);
-    if (trip.latitude != null && trip.longitude != null && mapInstanceRef.current) {
+    if (trip.latitude != null && trip.longitude != null && !isLocationStale(trip) && mapInstanceRef.current) {
       mapInstanceRef.current.flyTo(
         [parseFloat(trip.latitude), parseFloat(trip.longitude)],
         15,
@@ -297,8 +297,7 @@ export default function LiveMap() {
   };
 
   const liveCount     = activeTrips.filter(t => !isLocationStale(t)).length;
-  const staleCount    = activeTrips.filter(t => t.latitude != null && isLocationStale(t)).length;
-  const awaitingCount = activeTrips.length - liveCount - staleCount;
+  const awaitingCount = activeTrips.length - liveCount;
   const avgSpeed      = activeTrips.length > 0
     ? Math.round(activeTrips.reduce((acc, t) => acc + (parseFloat(t.speed) || 0), 0) / activeTrips.length)
     : 0;
@@ -379,16 +378,6 @@ export default function LiveMap() {
         </div>
 
         <div className="live-stat-card">
-          <div className="live-stat-icon" style={{ background: '#eeedf1', color: '#7a4a63' }}>
-            <Clock size={22} />
-          </div>
-          <div>
-            <div className="live-stat-label">Stale GPS Signals</div>
-            <div className="live-stat-val">{staleCount}</div>
-          </div>
-        </div>
-
-        <div className="live-stat-card">
           <div className="live-stat-icon" style={{ background: '#f7eadc', color: '#d97706' }}>
             <AlertCircle size={22} />
           </div>
@@ -445,8 +434,7 @@ export default function LiveMap() {
             ) : (
               activeTrips.map((trip) => {
                 const isSelected  = trip.trip_id === selectedTripId;
-                const hasLocation = trip.latitude != null && trip.longitude != null;
-                const stale       = isLocationStale(trip);
+                const hasLocation = trip.latitude != null && trip.longitude != null && !isLocationStale(trip);
 
                 return (
                   <div
@@ -464,8 +452,8 @@ export default function LiveMap() {
                         </div>
                       </div>
 
-                      <span className={`gps-status-pill ${!hasLocation ? 'awaiting' : stale ? 'stale' : 'live'}`}>
-                        {!hasLocation ? 'Awaiting GPS' : stale ? 'Stale' : '● Live'}
+                      <span className={`gps-status-pill ${hasLocation ? 'live' : 'awaiting'}`}>
+                        {hasLocation ? '● Live' : 'Awaiting GPS'}
                       </span>
                     </div>
 

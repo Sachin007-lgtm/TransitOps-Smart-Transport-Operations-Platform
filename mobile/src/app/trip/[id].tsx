@@ -1,9 +1,11 @@
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { requestTripLocationPermissions } from '@/features/location/locationService';
 import { useLocationTracking } from '@/features/location/useLocationTracking';
 import { getTripById, Trip, updateTripStatus } from '@/features/trips/tripsApi';
 
@@ -47,7 +50,7 @@ export default function TripDetailScreen() {
     requestPermission,
   } = useLocationTracking({
     tripId: tripId,
-    isTripActive: isDispatched,
+    isTripActive: trip ? isDispatched : null,
     token: token ?? null,
   });
   const isLocationStale = lastSentAt ? Date.now() - lastSentAt.getTime() > 30000 : true;
@@ -84,11 +87,41 @@ export default function TripDetailScreen() {
   async function handleStartTrip() {
     if (!token || !tripId) return;
 
+    try {
+      setActionLoading(true);
+      const permission = await requestTripLocationPermissions();
+      if (!permission.granted) {
+        Alert.alert(
+          'Location permission required',
+          'Allow location access all the time so TransitOps can keep sharing the trip when the screen is locked.',
+          permission.canAskAgain
+            ? [{ text: 'OK' }]
+            : [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Open Settings', onPress: () => Linking.openSettings() },
+              ]
+        );
+        return;
+      }
+    } catch (error) {
+      Alert.alert('Location setup failed', error instanceof Error ? error.message : 'Please check location settings.');
+      return;
+    } finally {
+      setActionLoading(false);
+    }
+
+    const batteryMessage = Platform.OS === 'android'
+      ? 'For reliable background tracking, set TransitOps battery usage to Unrestricted in Android Settings. You can do this now or change it later.'
+      : 'Live location sharing will continue during this trip.';
+
     Alert.alert(
       'Start Trip',
-      'Are you ready to depart? Live GPS location sharing will begin automatically.',
+      `Are you ready to depart? Live GPS location sharing will begin automatically.\n\n${batteryMessage}`,
       [
         { text: 'Cancel', style: 'cancel' },
+        ...(Platform.OS === 'android'
+          ? [{ text: 'Battery Settings', onPress: () => Linking.openSettings() }]
+          : []),
         {
           text: 'Start Trip',
           onPress: async () => {
@@ -191,10 +224,13 @@ export default function TripDetailScreen() {
                   </Text>
                 </View>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>VEHICLE</Text>
+                  <Text style={styles.statLabel}>ASSIGNED VEHICLE</Text>
                   <Text style={styles.statValue}>
-                    {trip.vehicle_registration || trip.vehicle_name || 'Assigned'}
+                    {trip.vehicle_name || 'Vehicle not assigned'}
                   </Text>
+                  {trip.vehicle_registration ? (
+                    <Text style={styles.detailValue}>{trip.vehicle_registration}</Text>
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -267,6 +303,12 @@ export default function TripDetailScreen() {
                     <Text style={styles.trackingErrorText}>{trackingError}</Text>
                   ) : null}
                 </>
+              ) : trip.status === 'Draft' || trip.status === 'Planned' ? (
+                <View style={styles.idleTelemetryBox}>
+                  <Text style={styles.idleTelemetryText}>
+                    This trip is {trip.status.toLowerCase()}. Your dispatcher must assign it to you before you can start.
+                  </Text>
+                </View>
               ) : trip.status === 'Assigned' ? (
                 <View style={styles.idleTelemetryBox}>
                   <Text style={styles.idleTelemetryText}>

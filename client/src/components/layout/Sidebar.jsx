@@ -5,7 +5,6 @@ import {
   Truck, 
   Users, 
   Map, 
-  Radio, 
   Wrench, 
   Droplet, 
   BarChart2, 
@@ -86,11 +85,6 @@ export default function Sidebar() {
             <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <IndianRupee size={20} className="nav-icon" />
               <span className="nav-label">Billing</span>
-            </NavLink>
-
-            <NavLink to="/live-map" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <Radio size={20} className="nav-icon" />
-              <span className="nav-label">Live Fleet</span>
             </NavLink>
 
             <NavLink to="/maintenance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>

@@ -9,6 +9,8 @@ export default function ChangePasswordScreen() {
   const { isRestoring, user, changePassword } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -40,23 +42,33 @@ export default function ChangePasswordScreen() {
         <Text style={styles.title}>Create your password</Text>
         <Text style={styles.subtitle}>Your temporary password must be replaced before you continue.</Text>
         <Text style={styles.label}>Current password</Text>
-        <TextInput
-          accessibilityLabel="Current password"
-          secureTextEntry
-          placeholder="Enter your temporary password"
-          value={currentPassword}
-          onChangeText={setCurrentPassword}
-          style={styles.input}
-        />
+        <View style={styles.passwordInputRow}>
+          <TextInput
+            accessibilityLabel="Current password"
+            secureTextEntry={!showCurrentPassword}
+            placeholder="Enter your temporary password"
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            style={[styles.input, styles.passwordInput]}
+          />
+          <Pressable accessibilityRole="button" onPress={() => setShowCurrentPassword((visible) => !visible)}>
+            <Text style={styles.visibilityToggle}>{showCurrentPassword ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+        </View>
         <Text style={styles.label}>New password</Text>
-        <TextInput
-          accessibilityLabel="New password"
-          secureTextEntry
-          placeholder="Enter a new password"
-          value={newPassword}
-          onChangeText={setNewPassword}
-          style={styles.input}
-        />
+        <View style={styles.passwordInputRow}>
+          <TextInput
+            accessibilityLabel="New password"
+            secureTextEntry={!showNewPassword}
+            placeholder="Enter a new password"
+            value={newPassword}
+            onChangeText={setNewPassword}
+            style={[styles.input, styles.passwordInput]}
+          />
+          <Pressable accessibilityRole="button" onPress={() => setShowNewPassword((visible) => !visible)}>
+            <Text style={styles.visibilityToggle}>{showNewPassword ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+        </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable disabled={isSaving} onPress={handleSubmit} style={styles.button}>
           <Text style={styles.buttonText}>{isSaving ? 'Saving...' : 'Set password'}</Text>
@@ -74,6 +86,9 @@ const styles = StyleSheet.create({
   subtitle: { color: '#7D7382', fontSize: 15, lineHeight: 22, marginTop: 8 },
   label: { color: '#2A2030', fontSize: 14, fontWeight: '700', marginTop: 18 },
   input: { backgroundColor: '#FFFFFF', borderColor: '#E5E1E8', borderRadius: 8, borderWidth: 1, color: '#2A2030', fontSize: 16, height: 56, marginTop: 8, paddingHorizontal: 16 },
+  passwordInputRow: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#E5E1E8', borderRadius: 8, borderWidth: 1, flexDirection: 'row', marginTop: 8, paddingRight: 16 },
+  passwordInput: { borderWidth: 0, flex: 1, marginTop: 0 },
+  visibilityToggle: { color: '#6D5267', fontSize: 14, fontWeight: '700', paddingLeft: 12 },
   error: { color: '#C93737', fontSize: 13, marginTop: 14 },
   button: { alignItems: 'center', backgroundColor: '#4B2D42', borderRadius: 8, height: 56, justifyContent: 'center', marginTop: 22 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },

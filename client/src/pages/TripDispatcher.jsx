@@ -43,6 +43,22 @@ const LOCATION_COORDS = {
 
 const ORIGIN_PRESETS = Object.keys(LOCATION_COORDS).slice(0, 5);
 const DEST_PRESETS   = Object.keys(LOCATION_COORDS).slice(3, 8);
+const GPS_FRESHNESS_MS = 30000;
+const STATIONARY_SPEED_MS = 1;
+
+function isFreshGps(location) {
+  if (location?.latitude == null || location?.longitude == null || !location.captured_at) return false;
+  const capturedAt = new Date(location.captured_at).getTime();
+  const age = Date.now() - capturedAt;
+  return Number.isFinite(capturedAt) && age >= 0 && age <= GPS_FRESHNESS_MS;
+}
+
+function formatVehicleSpeed(speed) {
+  if (speed == null || !Number.isFinite(Number(speed))) return '--';
+  const value = Number(speed);
+  const kilometersPerHour = Math.abs(value) < STATIONARY_SPEED_MS ? 0 : value * 3.6;
+  return `${kilometersPerHour.toFixed(1)} km/h`;
+}
 
 // ─── MAPBOX SEARCH BOX / GEOCODING API HOOK ──────────────────────────────────
 /**
@@ -228,6 +244,9 @@ export default function TripDispatcher() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [selectedTripLocation, setSelectedTripLocation] = useState(null);
+  const [selectedTripHistory, setSelectedTripHistory] = useState([]);
+  const [autoSync, setAutoSync] = useState(true);
+  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
 
   // ── Map References ──
   const mapContainerRef = useRef(null);
@@ -263,6 +282,7 @@ export default function TripDispatcher() {
   const [isModalSubmitting, setIsModalSubmitting] = useState(false);
 
   const selectedTrip = trips.find(t => t.id === selectedTripId) || trips[0] || null;
+  const selectedGpsIsFresh = isFreshGps(selectedTripLocation);
 
   // Load data
   const loadData = async (silent = false) => {
@@ -302,32 +322,63 @@ export default function TripDispatcher() {
   useEffect(() => {
     if (!selectedTripId) {
       setSelectedTripLocation(null);
+      setSelectedTripHistory([]);
       return undefined;
     }
 
     let isMounted = true;
 
-    const loadSelectedTripLocation = async () => {
+    const loadSelectedTripTelemetry = async (manual = false) => {
       try {
-        const response = await apiRequest('GET', '/locations/active');
+        if (manual) setIsRefreshingLocation(true);
+        const [activeResponse, historyResponse] = await Promise.all([
+          apiRequest('GET', '/locations/active'),
+          apiRequest('GET', `/locations/trip/${selectedTripId}`).catch(() => ({ data: [] }))
+        ]);
         if (!isMounted) return;
-        const activeTrip = (response.data || []).find(
+        const activeTrip = (activeResponse.data || []).find(
           location => String(location.trip_id) === String(selectedTripId)
         );
         setSelectedTripLocation(activeTrip || null);
+        setSelectedTripHistory(historyResponse.data || []);
       } catch (error) {
-        if (isMounted) setSelectedTripLocation(null);
+        if (isMounted) {
+          setSelectedTripLocation(null);
+          setSelectedTripHistory([]);
+        }
+      } finally {
+        if (manual && isMounted) setIsRefreshingLocation(false);
       }
     };
 
-    loadSelectedTripLocation();
-    const interval = setInterval(loadSelectedTripLocation, 6000);
+    loadSelectedTripTelemetry();
+    const interval = autoSync ? setInterval(loadSelectedTripTelemetry, 6000) : null;
 
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
-  }, [selectedTripId]);
+  }, [selectedTripId, autoSync]);
+
+  const refreshSelectedTripTelemetry = async () => {
+    if (!selectedTripId) return;
+    setIsRefreshingLocation(true);
+    try {
+      const [activeResponse, historyResponse] = await Promise.all([
+        apiRequest('GET', '/locations/active'),
+        apiRequest('GET', `/locations/trip/${selectedTripId}`).catch(() => ({ data: [] }))
+      ]);
+      const activeTrip = (activeResponse.data || []).find(
+        location => String(location.trip_id) === String(selectedTripId)
+      );
+      setSelectedTripLocation(activeTrip || null);
+      setSelectedTripHistory(historyResponse.data || []);
+    } catch (error) {
+      setGeneralError(error.message || 'Unable to refresh selected trip telemetry.');
+    } finally {
+      setIsRefreshingLocation(false);
+    }
+  };
 
   // ── Initialize Map Container ──────────────────────────────────────────
   useEffect(() => {
@@ -446,7 +497,7 @@ export default function TripDispatcher() {
 
       const liveLatitude = Number(selectedTripLocation?.latitude);
       const liveLongitude = Number(selectedTripLocation?.longitude);
-      const hasLiveLocation = Number.isFinite(liveLatitude) && Number.isFinite(liveLongitude);
+      const hasLiveLocation = selectedGpsIsFresh && Number.isFinite(liveLatitude) && Number.isFinite(liveLongitude);
       const truckIdx = hasLiveLocation
         ? routePath.reduce((closestIndex, point, index) => {
             const closestPoint = routePath[closestIndex];
@@ -456,6 +507,9 @@ export default function TripDispatcher() {
           }, 0)
         : -1;
       const truckPos = hasLiveLocation ? [liveLatitude, liveLongitude] : null;
+      const breadcrumbPath = selectedTripHistory
+        .map(point => [Number(point.latitude), Number(point.longitude)])
+        .filter(([latitude, longitude]) => Number.isFinite(latitude) && Number.isFinite(longitude));
 
       const truckIcon = L.divIcon({
         className: 'leaflet-truck-marker',
@@ -516,6 +570,13 @@ export default function TripDispatcher() {
       const mOrigin = L.marker(originCoords, { icon: originIcon }).addTo(map);
       const mDest   = L.marker(destCoords,   { icon: destIcon }).addTo(map);
       const mTruck  = hasLiveLocation ? L.marker(truckPos, { icon: truckIcon }).addTo(map) : null;
+      const breadcrumbLine = breadcrumbPath.length > 1 ? L.polyline(breadcrumbPath, {
+        color: '#e08a1e',
+        weight: 4,
+        opacity: 0.9,
+        dashArray: '8, 7',
+        lineJoin: 'round'
+      }).addTo(map) : null;
 
       // Interactive Marker Popup for Driver & Shipment details on click / selection
       const popupHtml = `
@@ -528,8 +589,8 @@ export default function TripDispatcher() {
               </svg>
             </div>
             <div class="dtp-driver-info">
-              <h4 class="dtp-driver-name">${selectedTrip.driver?.name || 'Budiyono Siregar'}</h4>
-              <span class="dtp-driver-sub">${selectedTrip.vehicle?.name || 'JNT Express'}</span>
+              <h4 class="dtp-driver-name">${selectedTrip.driver?.name || selectedTrip.driver_name || 'Unassigned driver'}</h4>
+              <span class="dtp-driver-sub">${selectedTrip.vehicle?.name || selectedTrip.vehicle_name || 'Unassigned vehicle'}</span>
             </div>
             <div class="dtp-actions">
               <button class="dtp-icon-btn view-driver-btn" title="View Profile" data-driver="${selectedTrip.driver_id}">
@@ -541,7 +602,7 @@ export default function TripDispatcher() {
           <div class="dtp-shipment-row">
             <span class="dtp-ship-label">SHIPMENT ID</span>
             <div class="dtp-ship-id-wrap">
-              <strong class="dtp-ship-id">#TRK-${selectedTrip.id || '170845'}</strong>
+              <strong class="dtp-ship-id">#TRK-${selectedTrip.id}</strong>
               <svg class="dtp-link-icon edit-trip-btn" title="Edit Trip" style="cursor:pointer;" data-trip="${selectedTrip.id}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
             </div>
           </div>
@@ -614,10 +675,6 @@ export default function TripDispatcher() {
           autoPanPadding: [50, 50]
         });
 
-        mTruck.on('mouseover', function () {
-          this.openPopup();
-        });
-
         mTruck.on('popupopen', function (e) {
           const popupNode = e.popup._contentNode;
           const driverBtn = popupNode.querySelector('.view-driver-btn');
@@ -641,6 +698,7 @@ export default function TripDispatcher() {
         ...(activeLineOuter ? [activeLineOuter] : []),
         ...(activeLineInner ? [activeLineInner] : []),
         remainingLine,
+        ...(breadcrumbLine ? [breadcrumbLine] : []),
         mOrigin,
         mDest,
         ...(mTruck ? [mTruck] : [])
@@ -657,7 +715,7 @@ export default function TripDispatcher() {
     updateRoute();
 
     return () => { isMounted = false; };
-  }, [selectedTrip, selectedTripLocation]);
+  }, [selectedTrip, selectedTripLocation, selectedTripHistory, selectedGpsIsFresh]);
 
   const handleZoomIn  = () => mapInstanceRef.current?.zoomIn();
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
@@ -813,12 +871,21 @@ export default function TripDispatcher() {
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 className="tl-new-btn"
-                style={{ background: '#e6f7ef', color: '#22a06b', borderColor: 'rgba(34, 160, 107, 0.3)' }}
-                onClick={() => window.location.href = '/live-map'}
-                title="View Live GPS Fleet Map"
+                style={{ background: autoSync ? '#e6f7ef' : 'var(--surface)', color: autoSync ? '#168454' : 'var(--sub)', borderColor: autoSync ? 'rgba(34, 160, 107, 0.3)' : 'var(--line)' }}
+                onClick={() => setAutoSync(value => !value)}
+                title={autoSync ? 'Pause selected-trip GPS updates' : 'Resume selected-trip GPS updates'}
+                aria-label={autoSync ? 'Pause GPS auto-sync' : 'Resume GPS auto-sync'}
               >
                 <Radio size={14} />
-                <span>Live Map</span>
+              </button>
+              <button
+                className="tl-new-btn"
+                onClick={refreshSelectedTripTelemetry}
+                disabled={!selectedTripId || isRefreshingLocation}
+                title="Refresh selected trip GPS and breadcrumb data"
+                aria-label="Refresh selected trip GPS and breadcrumb data"
+              >
+                <RefreshCw size={14} className={isRefreshingLocation ? 'spin-icon' : ''} />
               </button>
               <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
                 <Plus size={16} />
@@ -993,6 +1060,36 @@ export default function TripDispatcher() {
           RIGHT PANEL — FULL HEIGHT MAP CONTAINER (DRIVER STATS REMOVED)
           ══════════════════════════════════════════════════════════════════════ */}
       <main className="td-right-panel">
+        {selectedTrip ? (
+          <section className="trip-telemetry-panel" aria-label="Selected trip live telemetry">
+            <div className="trip-telemetry-block">
+              <span>Speed</span>
+              <strong>{selectedGpsIsFresh ? formatVehicleSpeed(selectedTripLocation?.speed) : '--'}</strong>
+            </div>
+            <div className="trip-telemetry-block">
+              <span>Status</span>
+              <strong className={selectedGpsIsFresh ? 'is-live' : 'is-waiting'}>
+                {!selectedGpsIsFresh
+                  ? selectedTripLocation ? 'No signal' : 'Waiting for signal'
+                  : Number(selectedTripLocation?.speed || 0) < STATIONARY_SPEED_MS
+                    ? 'Stalled'
+                    : 'Moving'}
+              </strong>
+            </div>
+            <div className="trip-telemetry-block">
+              <span>Accuracy</span>
+              <strong>{selectedGpsIsFresh && selectedTripLocation?.accuracy != null
+                ? `${Number(selectedTripLocation.accuracy).toFixed(0)} m`
+                : '--'}</strong>
+            </div>
+            <div className="trip-telemetry-block">
+              <span>Last signal</span>
+              <strong>{selectedTripLocation?.captured_at
+                ? new Date(selectedTripLocation.captured_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : 'Never received'}</strong>
+            </div>
+          </section>
+        ) : null}
 
         <section className="td-map-container full-height">
           <div className="td-dark-map-canvas" ref={mapContainerRef} />
@@ -1003,11 +1100,11 @@ export default function TripDispatcher() {
               <strong>
                 {selectedTrip?.expected_arrival 
                   ? new Date(selectedTrip.expected_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : '8:32 AM'}
+                  : 'ETA pending'}
               </strong>
             </div>
-            <div className="eta-sub">{selectedTrip?.destination || 'Sanand Warehouse'}</div>
-            <div className="eta-code">#TRK-{selectedTrip?.id || '436437'}</div>
+            <div className="eta-sub">{selectedTrip?.destination || 'Select a trip'}</div>
+            {selectedTrip ? <div className="eta-code">Trip #{selectedTrip.id}</div> : null}
           </div>
 
           <div className="map-zoom-controls">
