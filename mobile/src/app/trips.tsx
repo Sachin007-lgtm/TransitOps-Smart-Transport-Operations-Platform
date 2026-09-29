@@ -1,42 +1,37 @@
 import { Redirect, router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DriverNav } from '@/components/driver/DriverNav';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { getTrips, Trip } from '@/features/trips/tripsApi';
 
 export default function TripsScreen() {
   const { isRestoring, token, user } = useAuth();
+  const { t, tripStatus } = useLanguage();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadTrips = useCallback(async (refresh = false) => {
     if (!token) return;
-
-    let isMounted = true;
-    setIsLoading(true);
+    if (refresh) setIsRefreshing(true);
+    else setIsLoading(true);
     setError('');
-
-    getTrips(token)
-      .then((loadedTrips) => {
-        if (isMounted) setTrips(loadedTrips);
-      })
-      .catch((requestError) => {
-        if (isMounted) {
-          setError(requestError instanceof Error ? requestError.message : 'Unable to load trips.');
-        }
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
+    try {
+      setTrips(await getTrips(token));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to load trips.');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   }, [token]);
+
+  useEffect(() => { void loadTrips(); }, [loadTrips]);
 
   if (isRestoring) {
     return null;
@@ -48,44 +43,45 @@ export default function TripsScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.content}>
-        <Text style={styles.eyebrow}>DRIVER OPERATIONS</Text>
-        <Text style={styles.title}>Your trips</Text>
-        <Text style={styles.subtitle}>Assignments from your dispatcher will appear here.</Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void loadTrips(true)} tintColor="#D97D00" />}
+      >
+        <Text style={styles.eyebrow}>{t('driverOperations')}</Text>
+        <Text style={styles.title}>{t('yourTrips')}</Text>
+        <Text style={styles.subtitle}>{t('assignmentsAppear')}</Text>
 
         {isLoading ? <ActivityIndicator color="#D97D00" style={styles.loader} /> : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {!isLoading && !error && trips.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyMark}>--</Text>
-            <Text style={styles.emptyTitle}>No trips yet</Text>
+            <Text style={styles.emptyTitle}>{t('noTrips')}</Text>
             <Text style={styles.emptyDescription}>
-              Once a trip is assigned to you, you will see its route, schedule, and status here.
+              {t('noTripsDescription')}
             </Text>
           </View>
         ) : null}
-        <FlatList
-          data={trips}
-          keyExtractor={(trip) => String(trip.id)}
-          renderItem={({ item }) => (
+        {trips.map(item => (
             <Pressable
               accessibilityRole="button"
               onPress={() => router.push(`/trip/${item.id}` as any)}
               style={({ pressed }) => [styles.tripCard, pressed && styles.tripCardPressed]}
+              key={item.id}
             >
               <View style={styles.tripHeader}>
-                <Text style={styles.tripRoute}>{item.origin} to {item.destination}</Text>
-                <Text style={styles.tripStatus}>{item.status}</Text>
+                <Text style={styles.tripRoute}>{t('routeFromTo', { origin: item.origin, destination: item.destination })}</Text>
+                <Text style={styles.tripStatus}>{tripStatus(item.status)}</Text>
               </View>
               <Text style={styles.tripMeta}>
-                {item.vehicle_registration || item.vehicle_name || 'Vehicle not assigned'}
+                {item.vehicle?.name || item.vehicle_name || item.vehicle?.registration_number || item.vehicle_registration
+                  ? `${item.vehicle?.name || item.vehicle_name || t('vehicleFallback')}${item.vehicle?.registration_number || item.vehicle_registration ? ` · ${item.vehicle?.registration_number || item.vehicle_registration}` : ''}`
+                  : t('vehicleNotAssigned')}
               </Text>
-              {item.start_time ? <Text style={styles.tripMeta}>{formatTripDate(item.start_time)}</Text> : null}
+              {item.start_time ? <Text style={styles.tripMeta}>{t('startsAt', { date: formatTripDate(item.start_time) })}</Text> : null}
             </Pressable>
-          )}
-          scrollEnabled={false}
-        />
-      </View>
+        ))}
+      </ScrollView>
       <DriverNav />
     </SafeAreaView>
   );

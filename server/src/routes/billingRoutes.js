@@ -39,11 +39,8 @@ router.use(authenticate);
 
 // Everyone who runs or books transport work can read billing;
 // only Fleet Manager and Financial Analyst may change money.
-// dev's role set is exactly Platform Admin / Owner/Manager / Driver: billing is
-// the owner/manager's job, and a driver has no access to customer money either
-// way.
-const READ_ROLES = ['Owner/Manager'];
-const WRITE_ROLES = ['Owner/Manager'];
+const READ_ROLES = ['Fleet Manager', 'Financial Analyst', 'Dispatcher'];
+const WRITE_ROLES = ['Fleet Manager', 'Financial Analyst'];
 
 // --- Companies (the customers trips are billed to) ---
 router.route('/companies')
@@ -71,9 +68,7 @@ router.route('/companies/:companyId/statement')
 const companyFromParams = (req, res, next) => {
   const fromPath = req.params.companyId;
   if (fromPath && (req.body.company_id === undefined || req.body.company_id === null || req.body.company_id === '')) {
-    // A UUID, never Number(): casting would turn it into NaN and the validator
-    // would reject a perfectly good path.
-    req.body.company_id = fromPath;
+    req.body.company_id = Number(fromPath);
   }
   next();
 };

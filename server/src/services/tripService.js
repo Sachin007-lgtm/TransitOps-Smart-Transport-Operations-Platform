@@ -49,7 +49,7 @@ function deriveTripDate(startTime) {
  * company — created on first use — which is what turns "all trips of the same
  * company" into a real grouping a bill can be composed from.
  *
- * @returns {Promise<string|null>} company id (a UUID), or null when the trip names no customer
+ * @returns {Promise<number|null>} company id, or null when the trip names no customer
  */
 async function resolveCompanyId({ company_id, external_party_name, organization_id, client = null }) {
   if (company_id !== undefined && company_id !== null && company_id !== '') {
@@ -60,7 +60,7 @@ async function resolveCompanyId({ company_id, external_party_name, organization_
     if (found.rows[0].organization_id !== organization_id) {
       throw new TripServiceError('Company belongs to another organization.', 400);
     }
-    return company_id;
+    return Number(company_id);
   }
 
   if (external_party_name && String(external_party_name).trim()) {
@@ -198,18 +198,14 @@ const tripService = {
     const filters = {
       organization_id: user.organization_id,
       status: queryParams.status,
-      // Ids are UUIDs: Number() would make them NaN, which is falsy, which
-      // silently drops the filter and lists everything.
-      vehicle_id: queryParams.vehicle_id || undefined,
-      driver_id: queryParams.driver_id || undefined,
+      vehicle_id: queryParams.vehicle_id ? Number(queryParams.vehicle_id) : undefined,
+      driver_id: queryParams.driver_id ? Number(queryParams.driver_id) : undefined,
       external_party_type: queryParams.external_party_type,
       from_date: queryParams.from_date,
       to_date: queryParams.to_date,
       // Billing filters: which customer's trips, and whether they are already
       // on a bill. Used by the trips list and the billing screens.
-      // Never Number(): a UUID cast to a number is NaN, which is falsy, which
-      // would silently drop the filter and list every company's trips.
-      company_id: queryParams.company_id || undefined,
+      company_id: queryParams.company_id ? Number(queryParams.company_id) : undefined,
       billing_status: queryParams.billing_status
     };
 
@@ -437,6 +433,52 @@ const tripService = {
     }
   },
 
+  updateLoadingMilestone: async (id, action, user) => {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const trip = await Trip.findByIdForUpdate(client, id, user.organization_id);
+      if (!trip) throw new TripServiceError('Trip not found.', 404);
+
+      if (user.role === 'Driver' && (!user.driver_id || trip.driver_id !== user.driver_id)) {
+        throw new TripServiceError('Drivers may only update loading milestones for their assigned trips.', 403);
+      }
+      if (trip.status !== 'Dispatched') {
+        throw new TripServiceError('Loading milestones can only be updated while the trip is dispatched.', 400);
+      }
+
+      const fixingReport = await client.query(
+        "SELECT 1 FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2 AND status = 'Acknowledged' LIMIT 1",
+        [trip.id, user.organization_id]
+      );
+      if (fixingReport.rows.length > 0) {
+        throw new TripServiceError('Mark the maintenance issue fixed before continuing the trip.', 409);
+      }
+
+      const updateFields = {};
+      if (action === 'loaded') {
+        if (trip.loaded_at) throw new TripServiceError('This trip has already been marked loaded.', 409);
+        updateFields.loaded_at = new Date().toISOString();
+      } else if (action === 'unloaded') {
+        if (!trip.loaded_at) throw new TripServiceError('Mark the trip loaded before unloading.', 400);
+        if (trip.unloaded_at) throw new TripServiceError('This trip has already been marked unloaded.', 409);
+        updateFields.unloaded_at = new Date().toISOString();
+      } else {
+        throw new TripServiceError("Action must be either 'loaded' or 'unloaded'.", 400);
+      }
+
+      await Trip.update(id, updateFields, user.organization_id, client);
+      await client.query('COMMIT');
+      return await Trip.findById(id, user.organization_id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   /**
    * Atomic Status Transition with Pessimistic Row Locking and Fleet State Coordination.
    */
@@ -467,6 +509,20 @@ const tripService = {
       // 2. Prevent transitions from terminal states
       if (currentStatus === 'Completed' || currentStatus === 'Cancelled') {
         throw new TripServiceError(`Cannot transition from terminal status '${currentStatus}'.`, 400);
+      }
+
+      if (nextStatus === 'Completed') {
+        const fixingReport = await client.query(
+          "SELECT 1 FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2 AND status = 'Acknowledged' LIMIT 1",
+          [trip.id, user.organization_id]
+        );
+        if (fixingReport.rows.length > 0) {
+          throw new TripServiceError('Mark the maintenance issue fixed before continuing the trip.', 409);
+        }
+      }
+
+      if (user.role === 'Driver' && nextStatus === 'Completed' && (!trip.loaded_at || !trip.unloaded_at)) {
+        throw new TripServiceError('Mark the load as loaded and unloaded before completing this trip.', 400);
       }
 
       // 3. Validate transition against state machine
@@ -561,7 +617,15 @@ const tripService = {
         }
 
         if (trip.vehicle_id) {
-          await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
+          const openMaintenanceReport = await client.query(
+            "SELECT 1 FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2 AND status <> 'Resolved' LIMIT 1",
+            [trip.id, user.organization_id]
+          );
+          if (openMaintenanceReport.rows.length > 0) {
+            await Vehicle.setStatusWithClient(client, trip.vehicle_id, 'In Shop', user.organization_id);
+          } else {
+            await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
+          }
           const distanceToLog = parseFloat(actual_distance || 0);
           if (distanceToLog > 0) {
             await Vehicle.incrementOdometer(client, trip.vehicle_id, distanceToLog, user.organization_id);

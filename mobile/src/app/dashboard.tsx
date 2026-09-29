@@ -1,43 +1,38 @@
 import { Redirect, router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { DriverNav } from '@/components/driver/DriverNav';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { getTrips, Trip } from '@/features/trips/tripsApi';
 
 export default function DashboardScreen() {
   const { isRestoring, token, user, signOut } = useAuth();
+  const { t, tripStatus } = useLanguage();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [tripError, setTripError] = useState('');
 
-  useEffect(() => {
+  const loadTrips = useCallback(async (refresh = false) => {
     if (!token) return;
-
-    let isMounted = true;
-    setIsLoadingTrips(true);
+    if (refresh) setIsRefreshing(true);
+    else setIsLoadingTrips(true);
     setTripError('');
-
-    getTrips(token)
-      .then((loadedTrips) => {
-        if (isMounted) setTrips(loadedTrips);
-      })
-      .catch((error) => {
-        if (isMounted) {
-          setTripError(error instanceof Error ? error.message : 'Unable to load trips.');
-        }
-      })
-      .finally(() => {
-        if (isMounted) setIsLoadingTrips(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
+    try {
+      setTrips(await getTrips(token));
+    } catch (error) {
+      setTripError(error instanceof Error ? error.message : 'Unable to load trips.');
+    } finally {
+      setIsLoadingTrips(false);
+      setIsRefreshing(false);
+    }
   }, [token]);
+
+  useEffect(() => { void loadTrips(); }, [loadTrips]);
 
   if (isRestoring) {
     return null;
@@ -59,20 +54,24 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void loadTrips(true)} tintColor="#D97D00" />}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>DRIVER DASHBOARD</Text>
-            <Text style={styles.title}>Good morning, {user.name.split(' ')[0]}</Text>
+            <Text style={styles.eyebrow}>{t('driverDashboard')}</Text>
+            <Text style={styles.title}>{t('greeting', { name: user.name.split(' ')[0] })}</Text>
           </View>
           <Pressable accessibilityRole="button" onPress={handleSignOut} style={styles.signOutButton}>
-            <Text style={styles.signOutText}>Sign out</Text>
+            <Text style={styles.signOutText}>{t('signOut')}</Text>
           </Pressable>
         </View>
 
         <View style={styles.statusRow}>
           <View style={styles.statusDot} />
-          <Text style={styles.statusText}>You're ready for today's work</Text>
+          <Text style={styles.statusText}>{t('readyForWork')}</Text>
         </View>
 
         <Pressable
@@ -88,28 +87,28 @@ export default function DashboardScreen() {
           ]}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={styles.cardEyebrow}>TODAY'S ASSIGNMENT</Text>
-            {activeTrip ? <Text style={{ color: '#F09A1B', fontSize: 12, fontWeight: '700' }}>Open Trip →</Text> : null}
+            <Text style={styles.cardEyebrow}>{t('todaysAssignment')}</Text>
+            {activeTrip ? <Text style={{ color: '#F09A1B', fontSize: 12, fontWeight: '700' }}>{t('openTrip')}</Text> : null}
           </View>
           <Text style={styles.assignmentTitle}>
-            {activeTrip ? `${activeTrip.origin} to ${activeTrip.destination}` : 'No trip assigned yet'}
+            {activeTrip ? t('routeFromTo', { origin: activeTrip.origin, destination: activeTrip.destination }) : t('noTripAssigned')}
           </Text>
           <Text style={styles.assignmentDescription}>
             {activeTrip
-              ? `Status: ${activeTrip.status}${activeTrip.vehicle_registration ? ` · ${activeTrip.vehicle_registration}` : ''}`
-              : tripError || 'Your dispatcher will add an assignment here when your schedule is ready.'}
+              ? `${t('status')}: ${tripStatus(activeTrip.status)}${activeTrip.vehicle?.registration_number || activeTrip.vehicle_registration ? ` · ${activeTrip.vehicle?.registration_number || activeTrip.vehicle_registration}` : ''}`
+              : tripError || t('noSchedule')}
           </Text>
         </Pressable>
 
-        <Text style={styles.sectionTitle}>Quick access</Text>
+        <Text style={styles.sectionTitle}>{t('quickAccess')}</Text>
         <View style={styles.quickRow}>
           <View style={styles.quickCard}>
             <Text style={styles.quickValue}>{isLoadingTrips ? '--' : upcomingTrips}</Text>
-            <Text style={styles.quickLabel}>UPCOMING TRIPS</Text>
+            <Text style={styles.quickLabel}>{t('upcomingTrips')}</Text>
           </View>
           <View style={styles.quickCard}>
             <Text style={styles.quickValue}>--</Text>
-            <Text style={styles.quickLabel}>CURRENT VEHICLE</Text>
+            <Text style={styles.quickLabel}>{t('currentVehicle')}</Text>
           </View>
         </View>
       </ScrollView>

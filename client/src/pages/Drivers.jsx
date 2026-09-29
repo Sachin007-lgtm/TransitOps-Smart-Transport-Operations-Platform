@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import DriverToolbar from '../components/drivers/DriverToolbar';
 import DriverTable from '../components/drivers/DriverTable';
 import AddDriverModal from '../components/drivers/AddDriverModal';
-import EditDriverModal from '../components/drivers/EditDriverModal';
 import CredentialModal from '../components/drivers/CredentialModal';
 import { isLicenseExpired } from '../components/drivers/driverConstants';
 import './Drivers.css';
 
 export default function Drivers() {
+  const navigate = useNavigate();
   const { globalSearch, setGlobalSearch } = useGlobalSearch();
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -246,7 +247,7 @@ export default function Drivers() {
         drivers={filteredDrivers}
         loading={loading}
         onStatusChange={handleStatusChange}
-        onEdit={(driver) => setEditingDriver(driver)}
+        onEdit={(driver) => navigate(`/drivers/${driver.id}`)}
         onResetPassword={handleResetDriverPassword}
         onDelete={handleDeleteDriver}
       />
@@ -257,13 +258,6 @@ export default function Drivers() {
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={handleAddDriver}
         existingDrivers={drivers}
-      />
-
-      {/* Edit Driver Modal */}
-      <EditDriverModal
-        driver={editingDriver}
-        onClose={() => setEditingDriver(null)}
-        onSubmit={handleUpdateDriver}
       />
 
       {/* One-Time Credential Modal */}

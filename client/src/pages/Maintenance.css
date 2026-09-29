@@ -11,6 +11,139 @@
   align-items: flex-start;
 }
 
+.driver-reports-section {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.driver-reports-heading,
+.driver-report-row,
+.driver-report-meta {
+  display: flex;
+  align-items: center;
+}
+
+.driver-reports-heading,
+.driver-report-row {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.driver-reports-count {
+  color: var(--status-orange);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.driver-report-tabs {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-app);
+}
+
+.driver-report-tabs button {
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.driver-report-tabs button.active {
+  color: var(--text);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.driver-reports-error,
+.driver-reports-empty {
+  margin: 1rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.driver-reports-error { color: var(--status-red, #b42318); }
+
+.driver-reports-list { margin-top: 0.75rem; }
+
+.driver-report-row {
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.driver-report-main { min-width: 0; }
+.driver-report-meta { flex-wrap: wrap; gap: 0.5rem; }
+
+.driver-report-priority,
+.driver-report-status {
+  border-radius: 4px;
+  padding: 0.22rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.priority-routine { color: #475467; background: #f2f4f7; }
+.priority-urgent { color: #b54708; background: #ffead5; }
+.priority-critical { color: #b42318; background: #fee4e2; }
+.status-open { color: #b54708; background: #ffead5; }
+.status-acknowledged { color: #175cd3; background: #eff8ff; }
+.status-resolved { color: #027a48; background: #ecfdf3; }
+
+.driver-report-description {
+  margin: 0.55rem 0 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.driver-report-context {
+  margin: 0.3rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.driver-report-financial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.driver-report-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  color: var(--plum-1);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.receipt-pending-badge {
+  color: #9a6500;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .driver-report-row { align-items: flex-start; flex-direction: column; }
+}
+
 /* Form Styles */
 .currency-input-wrapper {
   position: relative;

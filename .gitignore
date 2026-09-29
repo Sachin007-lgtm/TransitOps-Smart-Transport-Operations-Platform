@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+/server/storage/maintenance-receipts/
 
 # Environment variables
 .env

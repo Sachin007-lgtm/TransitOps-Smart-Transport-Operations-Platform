@@ -15,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { LanguageToggle } from '@/components/driver/LanguageToggle';
 
 export default function HomeScreen() {
   const passwordInput = useRef<TextInput>(null);
@@ -22,6 +24,7 @@ export default function HomeScreen() {
   const colors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
   const styles = createStyles(colors);
   const { isRestoring, isSigningIn, signIn, user } = useAuth();
+  const { t } = useLanguage();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -41,12 +44,12 @@ export default function HomeScreen() {
     setError('');
 
     if (!normalizedPhone || !password.trim()) {
-      setError('Enter your phone number and password to continue.');
+      setError(t('enterCredentials'));
       return;
     }
 
     if (normalizedPhone.replace(/\D/g, '').length < 7) {
-      setError('Enter a valid phone number.');
+      setError(t('validPhone'));
       return;
     }
 
@@ -57,7 +60,7 @@ export default function HomeScreen() {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : 'Unable to sign in. Check your connection and try again.',
+          : t('unableSignIn'),
       );
     }
   }
@@ -73,19 +76,20 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.formPanel}>
             <View style={styles.headingBlock}>
-              <Text style={styles.eyebrow}>DRIVER ACCESS</Text>
-              <Text style={styles.title}>Welcome back</Text>
-              <Text style={styles.subtitle}>Sign in to keep your fleet moving with confidence.</Text>
+              <Text style={styles.eyebrow}>{t('driverAccess')}</Text>
+              <Text style={styles.title}>{t('welcomeBack')}</Text>
+              <Text style={styles.subtitle}>{t('loginSubtitle')}</Text>
+              <LanguageToggle />
             </View>
 
             <View style={styles.form}>
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Phone number</Text>
+              <Text style={styles.label}>{t('phoneNumber')}</Text>
               <TextInput
                 autoCapitalize="none"
                 autoComplete="tel"
                 autoCorrect={false}
-                accessibilityLabel="Phone number"
+                accessibilityLabel={t('phoneNumber')}
                 keyboardType="phone-pad"
                 onChangeText={setPhoneNumber}
                 onSubmitEditing={() => passwordInput.current?.focus()}
@@ -99,18 +103,18 @@ export default function HomeScreen() {
 
             <View style={styles.fieldGroup}>
               <View style={styles.labelRow}>
-                <Text style={styles.label}>Password</Text>
+                <Text style={styles.label}>{t('password')}</Text>
                 <Pressable onPress={() => setShowPassword((visible) => !visible)}>
-                  <Text style={styles.actionText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                  <Text style={styles.actionText}>{showPassword ? t('hide') : t('show')}</Text>
                 </Pressable>
               </View>
               <TextInput
                 autoCapitalize="none"
                 autoComplete="password"
-                accessibilityLabel="Password"
+                accessibilityLabel={t('password')}
                 onChangeText={setPassword}
                 onSubmitEditing={handleSubmit}
-                placeholder="Enter your password"
+                placeholder={t('enterPassword')}
                 placeholderTextColor={colors.textSecondary}
                 ref={passwordInput}
                 returnKeyType="done"
@@ -121,7 +125,7 @@ export default function HomeScreen() {
             </View>
 
             <Pressable style={styles.forgotButton}>
-              <Text style={styles.actionText}>Forgot password?</Text>
+              <Text style={styles.actionText}>{t('forgotPassword')}</Text>
             </Pressable>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -131,16 +135,16 @@ export default function HomeScreen() {
               disabled={isSigningIn}
               onPress={handleSubmit}
               style={({ pressed }) => [styles.submitButton, pressed && styles.submitPressed]}>
-              <Text style={styles.submitText}>{isSigningIn ? 'Signing in...' : 'Sign in'}</Text>
+              <Text style={styles.submitText}>{isSigningIn ? t('signingIn') : t('signIn')}</Text>
               {!isSigningIn ? <Text style={styles.submitArrow}>-&gt;</Text> : null}
             </Pressable>
             </View>
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Need access to your fleet?</Text>
+            <Text style={styles.footerText}>{t('needFleetAccess')}</Text>
             <Pressable>
-              <Text style={styles.actionText}>Contact your administrator</Text>
+              <Text style={styles.actionText}>{t('contactAdministrator')}</Text>
             </Pressable>
           </View>
         </ScrollView>

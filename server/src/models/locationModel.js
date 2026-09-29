@@ -93,7 +93,6 @@ const Location = {
         t.start_time,
         t.expected_arrival,
         t.actual_arrival,
-        t.planned_distance,
         t.cargo_weight,
         v.id AS vehicle_id,
         v.registration_number AS vehicle_registration,

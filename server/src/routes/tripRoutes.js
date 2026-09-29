@@ -9,12 +9,14 @@ const {
   getTripById,
   updateTrip,
   updateTripStatus,
+  updateTripLoadingMilestone,
   deleteTrip
 } = require('../controllers/tripController');
 const {
   validateCreateTrip,
   validateUpdateTrip,
-  validateUpdateTripStatus
+  validateUpdateTripStatus,
+  validateUpdateTripLoading
 } = require('../validators/tripValidator');
 
 // All trip endpoints require valid JWT authentication with tenant context
@@ -58,5 +60,12 @@ router.route('/:id/status')
     validateUpdateTripStatus,
     updateTripStatus
   );
+
+router.patch(
+  '/:id/loading',
+  authorize(['Owner/Manager', 'Driver']),
+  validateUpdateTripLoading,
+  updateTripLoadingMilestone
+);
 
 module.exports = router;

@@ -80,7 +80,7 @@ const Trip = {
              -- Legacy alias for backwards-compatibility
              t.origin AS source,
              o.name AS organization_name,
-             v.registration_number AS vehicle_name,
+             v.name AS vehicle_name,
              v.registration_number AS vehicle_registration,
              v.type AS vehicle_type,
              v.max_load_capacity AS vehicle_capacity,
@@ -189,7 +189,7 @@ const Trip = {
              t.origin AS source,
              o.name AS organization_name,
              c.name AS company_name,
-             v.registration_number AS vehicle_name,
+             v.name AS vehicle_name,
              v.registration_number AS vehicle_registration,
              v.type AS vehicle_type,
              v.max_load_capacity AS vehicle_capacity,
@@ -275,6 +275,8 @@ const Trip = {
       'start_time',
       'expected_arrival',
       'actual_arrival',
+      'loaded_at',
+      'unloaded_at',
       'status',
       // Billing metadata. billing_status / bill_id are deliberately absent:
       // they are owned by the billing module (only a generated bill may set

@@ -55,6 +55,15 @@ const updateTripStatus = asyncWrapper(async (req, res) => {
   }
 });
 
+const updateTripLoadingMilestone = asyncWrapper(async (req, res) => {
+  try {
+    const updated = await tripService.updateLoadingMilestone(req.params.id, req.body.action, req.user);
+    return apiResponse.success(res, updated, `Trip marked ${req.body.action}.`);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 const deleteTrip = asyncWrapper(async (req, res) => {
   try {
     const deleted = await tripService.deleteTrip(req.params.id, req.user);
@@ -70,5 +79,6 @@ module.exports = {
   getTripById,
   updateTrip,
   updateTripStatus,
+  updateTripLoadingMilestone,
   deleteTrip
 };

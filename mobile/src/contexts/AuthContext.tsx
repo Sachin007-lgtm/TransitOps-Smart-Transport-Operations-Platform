@@ -1,8 +1,9 @@
-import * as SecureStore from 'expo-secure-store';
+import { getItem, setItem, deleteItem } from '@/utils/secureStorage';
 import { createContext, PropsWithChildren, useContext, useEffect, useState } from 'react';
 
 import { ApiError } from '@/utils/api';
 import { AuthUser, changePassword, getCurrentUser, login } from '@/features/auth/authApi';
+import { stopBackgroundLocationUpdates } from '@/features/location/locationService';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -28,8 +29,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     async function restoreSession() {
       try {
         const [storedToken, storedUser] = await Promise.all([
-          SecureStore.getItemAsync(TOKEN_KEY),
-          SecureStore.getItemAsync(USER_KEY),
+          getItem(TOKEN_KEY),
+          getItem(USER_KEY),
         ]);
 
         if (storedToken && storedUser) {
@@ -39,7 +40,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             const currentUser = await getCurrentUser(storedToken);
             setToken(storedToken);
             setUser(currentUser);
-            await SecureStore.setItemAsync(USER_KEY, JSON.stringify(currentUser));
+            await setItem(USER_KEY, JSON.stringify(currentUser));
           } catch (error) {
             if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
               await clearStoredSession();
@@ -51,8 +52,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
       } catch {
         await Promise.all([
-          SecureStore.deleteItemAsync(TOKEN_KEY),
-          SecureStore.deleteItemAsync(USER_KEY),
+          deleteItem(TOKEN_KEY),
+          deleteItem(USER_KEY),
         ]);
       } finally {
         setIsRestoring(false);
@@ -70,8 +71,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setUser(response.data.user);
       setToken(response.data.token);
       await Promise.all([
-        SecureStore.setItemAsync(TOKEN_KEY, response.data.token),
-        SecureStore.setItemAsync(USER_KEY, JSON.stringify(response.data.user)),
+        setItem(TOKEN_KEY, response.data.token),
+        setItem(USER_KEY, JSON.stringify(response.data.user)),
       ]);
       return response.data.user;
     } catch (error) {
@@ -91,15 +92,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
     const refreshedUser = await getCurrentUser(token);
     setUser(refreshedUser);
-    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(refreshedUser));
+    await setItem(USER_KEY, JSON.stringify(refreshedUser));
   }
 
   async function signOut() {
     setUser(null);
     setToken(null);
+    await stopBackgroundLocationUpdates();
     await Promise.all([
-      SecureStore.deleteItemAsync(TOKEN_KEY),
-      SecureStore.deleteItemAsync(USER_KEY),
+      deleteItem(TOKEN_KEY),
+      deleteItem(USER_KEY),
     ]);
   }
 
@@ -111,9 +113,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
 }
 
 async function clearStoredSession() {
+  await stopBackgroundLocationUpdates();
   await Promise.all([
-    SecureStore.deleteItemAsync(TOKEN_KEY),
-    SecureStore.deleteItemAsync(USER_KEY),
+    deleteItem(TOKEN_KEY),
+    deleteItem(USER_KEY),
   ]);
 }
 
