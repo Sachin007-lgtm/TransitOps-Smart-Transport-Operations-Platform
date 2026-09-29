@@ -51,7 +51,7 @@ const maintenanceModel = {
 					mr.resolution_note, mr.resolved_at, mr.created_at, mr.updated_at,
 					(mr.receipt_storage_key IS NOT NULL) AS has_receipt,
 					v.registration_number AS vehicle_registration,
-						 v.name AS vehicle_name, d.name AS driver_name,
+						 v.registration_number AS vehicle_name, d.name AS driver_name,
 						 t.origin, t.destination
 			FROM maintenance_reports mr
 			JOIN vehicles v ON v.id = mr.vehicle_id AND v.organization_id = mr.organization_id

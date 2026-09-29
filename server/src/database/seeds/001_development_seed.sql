@@ -419,7 +419,7 @@ ON CONFLICT (id) DO UPDATE SET
 -- 6. Insert Trips
 INSERT INTO trips (
     id, organization_id, origin, destination, planned_route,
-    vehicle_id, driver_id, cargo_weight, planned_distance, revenue,
+    vehicle_id, driver_id, cargo_weight, revenue,
     start_time, expected_arrival, status
 ) VALUES
 (
@@ -431,7 +431,6 @@ INSERT INTO trips (
     '01950000-0003-7000-8000-000000000001',
     '01950000-0002-7000-8000-000000000001',
     350.00,
-    148.50,
     7500.00,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP + INTERVAL '4 hours',
