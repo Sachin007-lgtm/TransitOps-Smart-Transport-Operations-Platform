@@ -7,6 +7,7 @@ import {
   Alert,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { requestTripLocationPermissions } from '@/features/location/locationService';
 import { useLocationTracking } from '@/features/location/useLocationTracking';
 import {
@@ -37,9 +39,11 @@ export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { token, user, isRestoring } = useAuth();
+  const { t, tripStatus } = useLanguage();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -73,10 +77,10 @@ export default function TripDetailScreen() {
   });
   const isLocationStale = lastSentAt ? Date.now() - lastSentAt.getTime() > 30000 : true;
 
-  const loadTrip = useCallback(async () => {
+  const loadTrip = useCallback(async (refresh = false) => {
     if (!token || !tripId) return;
     try {
-      setIsLoading(true);
+      if (!refresh) setIsLoading(true);
       setErrorMessage('');
       const data = await getTripById(tripId, token);
       setTrip(data);
@@ -88,8 +92,26 @@ export default function TripDetailScreen() {
   }, [token, tripId]);
 
   useEffect(() => {
-    loadTrip();
+    void loadTrip();
   }, [loadTrip]);
+
+  const refreshTrip = useCallback(async () => {
+    if (!token || !tripId) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        loadTrip(true),
+        getTripMaintenanceReport(tripId, token)
+          .then(report => {
+            setMaintenanceReport(report);
+            if (report?.repair_cost != null) setRepairCostInput(String(report.repair_cost));
+          })
+          .catch(() => setMaintenanceReport(null)),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [loadTrip, token, tripId]);
 
   useEffect(() => {
     if (!token || !tripId) {
@@ -125,45 +147,45 @@ export default function TripDetailScreen() {
       const permission = await requestTripLocationPermissions();
       if (!permission.granted) {
         Alert.alert(
-          'Location permission required',
-          'Allow location access all the time so TransitOps can keep sharing the trip when the screen is locked.',
+          t('locationPermissionRequired'),
+          t('locationPermissionExplanation'),
           permission.canAskAgain
-            ? [{ text: 'OK' }]
+            ? [{ text: t('okay') }]
             : [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                { text: t('cancel'), style: 'cancel' },
+                { text: t('openSettings'), onPress: () => Linking.openSettings() },
               ]
         );
         return;
       }
     } catch (error) {
-      Alert.alert('Location setup failed', error instanceof Error ? error.message : 'Please check location settings.');
+      Alert.alert(t('locationSetupFailed'), error instanceof Error ? error.message : t('checkLocationSettings'));
       return;
     } finally {
       setActionLoading(false);
     }
 
     const batteryMessage = Platform.OS === 'android'
-      ? 'For reliable background tracking, set TransitOps battery usage to Unrestricted in Android Settings. You can do this now or change it later.'
-      : 'Live location sharing will continue during this trip.';
+      ? t('batteryHint')
+      : t('locationShareActive');
 
     Alert.alert(
-      'Start Trip',
-      `Are you ready to depart? Live GPS location sharing will begin automatically.\n\n${batteryMessage}`,
+      t('startTripTitle'),
+      `${t('readyToDepart')}\n\n${batteryMessage}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         ...(Platform.OS === 'android'
-          ? [{ text: 'Battery Settings', onPress: () => Linking.openSettings() }]
+          ? [{ text: t('batterySettings'), onPress: () => Linking.openSettings() }]
           : []),
         {
-          text: 'Start Trip',
+          text: t('startTrip'),
           onPress: async () => {
             try {
               setActionLoading(true);
               const updated = await updateTripStatus(tripId, 'Dispatched', token);
               setTrip(updated);
             } catch (err) {
-              Alert.alert('Unable to Start Trip', err instanceof Error ? err.message : 'Please check your connection.');
+              Alert.alert(t('unableStartTrip'), err instanceof Error ? err.message : t('checkConnection'));
             } finally {
               setActionLoading(false);
             }
@@ -180,9 +202,9 @@ export default function TripDetailScreen() {
       setActionLoading(true);
       const updated = await updateTripStatus(tripId, 'Completed', token);
       setTrip(updated);
-      Alert.alert('Trip Completed', 'Great job! Live GPS sharing has ended and fleet assets have been updated.');
+      Alert.alert(t('tripCompleted'), t('tripCompletedMessage'));
     } catch (err) {
-      Alert.alert('Unable to Complete Trip', err instanceof Error ? err.message : 'Please try again.');
+      Alert.alert(t('unableCompleteTrip'), err instanceof Error ? err.message : t('tryAgain'));
     } finally {
       setActionLoading(false);
     }
@@ -194,10 +216,10 @@ export default function TripDetailScreen() {
       setActionLoading(true);
       const updated = await updateTripLoadingMilestone(tripId, action, token);
       setTrip(updated);
-      Alert.alert(action === 'loaded' ? 'Load Confirmed' : 'Unload Confirmed',
-        action === 'loaded' ? 'The truck is marked as loaded.' : 'The delivery is marked as unloaded. You can now end the trip.');
+      Alert.alert(action === 'loaded' ? t('loadConfirmed') : t('unloadConfirmed'),
+        action === 'loaded' ? t('loadConfirmedMessage') : t('unloadConfirmedMessage'));
     } catch (err) {
-      Alert.alert('Unable to Update Load Status', err instanceof Error ? err.message : 'Please try again.');
+      Alert.alert(t('unableUpdateLoad'), err instanceof Error ? err.message : t('tryAgain'));
     } finally {
       setActionLoading(false);
     }
@@ -206,7 +228,7 @@ export default function TripDetailScreen() {
   async function handleMaintenanceReport() {
     if (!token || !tripId) return;
     if (maintenanceDescription.trim().length < 5) {
-      Alert.alert('Add issue details', 'Describe the vehicle issue in at least 5 characters.');
+      Alert.alert(t('addIssueDetails'), t('issueDetailsMin'));
       return;
     }
     try {
@@ -215,9 +237,9 @@ export default function TripDetailScreen() {
       setMaintenanceReport(report);
       setMaintenanceDescription('');
       setMaintenanceFormOpen(false);
-      Alert.alert('Report Sent', 'The fleet manager can now review this vehicle issue in Maintenance.');
+      Alert.alert(t('reportSent'), t('reportSentMessage'));
     } catch (err) {
-      Alert.alert('Unable to Send Report', err instanceof Error ? err.message : 'Please try again.');
+      Alert.alert(t('unableSendReport'), err instanceof Error ? err.message : t('tryAgain'));
     } finally {
       setActionLoading(false);
     }
@@ -230,7 +252,7 @@ export default function TripDetailScreen() {
       const updated = await updateMaintenanceReportStatus(maintenanceReport.id, status, token);
       setMaintenanceReport(updated);
     } catch (err) {
-      Alert.alert('Unable to Update Issue', err instanceof Error ? err.message : 'Please try again.');
+      Alert.alert(t('unableUpdateIssue'), err instanceof Error ? err.message : t('tryAgain'));
     } finally {
       setActionLoading(false);
     }
@@ -246,7 +268,7 @@ export default function TripDetailScreen() {
       if (result.canceled || !result.assets[0]) return null;
       const asset = result.assets[0];
       if (asset.size != null && asset.size > 10 * 1024 * 1024) {
-        Alert.alert('Bill is too large', 'Choose a PDF or image no larger than 10 MB.');
+        Alert.alert(t('billTooLarge'), t('billSizeLimit'));
         return null;
       }
       const extension = asset.name.toLowerCase().split('.').pop();
@@ -258,7 +280,7 @@ export default function TripDetailScreen() {
       setReceiptPending(false);
       return file;
     } catch (error) {
-      Alert.alert('Unable to Select Bill', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert(t('unableSelectBill'), error instanceof Error ? error.message : t('tryAgain'));
       return null;
     }
   }
@@ -268,11 +290,11 @@ export default function TripDetailScreen() {
     const costText = repairCostInput.trim();
     const repairCost = Number(costText);
     if (!costText || !Number.isFinite(repairCost) || repairCost < 0) {
-      Alert.alert('Enter repair cost', 'Enter the amount paid, or 0 if the repair had no cost.');
+      Alert.alert(t('enterRepairCost'), t('repairCostHint'));
       return;
     }
     if (repairCost > 0 && !repairReceipt && !receiptPending) {
-      Alert.alert('Bill required', 'Upload the bill now or mark the receipt as pending.');
+      Alert.alert(t('billRequired'), t('billRequiredHint'));
       return;
     }
 
@@ -287,9 +309,9 @@ export default function TripDetailScreen() {
       );
       setMaintenanceReport(fixedReport);
       setRepairReceipt(null);
-      Alert.alert('Issue Fixed', 'Repair cost recorded. You can continue the trip.');
+      Alert.alert(t('issueFixedTitle'), t('issueFixedMessage'));
     } catch (error) {
-      Alert.alert('Unable to Complete Repair', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert(t('unableCompleteRepair'), error instanceof Error ? error.message : t('tryAgain'));
     } finally {
       setActionLoading(false);
     }
@@ -305,9 +327,9 @@ export default function TripDetailScreen() {
       const updated = await uploadPendingMaintenanceReceipt(maintenanceReport.id, receipt, token);
       setMaintenanceReport(updated);
       setRepairReceipt(null);
-      Alert.alert('Bill Uploaded', 'The receipt is attached to maintenance history.');
+      Alert.alert(t('billUploadedTitle'), t('receiptAttached'));
     } catch (error) {
-      Alert.alert('Unable to Upload Bill', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert(t('unableUploadBill'), error instanceof Error ? error.message : t('tryAgain'));
     } finally {
       setActionLoading(false);
     }
@@ -321,28 +343,29 @@ export default function TripDetailScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>← {t('back')}</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Trip #{tripId}</Text>
+        <Text style={styles.headerTitle}>{t('tripTitle', { id: tripId || '' })}</Text>
         <View style={{ width: 60 }} />
       </View>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void refreshTrip()} tintColor="#D97D00" />}
         showsVerticalScrollIndicator={false}
       >
         {isLoading ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator color="#D97D00" size="large" />
-            <Text style={styles.loadingText}>Loading trip details...</Text>
+            <Text style={styles.loadingText}>{t('loadingTrip')}</Text>
           </View>
         ) : errorMessage ? (
           <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Error Loading Trip</Text>
+            <Text style={styles.errorTitle}>{t('errorLoadingTrip')}</Text>
             <Text style={styles.errorSubtitle}>{errorMessage}</Text>
-            <Pressable onPress={loadTrip} style={styles.retryButton}>
-              <Text style={styles.retryButtonText}>Retry</Text>
+            <Pressable onPress={() => void loadTrip()} style={styles.retryButton}>
+              <Text style={styles.retryButtonText}>{t('retry')}</Text>
             </Pressable>
           </View>
         ) : trip ? (
@@ -351,7 +374,7 @@ export default function TripDetailScreen() {
             <View style={styles.card}>
               <View style={styles.routeHeader}>
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusBadgeText}>{trip.status.toUpperCase()}</Text>
+                  <Text style={styles.statusBadgeText}>{tripStatus(trip.status)}</Text>
                 </View>
                 {trip.cargo_weight ? (
                   <Text style={styles.cargoText}>{trip.cargo_weight} kg</Text>
@@ -364,22 +387,22 @@ export default function TripDetailScreen() {
 
               {trip.planned_route ? (
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Planned Route</Text>
+                  <Text style={styles.detailLabel}>{t('plannedRoute')}</Text>
                   <Text style={styles.detailValue}>{trip.planned_route}</Text>
                 </View>
               ) : null}
 
               <View style={styles.statsRow}>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>DISTANCE</Text>
+                  <Text style={styles.statLabel}>{t('distance')}</Text>
                   <Text style={styles.statValue}>
                     {trip.planned_distance ? `${trip.planned_distance} km` : '--'}
                   </Text>
                 </View>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>ASSIGNED VEHICLE</Text>
+                  <Text style={styles.statLabel}>{t('assignedVehicle')}</Text>
                   <Text style={styles.statValue}>
-                    {trip.vehicle?.name || trip.vehicle_name || (trip.vehicle?.registration_number || trip.vehicle_registration ? 'Vehicle' : 'Vehicle not assigned')}
+                    {trip.vehicle?.name || trip.vehicle_name || (trip.vehicle?.registration_number || trip.vehicle_registration ? t('vehicleFallback') : t('vehicleNotAssigned'))}
                   </Text>
                   {trip.vehicle?.registration_number || trip.vehicle_registration ? (
                     <Text style={styles.detailValue}>{trip.vehicle?.registration_number || trip.vehicle_registration}</Text>
@@ -390,7 +413,7 @@ export default function TripDetailScreen() {
 
             {/* GPS Live Telemetry Section */}
             <View style={styles.card}>
-              <Text style={styles.cardSectionTitle}>OPERATIONAL TELEMETRY</Text>
+              <Text style={styles.cardSectionTitle}>{t('operationsTelemetry')}</Text>
 
               {isDispatched ? (
                 <>
@@ -403,49 +426,49 @@ export default function TripDetailScreen() {
                     />
                     <Text style={styles.telemetryTitle}>
                       {gpsQuality === 'poor'
-                        ? 'GPS accuracy is poor'
+                        ? t('gpsAccuracyPoor')
                         : connectionState === 'offline'
-                        ? 'Offline - retrying GPS sync'
+                        ? t('offlineRetry')
                         : isTracking
                         ? isLocationStale
-                          ? 'GPS update is stale'
-                          : 'Live GPS Sharing Active'
+                          ? t('staleGps')
+                          : t('liveGps')
                         : permissionStatus === 'denied'
-                        ? 'GPS Permission Required'
-                        : 'Connecting GPS...'}
+                        ? t('gpsPermissionRequired')
+                        : t('connectingGps')}
                     </Text>
                   </View>
 
                   {permissionStatus === 'denied' ? (
                     <View style={styles.permissionBox}>
                       <Text style={styles.permissionText}>
-                        TransitOps needs device location permission to stream real-time trip progress to dispatchers.
+                        {t('gpsPermissionExplanation')}
                       </Text>
                       <Pressable onPress={requestPermission} style={styles.permissionButton}>
-                        <Text style={styles.permissionButtonText}>Enable Location</Text>
+                        <Text style={styles.permissionButtonText}>{t('enableLocation')}</Text>
                       </Pressable>
                     </View>
                   ) : null}
 
                   <View style={styles.gpsGrid}>
                     <View style={styles.gpsGridItem}>
-                      <Text style={styles.gpsGridLabel}>TELEMETRY SYNCS</Text>
+                      <Text style={styles.gpsGridLabel}>{t('telemetrySyncs')}</Text>
                       <Text style={styles.gpsGridValue}>{sendCount}</Text>
                     </View>
                     <View style={styles.gpsGridItem}>
-                      <Text style={styles.gpsGridLabel}>LAST UPDATE</Text>
+                      <Text style={styles.gpsGridLabel}>{t('lastUpdate')}</Text>
                       <Text style={styles.gpsGridValue}>
-                        {lastSentAt ? lastSentAt.toLocaleTimeString() : 'Waiting...'}
+                        {lastSentAt ? lastSentAt.toLocaleTimeString() : t('waiting')}
                       </Text>
                     </View>
                     <View style={styles.gpsGridItem}>
-                      <Text style={styles.gpsGridLabel}>LATITUDE</Text>
+                      <Text style={styles.gpsGridLabel}>{t('latitude')}</Text>
                       <Text style={styles.gpsGridValue}>
                         {lastLocation ? lastLocation.latitude.toFixed(5) : '--'}
                       </Text>
                     </View>
                     <View style={styles.gpsGridItem}>
-                      <Text style={styles.gpsGridLabel}>LONGITUDE</Text>
+                      <Text style={styles.gpsGridLabel}>{t('longitude')}</Text>
                       <Text style={styles.gpsGridValue}>
                         {lastLocation ? lastLocation.longitude.toFixed(5) : '--'}
                       </Text>
@@ -459,25 +482,25 @@ export default function TripDetailScreen() {
               ) : trip.status === 'Draft' || trip.status === 'Planned' ? (
                 <View style={styles.idleTelemetryBox}>
                   <Text style={styles.idleTelemetryText}>
-                    This trip is {trip.status.toLowerCase()}. Your dispatcher must assign it to you before you can start.
+                    {t('tripDraftMessage', { status: tripStatus(trip.status) })}
                   </Text>
                 </View>
               ) : trip.status === 'Assigned' ? (
                 <View style={styles.idleTelemetryBox}>
                   <Text style={styles.idleTelemetryText}>
-                    GPS location streaming will start automatically once you tap "Start Trip".
+                    {t('assignedGpsMessage')}
                   </Text>
                 </View>
               ) : trip.status === 'Completed' ? (
                 <View style={styles.idleTelemetryBox}>
                   <Text style={styles.completedTelemetryText}>
-                    ✓ Trip completed. Location tracking deactivated.
+                    {t('tripCompletedStatus')}
                   </Text>
                 </View>
               ) : (
                 <View style={styles.idleTelemetryBox}>
                   <Text style={styles.idleTelemetryText}>
-                    Trip status: {trip.status}. Live tracking inactive.
+                    {t('tripStatus', { status: tripStatus(trip.status) })}
                   </Text>
                 </View>
               )}
@@ -498,30 +521,30 @@ export default function TripDetailScreen() {
                 {actionLoading ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.primaryActionText}>Start Trip</Text>
+                  <Text style={styles.primaryActionText}>{t('startTrip')}</Text>
                 )}
               </Pressable>
             ) : null}
 
             {trip.status === 'Dispatched' ? (
               <View style={styles.tripOperationsCard}>
-                <Text style={styles.tripOperationsTitle}>DELIVERY CHECKPOINTS</Text>
+                <Text style={styles.tripOperationsTitle}>{t('deliveryCheckpoints')}</Text>
                 <View style={styles.checkpointStatusRow}>
-                  <Text style={styles.checkpointStatusLabel}>Loading</Text>
+                  <Text style={styles.checkpointStatusLabel}>{t('loadingStatus')}</Text>
                   <Text style={trip.loaded_at ? styles.checkpointStatusDone : styles.checkpointStatusWaiting}>
-                    {trip.loaded_at ? 'Loaded' : 'Waiting to load'}
+                    {trip.loaded_at ? t('loaded') : t('waitingToLoad')}
                   </Text>
                 </View>
                 {trip.loaded_at ? (
                   <View style={styles.checkpointStatusRow}>
-                    <Text style={styles.checkpointStatusLabel}>Unloading</Text>
+                    <Text style={styles.checkpointStatusLabel}>{t('unloadingStatus')}</Text>
                     <Text style={trip.unloaded_at ? styles.checkpointStatusDone : styles.checkpointStatusWaiting}>
-                      {trip.unloaded_at ? 'Unloaded' : 'Waiting to unload'}
+                      {trip.unloaded_at ? t('unloaded') : t('waitingToUnload')}
                     </Text>
                   </View>
                 ) : null}
                 {isMaintenanceFixing ? (
-                  <Text style={styles.tripPausedText}>Trip actions are paused until the issue is marked fixed.</Text>
+                  <Text style={styles.tripPausedText}>{t('tripPaused')}</Text>
                 ) : null}
                 {!trip.loaded_at ? (
                   <Pressable
@@ -530,7 +553,7 @@ export default function TripDetailScreen() {
                     onPress={() => handleLoadingMilestone('loaded')}
                     style={({ pressed }) => [styles.loadActionButton, pressed && styles.actionButtonPressed, (actionLoading || isMaintenanceFixing) && styles.buttonDisabled]}
                   >
-                    <Text style={styles.loadActionText}>Mark Loaded</Text>
+                    <Text style={styles.loadActionText}>{t('markLoaded')}</Text>
                   </Pressable>
                 ) : !trip.unloaded_at ? (
                   <Pressable
@@ -539,38 +562,38 @@ export default function TripDetailScreen() {
                     onPress={() => handleLoadingMilestone('unloaded')}
                       style={({ pressed }) => [styles.unloadActionButton, pressed && styles.actionButtonPressed, (actionLoading || isMaintenanceFixing) && styles.buttonDisabled]}
                   >
-                    <Text style={styles.unloadActionText}>Mark Unloaded</Text>
+                    <Text style={styles.unloadActionText}>{t('markUnloaded')}</Text>
                   </Pressable>
                 ) : (
-                  <Text style={styles.checkpointCompleteText}>Loaded and unloaded. Ready to end trip.</Text>
+                  <Text style={styles.checkpointCompleteText}>{t('checkpointsComplete')}</Text>
                 )}
 
                 {maintenanceReport?.status === 'Resolved' ? (
                   <View style={styles.reportResolvedBox}>
-                    <Text style={styles.reportResolvedTitle}>Issue fixed</Text>
+                    <Text style={styles.reportResolvedTitle}>{t('issueFixed')}</Text>
                     <Text style={styles.reportResolvedText}>
-                      Repair cost: ₹{Number(maintenanceReport.repair_cost || 0).toLocaleString('en-IN')}
+                      {t('repairCost')}: ₹{Number(maintenanceReport.repair_cost || 0).toLocaleString('en-IN')}
                     </Text>
                     {maintenanceReport.receipt_pending ? (
                       <>
-                        <Text style={styles.receiptPendingText}>Receipt pending</Text>
+                        <Text style={styles.receiptPendingText}>{t('receiptPending')}</Text>
                         <Pressable
                           accessibilityRole="button"
                           disabled={actionLoading}
                           onPress={handleUploadPendingReceipt}
                           style={[styles.receiptUploadButton, actionLoading && styles.buttonDisabled]}
                         >
-                          <Text style={styles.receiptUploadButtonText}>{actionLoading ? 'Uploading...' : 'Upload Bill'}</Text>
+                          <Text style={styles.receiptUploadButtonText}>{actionLoading ? t('uploading') : t('uploadBill')}</Text>
                         </Pressable>
                       </>
                     ) : maintenanceReport.receipt_file_name ? (
-                      <Text style={styles.receiptUploadedText}>Bill uploaded: {maintenanceReport.receipt_file_name}</Text>
+                      <Text style={styles.receiptUploadedText}>{t('billUploaded', { name: maintenanceReport.receipt_file_name })}</Text>
                     ) : null}
                   </View>
                 ) : null}
                 {maintenanceReport && maintenanceReport.status !== 'Resolved' ? (
                   <View style={styles.maintenanceWorkflow}>
-                    <Text style={styles.maintenanceWorkflowTitle}>VEHICLE ISSUE · {maintenanceReport.priority.toUpperCase()}</Text>
+                    <Text style={styles.maintenanceWorkflowTitle}>{t('vehicleIssue', { priority: maintenanceReport.priority === 'Routine' ? t('routine') : maintenanceReport.priority === 'Urgent' ? t('urgent') : t('critical') })}</Text>
                     <Text style={styles.maintenanceWorkflowDescription}>{maintenanceReport.description}</Text>
                     {maintenanceReport.status === 'Open' ? (
                       <Pressable
@@ -579,16 +602,16 @@ export default function TripDetailScreen() {
                         onPress={() => handleMaintenanceStatus('Acknowledged')}
                         style={[styles.maintenanceChoice, styles.maintenanceChoiceSelected]}
                       >
-                        <Text style={[styles.maintenanceChoiceText, styles.maintenanceChoiceTextSelected]}>Fixing</Text>
+                        <Text style={[styles.maintenanceChoiceText, styles.maintenanceChoiceTextSelected]}>{t('fixing')}</Text>
                       </Pressable>
                     ) : (
                       <View style={[styles.maintenanceChoice, styles.maintenanceChoiceSelected]}>
-                        <Text style={[styles.maintenanceChoiceText, styles.maintenanceChoiceTextSelected]}>Fixing</Text>
+                        <Text style={[styles.maintenanceChoiceText, styles.maintenanceChoiceTextSelected]}>{t('fixing')}</Text>
                       </View>
                     )}
                     {maintenanceReport.status === 'Acknowledged' ? (
                       <View style={styles.repairCloseoutForm}>
-                        <Text style={styles.inputLabel}>REPAIR COST (₹)</Text>
+                        <Text style={styles.inputLabel}>{t('repairCostLabel')}</Text>
                         <TextInput
                           keyboardType="decimal-pad"
                           onChangeText={setRepairCostInput}
@@ -604,7 +627,7 @@ export default function TripDetailScreen() {
                           style={[styles.receiptUploadButton, actionLoading && styles.buttonDisabled]}
                         >
                           <Text style={styles.receiptUploadButtonText}>
-                            {repairReceipt ? `Bill: ${repairReceipt.name}` : 'Upload repair bill'}
+                            {repairReceipt ? `${t('billLabel')}: ${repairReceipt.name}` : t('receiptUpload')}
                           </Text>
                         </Pressable>
                         <Pressable
@@ -619,7 +642,7 @@ export default function TripDetailScreen() {
                           <View style={[styles.receiptCheckbox, receiptPending && styles.receiptCheckboxChecked]}>
                             {receiptPending ? <Text style={styles.receiptCheckmark}>✓</Text> : null}
                           </View>
-                          <Text style={styles.receiptPendingToggleText}>Receipt not available yet</Text>
+                          <Text style={styles.receiptPendingToggleText}>{t('receiptUnavailable')}</Text>
                         </Pressable>
                         <Pressable
                           accessibilityRole="button"
@@ -627,7 +650,7 @@ export default function TripDetailScreen() {
                           onPress={handleResolveMaintenanceReport}
                           style={[styles.reportSubmitButton, actionLoading && styles.buttonDisabled]}
                         >
-                          <Text style={styles.reportSubmitText}>{actionLoading ? 'Saving...' : 'Mark Fixed'}</Text>
+                          <Text style={styles.reportSubmitText}>{actionLoading ? t('saving') : t('markFixed')}</Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -640,7 +663,7 @@ export default function TripDetailScreen() {
                       style={[styles.maintenanceToggle, maintenanceFormOpen && styles.maintenanceToggleActive]}
                     >
                       <Text style={styles.maintenanceToggleText}>
-                        {maintenanceFormOpen ? 'Cancel maintenance report' : 'Report vehicle issue'}
+                        {maintenanceFormOpen ? t('cancelReport') : t('reportVehicleIssue')}
                       </Text>
                       <View style={[styles.toggleTrack, maintenanceFormOpen && styles.toggleTrackActive]}>
                         <View style={[styles.toggleThumb, maintenanceFormOpen && styles.toggleThumbActive]} />
@@ -648,17 +671,17 @@ export default function TripDetailScreen() {
                     </Pressable>
                     {maintenanceFormOpen ? (
                   <View style={styles.maintenanceForm}>
-                    <Text style={styles.inputLabel}>ISSUE DETAILS</Text>
+                    <Text style={styles.inputLabel}>{t('issueDetails')}</Text>
                     <TextInput
                       multiline
                       maxLength={2000}
                       onChangeText={setMaintenanceDescription}
-                      placeholder="Describe the vehicle issue"
+                      placeholder={t('describeVehicleIssue')}
                       placeholderTextColor="#9E94A3"
                       style={styles.maintenanceInput}
                       value={maintenanceDescription}
                     />
-                    <Text style={styles.inputLabel}>PRIORITY</Text>
+                    <Text style={styles.inputLabel}>{t('priority')}</Text>
                     <View style={styles.priorityRow}>
                       {(['Routine', 'Urgent', 'Critical'] as const).map(priority => (
                         <Pressable
@@ -667,7 +690,7 @@ export default function TripDetailScreen() {
                           style={[styles.priorityOption, maintenancePriority === priority && styles.priorityOptionSelected]}
                         >
                           <Text style={[styles.priorityOptionText, maintenancePriority === priority && styles.priorityOptionTextSelected]}>
-                            {priority}
+                            {priority === 'Routine' ? t('routine') : priority === 'Urgent' ? t('urgent') : t('critical')}
                           </Text>
                         </Pressable>
                       ))}
@@ -678,7 +701,7 @@ export default function TripDetailScreen() {
                       onPress={handleMaintenanceReport}
                       style={[styles.reportSubmitButton, actionLoading && styles.buttonDisabled]}
                     >
-                      <Text style={styles.reportSubmitText}>{actionLoading ? 'Sending...' : 'Send to Maintenance'}</Text>
+                      <Text style={styles.reportSubmitText}>{actionLoading ? t('sending') : t('sendToMaintenance')}</Text>
                     </Pressable>
                   </View>
                     ) : null}
@@ -689,9 +712,9 @@ export default function TripDetailScreen() {
 
             {trip.status !== 'Dispatched' && maintenanceReport?.status === 'Resolved' && maintenanceReport.receipt_pending ? (
               <View style={styles.receiptPendingCard}>
-                <Text style={styles.reportResolvedTitle}>Repair receipt pending</Text>
+                <Text style={styles.reportResolvedTitle}>{t('repairReceiptPending')}</Text>
                 <Text style={styles.reportResolvedText}>
-                  Repair cost: ₹{Number(maintenanceReport.repair_cost || 0).toLocaleString('en-IN')}
+                  {t('repairCost')}: ₹{Number(maintenanceReport.repair_cost || 0).toLocaleString('en-IN')}
                 </Text>
                 <Pressable
                   accessibilityRole="button"
@@ -699,7 +722,7 @@ export default function TripDetailScreen() {
                   onPress={handleUploadPendingReceipt}
                   style={[styles.receiptUploadButton, actionLoading && styles.buttonDisabled]}
                 >
-                  <Text style={styles.receiptUploadButtonText}>{actionLoading ? 'Uploading...' : 'Upload Bill'}</Text>
+                  <Text style={styles.receiptUploadButtonText}>{actionLoading ? t('uploading') : t('uploadBill')}</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -715,7 +738,7 @@ export default function TripDetailScreen() {
                   (actionLoading || isMaintenanceFixing) && styles.buttonDisabled,
                 ]}
               >
-                <Text style={styles.completeActionText}>End Trip & Complete</Text>
+                <Text style={styles.completeActionText}>{t('completeTrip')}</Text>
               </Pressable>
             ) : null}
           </>

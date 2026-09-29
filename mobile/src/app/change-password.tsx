@@ -4,9 +4,11 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function ChangePasswordScreen() {
   const { isRestoring, user, changePassword } = useAuth();
+  const { t } = useLanguage();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -20,7 +22,7 @@ export default function ChangePasswordScreen() {
   async function handleSubmit() {
     setError('');
     if (newPassword.length < 8) {
-      setError('Your new password must be at least 8 characters.');
+      setError(t('passwordMinLength'));
       return;
     }
 
@@ -29,7 +31,7 @@ export default function ChangePasswordScreen() {
       await changePassword(currentPassword, newPassword);
       router.replace('/dashboard');
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Unable to change password.');
+      setError(submitError instanceof Error ? submitError.message : t('unableChangePassword'));
     } finally {
       setIsSaving(false);
     }
@@ -38,40 +40,40 @@ export default function ChangePasswordScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.content}>
-        <Text style={styles.eyebrow}>SECURITY CHECK</Text>
-        <Text style={styles.title}>Create your password</Text>
-        <Text style={styles.subtitle}>Your temporary password must be replaced before you continue.</Text>
-        <Text style={styles.label}>Current password</Text>
+        <Text style={styles.eyebrow}>{t('securityCheck')}</Text>
+        <Text style={styles.title}>{t('createPassword')}</Text>
+        <Text style={styles.subtitle}>{t('temporaryPasswordNotice')}</Text>
+        <Text style={styles.label}>{t('currentPassword')}</Text>
         <View style={styles.passwordInputRow}>
           <TextInput
-            accessibilityLabel="Current password"
+            accessibilityLabel={t('currentPassword')}
             secureTextEntry={!showCurrentPassword}
-            placeholder="Enter your temporary password"
+            placeholder={t('enterTemporaryPassword')}
             value={currentPassword}
             onChangeText={setCurrentPassword}
             style={[styles.input, styles.passwordInput]}
           />
           <Pressable accessibilityRole="button" onPress={() => setShowCurrentPassword((visible) => !visible)}>
-            <Text style={styles.visibilityToggle}>{showCurrentPassword ? 'Hide' : 'Show'}</Text>
+            <Text style={styles.visibilityToggle}>{showCurrentPassword ? t('hide') : t('show')}</Text>
           </Pressable>
         </View>
-        <Text style={styles.label}>New password</Text>
+        <Text style={styles.label}>{t('newPassword')}</Text>
         <View style={styles.passwordInputRow}>
           <TextInput
-            accessibilityLabel="New password"
+            accessibilityLabel={t('newPassword')}
             secureTextEntry={!showNewPassword}
-            placeholder="Enter a new password"
+            placeholder={t('enterNewPassword')}
             value={newPassword}
             onChangeText={setNewPassword}
             style={[styles.input, styles.passwordInput]}
           />
           <Pressable accessibilityRole="button" onPress={() => setShowNewPassword((visible) => !visible)}>
-            <Text style={styles.visibilityToggle}>{showNewPassword ? 'Hide' : 'Show'}</Text>
+            <Text style={styles.visibilityToggle}>{showNewPassword ? t('hide') : t('show')}</Text>
           </Pressable>
         </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable disabled={isSaving} onPress={handleSubmit} style={styles.button}>
-          <Text style={styles.buttonText}>{isSaving ? 'Saving...' : 'Set password'}</Text>
+          <Text style={styles.buttonText}>{isSaving ? t('saving') : t('setPassword')}</Text>
         </Pressable>
       </View>
     </SafeAreaView>

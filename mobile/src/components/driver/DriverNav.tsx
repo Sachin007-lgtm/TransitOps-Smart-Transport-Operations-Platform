@@ -2,16 +2,18 @@ import { router, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const items = [
-  { label: 'Home', route: '/dashboard' as const, symbol: 'H' },
-  { label: 'Trips', route: '/trips' as const, symbol: 'T' },
-  { label: 'Profile', route: '/profile' as const, symbol: 'P' },
+  { label: 'home' as const, route: '/dashboard' as const, symbol: 'H' },
+  { label: 'trips' as const, route: '/trips' as const, symbol: 'T' },
+  { label: 'profile' as const, route: '/profile' as const, symbol: 'P' },
 ];
 
 export function DriverNav() {
   const pathname = usePathname();
   const colors = Colors.light;
+  const { t } = useLanguage();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.backgroundElement, borderColor: colors.border }]}>
@@ -20,7 +22,7 @@ export function DriverNav() {
 
         return (
           <Pressable
-            accessibilityLabel={`Open ${item.label}`}
+            accessibilityLabel={t('openTab', { tab: t(item.label) })}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
             key={item.route}
@@ -30,7 +32,7 @@ export function DriverNav() {
               {item.symbol}
             </Text>
             <Text style={[styles.label, { color: isActive ? colors.primaryPressed : colors.textSecondary }]}>
-              {item.label}
+              {t(item.label)}
             </Text>
           </Pressable>
         );

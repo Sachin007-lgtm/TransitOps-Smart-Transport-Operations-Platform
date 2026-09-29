@@ -3,10 +3,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DriverNav } from '@/components/driver/DriverNav';
+import { LanguageToggle } from '@/components/driver/LanguageToggle';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function ProfileScreen() {
   const { isRestoring, signOut, user } = useAuth();
+  const { t } = useLanguage();
 
   if (isRestoring) {
     return null;
@@ -24,8 +27,9 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.content}>
-        <Text style={styles.eyebrow}>ACCOUNT</Text>
-        <Text style={styles.title}>Your profile</Text>
+        <Text style={styles.eyebrow}>{t('account')}</Text>
+        <Text style={styles.title}>{t('yourProfile')}</Text>
+        <LanguageToggle />
 
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
@@ -35,17 +39,17 @@ export default function ProfileScreen() {
           <Text style={styles.role}>{user.role}</Text>
 
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>EMAIL</Text>
+            <Text style={styles.detailLabel}>{t('email')}</Text>
             <Text style={styles.detailValue}>{user.email}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>ACCOUNT ID</Text>
+            <Text style={styles.detailLabel}>{t('accountId')}</Text>
             <Text style={styles.detailValue}>{user.id}</Text>
           </View>
         </View>
 
         <Pressable onPress={handleSignOut} style={styles.signOutButton}>
-          <Text style={styles.signOutText}>Sign out</Text>
+          <Text style={styles.signOutText}>{t('signOut')}</Text>
         </Pressable>
       </View>
       <DriverNav />
