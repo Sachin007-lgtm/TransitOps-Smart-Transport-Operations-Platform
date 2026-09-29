@@ -1,6 +1,7 @@
 import { getApiUrl } from '@/config/env';
 
 const REQUEST_TIMEOUT_MS = 12_000;
+const MULTIPART_TIMEOUT_MS = 120_000;
 
 type ApiErrorPayload = {
   message?: string;
@@ -18,15 +19,21 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const requestBody = options.body;
+  const isMultipart = typeof requestBody === 'object' && requestBody !== null &&
+    typeof (requestBody as FormData).append === 'function';
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    isMultipart ? MULTIPART_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
+  );
 
   try {
     const response = await fetch(`${getApiUrl()}${path}`, {
       ...options,
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
+        ...(isMultipart ? {} : { 'Content-Type': 'application/json' }),
         ...options.headers,
       },
       signal: controller.signal,
@@ -60,6 +67,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
       throw new Error('The request timed out. Check your connection and try again.');
     }
 
+    console.warn(`[TransitOps API] Network request failed for ${path}.`, error);
     throw new Error('Unable to reach TransitOps. Check your connection and try again.');
   } finally {
     clearTimeout(timeout);

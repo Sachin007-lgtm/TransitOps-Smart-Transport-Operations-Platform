@@ -152,19 +152,21 @@ async function startBackgroundLocationUpdatesInternal(
   await setItem(ACTIVE_TRIP_TOKEN_KEY, token);
 
   const alreadyStarted = await Location!.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-  if (!alreadyStarted) {
-    await Location!.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-      accuracy: Location!.Accuracy.High,
-      timeInterval: 5000,
-      distanceInterval: 5,
-      pausesUpdatesAutomatically: false,
-      foregroundService: {
-        notificationTitle: 'TransitOps trip tracking is active',
-        notificationBody: 'Your location is being shared with fleet dispatch while this trip is active.',
-        notificationColor: '#4B2D42',
-      },
-    });
+  if (alreadyStarted) {
+    await Location!.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   }
+  await Location!.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+    accuracy: Location!.Accuracy.High,
+    timeInterval: 5000,
+    distanceInterval: 5,
+    pausesUpdatesAutomatically: false,
+    foregroundService: {
+      notificationTitle: 'TransitOps trip tracking is active',
+      notificationBody: 'Your location is being shared with fleet dispatch while this trip is active.',
+      notificationColor: '#4B2D42',
+      killServiceOnDestroy: false,
+    },
+  });
 }
 
 export async function stopBackgroundLocationUpdates(): Promise<void> {

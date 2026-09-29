@@ -16,7 +16,11 @@ if (Platform.OS !== 'web') {
   const Location = require('expo-location');
 
   TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: { data: any; error: any }) => {
-    if (error || !data) return;
+    if (error) {
+      console.warn('[LocationTask] Background task error:', error);
+      return;
+    }
+    if (!data) return;
 
     const locations = (data as { locations?: any[] }).locations;
     const location = locations?.[locations.length - 1];
@@ -61,7 +65,10 @@ if (Platform.OS !== 'web') {
         break;
       } catch (requestError) {
         const isClientError = requestError instanceof ApiError && requestError.status >= 400 && requestError.status < 500;
-        if (isClientError || attempt === retryDelays.length) return;
+        if (isClientError || attempt === retryDelays.length) {
+          console.warn('[LocationTask] Background location upload failed:', requestError);
+          return;
+        }
         await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
       }
     }

@@ -80,11 +80,17 @@ const updateTripStatusSchema = {
   actual_distance: { required: false, type: 'number' }
 };
 
+const updateTripLoadingSchema = {
+  action: { required: true, type: 'enum', enum: ['loaded', 'unloaded'] }
+};
+
 module.exports = {
   createTripSchema,
   updateTripSchema,
   updateTripStatusSchema,
+  updateTripLoadingSchema,
   validateCreateTrip: [normalizeOrigin, validate(createTripSchema)],
   validateUpdateTrip: [normalizeOrigin, validate(updateTripSchema)],
-  validateUpdateTripStatus: [validate(updateTripStatusSchema)]
+  validateUpdateTripStatus: [validate(updateTripStatusSchema)],
+  validateUpdateTripLoading: [validate(updateTripLoadingSchema)]
 };

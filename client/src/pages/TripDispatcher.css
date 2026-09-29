@@ -1754,6 +1754,35 @@
   margin-top: 6px;
 }
 
+.tc-checkpoint-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  width: 100%;
+}
+
+.tc-checkpoint-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+.tc-checkpoint-status strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.tc-checkpoint-awaiting {
+  color: var(--sub);
+  font-size: 11px;
+  font-style: italic;
+}
+
 .tc-act {
   display: inline-flex;
   align-items: center;

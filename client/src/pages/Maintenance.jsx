@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Search, Info } from 'lucide-react';
+import { Plus, Check, Search, Info, Download } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
+import { apiDownloadFile, apiRequest } from '../utils/api';
 import './Maintenance.css';
 
 // Mock Data
@@ -19,6 +20,9 @@ export default function Maintenance() {
   const { globalSearch } = useGlobalSearch();
   const [vehicles, setVehicles] = useState(initialVehicles);
   const [logs, setLogs] = useState(initialLogs);
+  const [driverReports, setDriverReports] = useState([]);
+  const [reportsError, setReportsError] = useState('');
+  const [reportView, setReportView] = useState('active');
   
   // Form State
   const [selectedVehicle, setSelectedVehicle] = useState('');
@@ -34,7 +38,34 @@ export default function Maintenance() {
 
   // Form Validation
   const isValid = selectedVehicle && serviceType && cost && date;
-  
+
+  const loadDriverReports = async (view = reportView) => {
+    try {
+      const response = await apiRequest('GET', `/maintenance/driver-reports?view=${view}`);
+      setDriverReports(response.data || []);
+      setReportsError('');
+    } catch (error) {
+      setReportsError(error.message || 'Unable to load driver reports.');
+    }
+  };
+
+  useEffect(() => {
+    loadDriverReports(reportView);
+    const interval = setInterval(() => loadDriverReports(reportView), 15000);
+    return () => clearInterval(interval);
+  }, [reportView]);
+
+  const handleDownloadReceipt = async (report) => {
+    try {
+      await apiDownloadFile(
+        `/maintenance/driver-reports/${report.id}/receipt`,
+        report.receipt_file_name || `repair-receipt-${report.id}`,
+      );
+    } catch (error) {
+      showToast(error.message || 'Unable to download repair receipt.');
+    }
+  };
+
   // Filter available vehicles for dropdown
   const availableVehicles = vehicles.filter(v => v.status === 'Available');
 
@@ -121,6 +152,78 @@ export default function Maintenance() {
         <h1 className="text-2xl heading">Maintenance</h1>
         <p className="text-sm text-muted mt-1">Log a service record and track every vehicle's shop status in real time.</p>
       </div>
+
+      <section className="driver-reports-section" aria-label="Driver-reported vehicle issues">
+        <div className="driver-reports-heading">
+          <div>
+            <h2 className="heading text-lg">Driver maintenance</h2>
+            <p className="text-xs text-muted">
+              {reportView === 'active' ? 'Open issues on dispatched trips.' : 'Resolved vehicle repairs and receipts.'}
+            </p>
+          </div>
+          <div className="driver-report-tabs" role="tablist" aria-label="Maintenance reports">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={reportView === 'active'}
+              className={reportView === 'active' ? 'active' : ''}
+              onClick={() => setReportView('active')}
+            >Active</button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={reportView === 'history'}
+              className={reportView === 'history' ? 'active' : ''}
+              onClick={() => setReportView('history')}
+            >History</button>
+          </div>
+        </div>
+        {reportsError ? <p className="driver-reports-error">{reportsError}</p> : null}
+        {!reportsError && driverReports.length === 0 ? (
+          <p className="driver-reports-empty">
+            {reportView === 'active' ? 'No open driver issues.' : 'No completed maintenance repairs yet.'}
+          </p>
+        ) : null}
+        {driverReports.length > 0 ? (
+          <div className="driver-reports-list">
+            {driverReports.filter(report => {
+              const search = globalSearch.toLowerCase();
+              return !search || [report.vehicle_registration, report.driver_name, report.description, report.origin, report.destination]
+                .some(value => String(value || '').toLowerCase().includes(search));
+            }).map(report => (
+              <article className="driver-report-row" key={report.id}>
+                <div className="driver-report-main">
+                  <div className="driver-report-meta">
+                    <span className="vehicle-chip">{report.vehicle_registration}</span>
+                    <span className={`driver-report-priority priority-${report.priority.toLowerCase()}`}>{report.priority}</span>
+                    <span className={`driver-report-status status-${report.status.toLowerCase()}`}>
+                      {report.status === 'Open' ? 'Reported' : report.status === 'Acknowledged' ? 'Fixing' : report.status}
+                    </span>
+                  </div>
+                  <p className="driver-report-description">{report.description}</p>
+                  <p className="driver-report-context">
+                    {report.driver_name} · Trip {report.origin} to {report.destination} · {new Date(report.created_at).toLocaleString()}
+                  </p>
+                  <div className="driver-report-financial">
+                    <span>
+                      Repair cost: {report.repair_cost == null ? 'Not recorded' : `₹${Number(report.repair_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+                    </span>
+                    {report.has_receipt ? (
+                      <button type="button" className="driver-report-download" onClick={() => handleDownloadReceipt(report)}>
+                        <Download size={14} /> {report.receipt_file_name || 'Download bill'}
+                      </button>
+                    ) : report.receipt_pending ? (
+                      <span className="receipt-pending-badge">Receipt pending</span>
+                    ) : report.status === 'Resolved' && Number(report.repair_cost) === 0 ? (
+                      <span>No bill required</span>
+                    ) : null}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       <div className="maintenance-grid">
         {/* Left Column: Form */}

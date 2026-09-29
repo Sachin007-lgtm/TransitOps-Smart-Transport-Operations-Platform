@@ -117,3 +117,36 @@ export async function apiOpenDocument(path) {
   if (!opened) URL.revokeObjectURL(url);
   return opened;
 }
+
+export async function apiDownloadFile(path, fileName) {
+  const token = getStoredToken();
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
+
+  if (response.status === 401) {
+    clearStoredAuth();
+    window.dispatchEvent(new CustomEvent('transitops-unauthorized'));
+    throw new Error('Unauthorized');
+  }
+
+  if (!response.ok) {
+    let message = 'Could not download the file.';
+    try {
+      const json = await response.json();
+      message = json.error || json.message || message;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(message);
+  }
+
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName || 'download';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}

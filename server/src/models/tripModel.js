@@ -275,6 +275,8 @@ const Trip = {
       'start_time',
       'expected_arrival',
       'actual_arrival',
+      'loaded_at',
+      'unloaded_at',
       'status',
       // Billing metadata. billing_status / bill_id are deliberately absent:
       // they are owned by the billing module (only a generated bill may set

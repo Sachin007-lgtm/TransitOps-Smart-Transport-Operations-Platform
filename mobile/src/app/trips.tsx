@@ -78,8 +78,8 @@ export default function TripsScreen() {
                 <Text style={styles.tripStatus}>{item.status}</Text>
               </View>
               <Text style={styles.tripMeta}>
-                {item.vehicle_name || item.vehicle_registration
-                  ? `${item.vehicle_name || 'Vehicle'}${item.vehicle_registration ? ` · ${item.vehicle_registration}` : ''}`
+                {item.vehicle?.name || item.vehicle_name || item.vehicle?.registration_number || item.vehicle_registration
+                  ? `${item.vehicle?.name || item.vehicle_name || 'Vehicle'}${item.vehicle?.registration_number || item.vehicle_registration ? ` · ${item.vehicle?.registration_number || item.vehicle_registration}` : ''}`
                   : 'Vehicle not assigned'}
               </Text>
               {item.start_time ? <Text style={styles.tripMeta}>{formatTripDate(item.start_time)}</Text> : null}

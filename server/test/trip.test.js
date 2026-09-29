@@ -161,6 +161,11 @@ describe('TransitOps Trip Module Backend Tests', () => {
     return { status: res.status, data };
   }
 
+  async function markTripLoadedAndUnloaded(tripId) {
+    await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded' } });
+    return api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded' } });
+  }
+
   // TEST 1: Unauthenticated request rejected
   test('1. Reject unauthenticated requests with 401', async () => {
     const res = await api('', { method: 'GET', token: null });
@@ -412,6 +417,20 @@ describe('TransitOps Trip Module Backend Tests', () => {
     assert.equal(dispatchRes.status, 200);
     assert.equal(dispatchRes.data.data.status, 'Dispatched');
 
+    const unloadFirst = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded' } });
+    assert.equal(unloadFirst.status, 400);
+
+    const loaded = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded' } });
+    assert.equal(loaded.status, 200);
+    assert.ok(loaded.data.data.loaded_at);
+
+    const duplicateLoad = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded' } });
+    assert.equal(duplicateLoad.status, 409);
+
+    const unloaded = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded' } });
+    assert.equal(unloaded.status, 200);
+    assert.ok(unloaded.data.data.unloaded_at);
+
     // Verify Vehicle and Driver in DB are now 'On Trip'
     const vCheck = await query('SELECT status FROM vehicles WHERE id = $1', [vehicleA1Id]);
     assert.equal(vCheck.rows[0].status, 'On Trip');
@@ -482,6 +501,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
     assert.ok(t2.data.message.includes('unavailable'));
 
     // Cleanup Trip 1 to restore vehicle
+    await markTripLoadedAndUnloaded(t1Id);
     await api(`/${t1Id}/status`, { method: 'PATCH', body: { status: 'Completed' } });
   });
 
@@ -915,6 +935,7 @@ describe('TransitOps Trip Module Backend Tests', () => {
 
     // Dispatch and Complete this trip to test Completed release behavior
     await api(`/${newTripId}/status`, { method: 'PATCH', body: { status: 'Dispatched' } });
+    await markTripLoadedAndUnloaded(newTripId);
     await api(`/${newTripId}/status`, { method: 'PATCH', body: { status: 'Completed' } });
 
     // Verify resources can be assigned yet again after completion

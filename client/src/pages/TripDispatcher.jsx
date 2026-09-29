@@ -44,7 +44,7 @@ const LOCATION_COORDS = {
 const ORIGIN_PRESETS = Object.keys(LOCATION_COORDS).slice(0, 5);
 const DEST_PRESETS   = Object.keys(LOCATION_COORDS).slice(3, 8);
 const GPS_FRESHNESS_MS = 30000;
-const STATIONARY_SPEED_MS = 1;
+const STATIONARY_SPEED_MS = 2;
 
 function isFreshGps(location) {
   if (location?.latitude == null || location?.longitude == null || !location.captured_at) return false;
@@ -278,8 +278,6 @@ export default function TripDispatcher() {
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [isDriverOverlayOpen, setIsDriverOverlayOpen] = useState(true);
   const [assignModal,   setAssignModal]   = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
-  const [completeModal, setCompleteModal] = useState({ open: false, trip: null, actualDistance: '', actualArrival: '' });
-  const [isModalSubmitting, setIsModalSubmitting] = useState(false);
 
   const selectedTrip = trips.find(t => t.id === selectedTripId) || trips[0] || null;
   const selectedGpsIsFresh = isFreshGps(selectedTripLocation);
@@ -837,24 +835,6 @@ export default function TripDispatcher() {
     }
   };
 
-  const handleCompleteSubmit = async () => {
-    const { trip, actualDistance, actualArrival } = completeModal;
-    if (!trip) return;
-    setIsModalSubmitting(true);
-    try {
-      await apiRequest('PATCH', `/trips/${trip.id}/status`, {
-        status: 'Completed',
-        actual_distance: parseFloat(actualDistance) || 0,
-        actual_arrival:  actualArrival ? new Date(actualArrival).toISOString() : new Date().toISOString()
-      });
-      showToast(`Trip #${trip.id} completed!`);
-      setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' });
-      await loadData(true);
-    } catch (e) {
-      showToast(`Error: ${e.message}`);
-    } finally { setIsModalSubmitting(false); }
-  };
-
   return (
     <div className="trip-dispatcher-container fade-in">
 
@@ -1025,17 +1005,17 @@ export default function TripDispatcher() {
                     )}
 
                     {t.status === 'Dispatched' && (
-                      <button
-                        className="tc-act primary"
-                        onClick={() => setCompleteModal({
-                          open: true,
-                          trip: t,
-                          actualDistance: t.actual_distance || '',
-                          actualArrival: ''
-                        })}
-                      >
-                        <Check size={12} /> Mark Completed
-                      </button>
+                      <>
+                        <div className="tc-checkpoint-status">
+                          <span>Loading <strong>{t.loaded_at ? 'Loaded' : 'Waiting to load'}</strong></span>
+                          {t.loaded_at ? (
+                            <span>Unloading <strong>{t.unloaded_at ? 'Unloaded' : 'Waiting to unload'}</strong></span>
+                          ) : null}
+                        </div>
+                        {t.loaded_at && t.unloaded_at && (
+                          <span className="tc-checkpoint-awaiting">Awaiting driver to end trip in the mobile app</span>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1224,35 +1204,6 @@ export default function TripDispatcher() {
       )}
 
       {/* MODALS */}
-      {completeModal.open && (
-        <div className="modal-overlay" onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Complete Trip #{completeModal.trip?.id}</h3>
-              <button className="modal-close" onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <p className="modal-desc">Enter final actual distance and arrival time to complete the trip and release fleet assets.</p>
-              <div className="field-wrap">
-                <label className="field-label">Actual Distance (km)</label>
-                <input
-                  type="number"
-                  className="field-input"
-                  value={completeModal.actualDistance}
-                  onChange={e => setCompleteModal({ ...completeModal, actualDistance: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => setCompleteModal({ open: false, trip: null, actualDistance: '', actualArrival: '' })}>Cancel</button>
-              <button className="btn-submit" onClick={handleCompleteSubmit} disabled={isModalSubmitting}>
-                {isModalSubmitting ? 'Completing...' : 'Mark Completed'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {assignModal.open && (
         <div className="modal-overlay" onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>

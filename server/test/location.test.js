@@ -1,8 +1,10 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
+const fs = require('node:fs/promises');
 const app = require('../src/app');
 const { query, pool } = require('../src/config/db');
+const { getReceiptPath } = require('../src/services/maintenanceReceiptStorage');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_here';
 
@@ -28,6 +30,8 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
   let driverA1Id;
   let driverA2Id;
   let tripAId;
+  let maintenanceReportId;
+  let pendingReceiptReportId;
 
   before(async () => {
     server = app.listen(0);
@@ -272,7 +276,154 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     assert.equal(Number(body.data[1].latitude).toFixed(4), '19.0800');
   });
 
-  test('11. Driver A1 completes trip (Dispatched -> Completed)', async () => {
+  test('11. Driver maintenance reports are tenant-scoped and manager-manageable', async () => {
+    const created = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tokenDriverA1}`
+      },
+      body: JSON.stringify({
+        trip_id: tripAId,
+        description: 'Brake warning light appeared during the trip.',
+        priority: 'Urgent'
+      })
+    });
+    assert.equal(created.status, 201);
+    const createdBody = await created.json();
+    assert.equal(createdBody.data.trip_id, tripAId);
+
+    const driverReportResponse = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/trip/${tripAId}`, {
+      headers: { Authorization: `Bearer ${tokenDriverA1}` }
+    });
+    assert.equal(driverReportResponse.status, 200);
+    assert.equal((await driverReportResponse.json()).data.status, 'Open');
+
+    const prematureFix = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${createdBody.data.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
+      body: JSON.stringify({ status: 'Resolved' })
+    });
+    assert.equal(prematureFix.status, 400);
+
+    const driverFixing = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${createdBody.data.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
+      body: JSON.stringify({ status: 'Acknowledged' })
+    });
+    assert.equal(driverFixing.status, 200);
+
+    for (const action of ['loaded', 'unloaded']) {
+      const blockedMilestone = await fetch(`${tripsBaseUrl}/${tripAId}/loading`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
+        body: JSON.stringify({ action })
+      });
+      assert.equal(blockedMilestone.status, 409);
+    }
+
+    const blockedCompletion = await fetch(`${tripsBaseUrl}/${tripAId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
+      body: JSON.stringify({ status: 'Completed' })
+    });
+    assert.equal(blockedCompletion.status, 409);
+
+    const listed = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports`, {
+      headers: { Authorization: `Bearer ${tokenManagerA}` }
+    });
+    assert.equal(listed.status, 200);
+    const listedBody = await listed.json();
+    const report = listedBody.data.find(item => item.id === createdBody.data.id);
+    assert.ok(report);
+    assert.equal(report.vehicle_registration, 'MH-LOC-01');
+    assert.equal(report.status, 'Acknowledged');
+    pendingReceiptReportId = report.id;
+
+    const historyBeforeFix = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports?view=history`, {
+      headers: { Authorization: `Bearer ${tokenManagerA}` }
+    });
+    assert.equal((await historyBeforeFix.json()).data.some(item => item.id === report.id), false);
+
+    const closeoutUrl = `${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${report.id}/fix`;
+    const missingRepairData = new FormData();
+    const missingDataRes = await fetch(closeoutUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenDriverA1}` },
+      body: missingRepairData
+    });
+    assert.equal(missingDataRes.status, 400);
+
+    const pendingCloseout = new FormData();
+    pendingCloseout.set('repair_cost', '1250.50');
+    pendingCloseout.set('receipt_pending', 'true');
+    const fixed = await fetch(closeoutUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenDriverA1}` },
+      body: pendingCloseout
+    });
+    assert.equal(fixed.status, 200);
+    const fixedBody = await fixed.json();
+    assert.equal(fixedBody.data.status, 'Resolved');
+    assert.equal(Number(fixedBody.data.repair_cost), 1250.50);
+    assert.equal(fixedBody.data.receipt_pending, true);
+
+    const hiddenResolvedReport = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports`, {
+      headers: { Authorization: `Bearer ${tokenManagerA}` }
+    });
+    assert.equal((await hiddenResolvedReport.json()).data.some(item => item.id === report.id), false);
+
+    const pendingHistory = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports?view=history`, {
+      headers: { Authorization: `Bearer ${tokenManagerA}` }
+    });
+    const pendingHistoryReport = (await pendingHistory.json()).data.find(item => item.id === report.id);
+    assert.ok(pendingHistoryReport);
+    assert.equal(pendingHistoryReport.receipt_pending, true);
+    assert.equal(Number(pendingHistoryReport.repair_cost), 1250.50);
+
+    const openReport = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tokenDriverA1}`
+      },
+      body: JSON.stringify({ trip_id: tripAId, description: 'Steering vibration during braking.', priority: 'Routine' })
+    });
+    assert.equal(openReport.status, 201);
+    maintenanceReportId = (await openReport.json()).data.id;
+  });
+
+  test('12. Driver completes only after recording loaded and unloaded milestones', async () => {
+    const otherDriverLoad = await fetch(`${tripsBaseUrl}/${tripAId}/loading`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA2}` },
+      body: JSON.stringify({ action: 'loaded' })
+    });
+    assert.equal(otherDriverLoad.status, 403);
+
+    const unloadFirst = await fetch(`${tripsBaseUrl}/${tripAId}/loading`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
+      body: JSON.stringify({ action: 'unloaded' })
+    });
+    assert.equal(unloadFirst.status, 400);
+
+    const prematureCompletion = await fetch(`${tripsBaseUrl}/${tripAId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
+      body: JSON.stringify({ status: 'Completed' })
+    });
+    assert.equal(prematureCompletion.status, 400);
+
+    for (const action of ['loaded', 'unloaded']) {
+      const milestone = await fetch(`${tripsBaseUrl}/${tripAId}/loading`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
+        body: JSON.stringify({ action })
+      });
+      assert.equal(milestone.status, 200);
+    }
+
     const res = await fetch(`${tripsBaseUrl}/${tripAId}/status`, {
       method: 'PATCH',
       headers: {
@@ -284,9 +435,56 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.data.status, 'Completed');
+
+    const vehicleInShop = await query('SELECT status FROM vehicles WHERE id = $1', [vehicleAId]);
+    assert.equal(vehicleInShop.rows[0].status, 'In Shop');
+
+    const resolved = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${maintenanceReportId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tokenManagerA}`
+      },
+      body: JSON.stringify({ status: 'Resolved' })
+    });
+    assert.equal(resolved.status, 200);
+    const vehicleAvailable = await query('SELECT status FROM vehicles WHERE id = $1', [vehicleAId]);
+    assert.equal(vehicleAvailable.rows[0].status, 'Available');
+
+    const receiptForm = new FormData();
+    receiptForm.append('receipt', new Blob(['%PDF-1.4\nTransitOps test receipt\n%%EOF'], { type: 'application/pdf' }), 'repair-bill.pdf');
+    const receiptUpload = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${pendingReceiptReportId}/receipt`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenDriverA1}` },
+      body: receiptForm
+    });
+    assert.equal(receiptUpload.status, 200);
+    const receiptUploadedReport = await receiptUpload.json();
+    assert.equal(receiptUploadedReport.data.receipt_pending, false);
+    assert.equal(receiptUploadedReport.data.receipt_file_name, 'repair-bill.pdf');
+
+    const history = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports?view=history`, {
+      headers: { Authorization: `Bearer ${tokenManagerA}` }
+    });
+    const historyReport = (await history.json()).data.find(item => item.id === pendingReceiptReportId);
+    assert.equal(historyReport.has_receipt, true);
+    assert.equal(historyReport.receipt_pending, false);
+    assert.equal(Number(historyReport.repair_cost), 1250.50);
+
+    const downloadedReceipt = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${pendingReceiptReportId}/receipt`, {
+      headers: { Authorization: `Bearer ${tokenManagerA}` }
+    });
+    assert.equal(downloadedReceipt.status, 200);
+    assert.equal(downloadedReceipt.headers.get('content-type'), 'application/pdf');
+    assert.match(await downloadedReceipt.text(), /TransitOps test receipt/);
+
+    const crossTenantReceipt = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${pendingReceiptReportId}/receipt`, {
+      headers: { Authorization: `Bearer ${tokenDriverB}` }
+    });
+    assert.equal(crossTenantReceipt.status, 404);
   });
 
-  test('12. Location recording is rejected after trip is Completed', async () => {
+  test('13. Location recording is rejected after trip is Completed', async () => {
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: {
@@ -303,6 +501,12 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
       await query('ALTER TABLE vehicle_locations DISABLE TRIGGER trg_prevent_telemetry_delete');
       await query('DELETE FROM vehicle_locations WHERE organization_id IN ($1, $2)', [orgA, orgB]);
       await query('ALTER TABLE vehicle_locations ENABLE TRIGGER trg_prevent_telemetry_delete');
+      const receipts = await query('SELECT receipt_storage_key FROM maintenance_reports WHERE organization_id IN ($1, $2)', [orgA, orgB]);
+      await Promise.all(receipts.rows.map(async receipt => {
+        const filePath = getReceiptPath(receipt.receipt_storage_key);
+        if (filePath) await fs.unlink(filePath).catch(error => { if (error.code !== 'ENOENT') throw error; });
+      }));
+      await query('DELETE FROM maintenance_reports WHERE organization_id IN ($1, $2)', [orgA, orgB]);
       await query('DELETE FROM trips WHERE organization_id IN ($1, $2)', [orgA, orgB]);
       await query('DELETE FROM vehicles WHERE organization_id IN ($1, $2)', [orgA, orgB]);
       await query('DELETE FROM drivers WHERE organization_id IN ($1, $2)', [orgA, orgB]);

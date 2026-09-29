@@ -433,6 +433,52 @@ const tripService = {
     }
   },
 
+  updateLoadingMilestone: async (id, action, user) => {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const trip = await Trip.findByIdForUpdate(client, id, user.organization_id);
+      if (!trip) throw new TripServiceError('Trip not found.', 404);
+
+      if (user.role === 'Driver' && (!user.driver_id || trip.driver_id !== user.driver_id)) {
+        throw new TripServiceError('Drivers may only update loading milestones for their assigned trips.', 403);
+      }
+      if (trip.status !== 'Dispatched') {
+        throw new TripServiceError('Loading milestones can only be updated while the trip is dispatched.', 400);
+      }
+
+      const fixingReport = await client.query(
+        "SELECT 1 FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2 AND status = 'Acknowledged' LIMIT 1",
+        [trip.id, user.organization_id]
+      );
+      if (fixingReport.rows.length > 0) {
+        throw new TripServiceError('Mark the maintenance issue fixed before continuing the trip.', 409);
+      }
+
+      const updateFields = {};
+      if (action === 'loaded') {
+        if (trip.loaded_at) throw new TripServiceError('This trip has already been marked loaded.', 409);
+        updateFields.loaded_at = new Date().toISOString();
+      } else if (action === 'unloaded') {
+        if (!trip.loaded_at) throw new TripServiceError('Mark the trip loaded before unloading.', 400);
+        if (trip.unloaded_at) throw new TripServiceError('This trip has already been marked unloaded.', 409);
+        updateFields.unloaded_at = new Date().toISOString();
+      } else {
+        throw new TripServiceError("Action must be either 'loaded' or 'unloaded'.", 400);
+      }
+
+      await Trip.update(id, updateFields, user.organization_id, client);
+      await client.query('COMMIT');
+      return await Trip.findById(id, user.organization_id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   /**
    * Atomic Status Transition with Pessimistic Row Locking and Fleet State Coordination.
    */
@@ -463,6 +509,20 @@ const tripService = {
       // 2. Prevent transitions from terminal states
       if (currentStatus === 'Completed' || currentStatus === 'Cancelled') {
         throw new TripServiceError(`Cannot transition from terminal status '${currentStatus}'.`, 400);
+      }
+
+      if (nextStatus === 'Completed') {
+        const fixingReport = await client.query(
+          "SELECT 1 FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2 AND status = 'Acknowledged' LIMIT 1",
+          [trip.id, user.organization_id]
+        );
+        if (fixingReport.rows.length > 0) {
+          throw new TripServiceError('Mark the maintenance issue fixed before continuing the trip.', 409);
+        }
+      }
+
+      if (user.role === 'Driver' && nextStatus === 'Completed' && (!trip.loaded_at || !trip.unloaded_at)) {
+        throw new TripServiceError('Mark the load as loaded and unloaded before completing this trip.', 400);
       }
 
       // 3. Validate transition against state machine
@@ -557,7 +617,15 @@ const tripService = {
         }
 
         if (trip.vehicle_id) {
-          await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
+          const openMaintenanceReport = await client.query(
+            "SELECT 1 FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2 AND status <> 'Resolved' LIMIT 1",
+            [trip.id, user.organization_id]
+          );
+          if (openMaintenanceReport.rows.length > 0) {
+            await Vehicle.setStatusWithClient(client, trip.vehicle_id, 'In Shop', user.organization_id);
+          } else {
+            await Vehicle.releaseIfOnTrip(client, trip.vehicle_id, user.organization_id);
+          }
           const distanceToLog = parseFloat(actual_distance || 0);
           if (distanceToLog > 0) {
             await Vehicle.incrementOdometer(client, trip.vehicle_id, distanceToLog, user.organization_id);
