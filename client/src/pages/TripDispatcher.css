@@ -121,6 +121,39 @@
 }
 
 /* Filter Tabs */
+/* Active | Trip History view toggle — same pill language as .tl-tab */
+.tl-view-toggle {
+  display: flex;
+  gap: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 2px;
+}
+
+.tl-view-tab {
+  background: transparent;
+  border: none;
+  color: var(--sub);
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.tl-view-tab:hover {
+  color: var(--text);
+}
+
+.tl-view-tab.active {
+  background: var(--blue-bg);
+  color: var(--blue);
+  font-weight: 600;
+}
+
 .tl-filter-tabs {
   display: flex;
   gap: 6px;

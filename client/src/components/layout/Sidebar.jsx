@@ -87,10 +87,6 @@ export default function Sidebar() {
               <span className="nav-label">Billing</span>
             </NavLink>
 
-            <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <IndianRupee size={20} className="nav-icon" />
-              <span className="nav-label">Billing</span>
-            </NavLink>
 
             <NavLink to="/maintenance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Wrench size={20} className="nav-icon" />

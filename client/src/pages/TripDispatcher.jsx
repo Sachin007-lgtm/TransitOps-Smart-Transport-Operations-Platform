@@ -26,6 +26,9 @@ const SEEDED_VEHICLES = [
 
 const LIFECYCLE_STAGES = ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed'];
 const STATUS_FILTERS   = ['All', 'In Transit', 'Pending', 'Dispatched', 'Completed', 'Cancelled'];
+// Trip History keeps its own, narrower filter row: every trip there is
+// already Completed, so lifecycle filters would be dead tabs.
+const HISTORY_FILTERS  = ['All', 'Billed', 'Unbilled'];
 
 // Default Location Coordinates Lookup
 const LOCATION_COORDS = {
@@ -242,6 +245,9 @@ export default function TripDispatcher() {
   // ── Filters & Selected Trip ──
   const [searchQuery,  setSearchQuery]  = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  // View split: completed trips leave the tracking list and live in Trip
+  // History, so the tracking list only ever shows work in progress.
+  const [listView,     setListView]     = useState('active');
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [selectedTripLocation, setSelectedTripLocation] = useState(null);
   const [selectedTripHistory, setSelectedTripHistory] = useState([]);
@@ -279,8 +285,38 @@ export default function TripDispatcher() {
   const [isDriverOverlayOpen, setIsDriverOverlayOpen] = useState(true);
   const [assignModal,   setAssignModal]   = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
 
-  const selectedTrip = trips.find(t => t.id === selectedTripId) || trips[0] || null;
+  // Completed trips do not belong in the tracking list — they move to Trip
+  // History. Both views come from the same /trips fetch, so neither can
+  // go stale against the other.
+  const activeTrips = trips.filter(t => t.status !== 'Completed');
+  const historyTrips = trips.filter(t => t.status === 'Completed');
+  const viewTrips = listView === 'history' ? historyTrips : activeTrips;
+  const filterOptions = listView === 'history' ? HISTORY_FILTERS : STATUS_FILTERS;
+  const filteredTrips = viewTrips.filter(t => {
+    if (listView === 'history') {
+      // History filters act on billing status.
+      if (statusFilter !== 'All' && t.billing_status !== statusFilter) return false;
+    } else if (statusFilter !== 'All') {
+      if (statusFilter === 'In Transit' && t.status !== 'Dispatched') return false;
+      if (statusFilter === 'Pending' && !['Draft', 'Planned'].includes(t.status)) return false;
+      if (statusFilter !== 'In Transit' && statusFilter !== 'Pending' && t.status !== statusFilter) return false;
+    }
+    const query = (searchQuery || globalSearch || '').toLowerCase();
+    if (!query) return true;
+    return (
+      String(t.id).includes(query) ||
+      (t.origin || '').toLowerCase().includes(query) ||
+      (t.destination || '').toLowerCase().includes(query) ||
+      (t.vehicle?.registration_number || '').toLowerCase().includes(query) ||
+      (t.driver?.name || '').toLowerCase().includes(query)
+    );
+  });
+
+  // The map follows the visible list: in Trip History it shows the selected
+  // completed trip, in the tracking list the selected active one.
+  const selectedTrip = viewTrips.find(t => t.id === selectedTripId) || viewTrips[0] || null;
   const selectedGpsIsFresh = isFreshGps(selectedTripLocation);
+
 
   // Load data
   const loadData = async (silent = false) => {
@@ -726,22 +762,6 @@ export default function TripDispatcher() {
 
   const showToast = (msg) => window.dispatchEvent(new CustomEvent('app-toast', { detail: msg }));
 
-  const filteredTrips = trips.filter(t => {
-    if (statusFilter !== 'All') {
-      if (statusFilter === 'In Transit' && t.status !== 'Dispatched') return false;
-      if (statusFilter === 'Pending' && !['Draft', 'Planned'].includes(t.status)) return false;
-      if (statusFilter !== 'In Transit' && statusFilter !== 'Pending' && t.status !== statusFilter) return false;
-    }
-    const query = (searchQuery || globalSearch || '').toLowerCase();
-    if (!query) return true;
-    return (
-      String(t.id).includes(query) ||
-      (t.origin || '').toLowerCase().includes(query) ||
-      (t.destination || '').toLowerCase().includes(query) ||
-      (t.vehicle?.name || '').toLowerCase().includes(query) ||
-      (t.driver?.name || '').toLowerCase().includes(query)
-    );
-  });
 
   useEffect(() => {
     if (editingTrip) {
@@ -848,7 +868,25 @@ export default function TripDispatcher() {
               <span className="tl-sub-label">Your Order</span>
               <h2 className="tl-title">Tracking list</h2>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="tl-view-toggle" role="tablist" aria-label="Trip list view">
+                <button
+                  role="tab"
+                  aria-selected={listView === 'active'}
+                  className={`tl-view-tab ${listView === 'active' ? 'active' : ''}`}
+                  onClick={() => setListView('active')}
+                >
+                  Active ({activeTrips.length})
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={listView === 'history'}
+                  className={`tl-view-tab ${listView === 'history' ? 'active' : ''}`}
+                  onClick={() => setListView('history')}
+                >
+                  Trip History ({historyTrips.length})
+                </button>
+              </div>
               <button
                 className="tl-new-btn"
                 style={{ background: autoSync ? '#e6f7ef' : 'var(--surface)', color: autoSync ? '#168454' : 'var(--sub)', borderColor: autoSync ? 'rgba(34, 160, 107, 0.3)' : 'var(--line)' }}
@@ -891,7 +929,7 @@ export default function TripDispatcher() {
           </div>
 
           <div className="tl-filter-tabs">
-            {STATUS_FILTERS.map(f => (
+            {filterOptions.map(f => (
               <button
                 key={f}
                 className={`tl-tab ${statusFilter === f ? 'active' : ''}`}
