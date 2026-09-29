@@ -120,7 +120,7 @@ const Bill = {
              -- in another timezone.
              to_char(t.trip_date, 'YYYY-MM-DD') AS trip_date,
              v.registration_number AS vehicle_registration,
-             v.name AS vehicle_name,
+             v.registration_number AS vehicle_name,
              d.name AS driver_name
       FROM trips t
       LEFT JOIN vehicles v ON t.vehicle_id = v.id
