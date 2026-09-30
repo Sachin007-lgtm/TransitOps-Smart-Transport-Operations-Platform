@@ -3,7 +3,7 @@ import {
   Search, MapPin, Navigation, X, Check, Activity, FileText,
   CheckCircle2, User, Truck, Info, FileWarning,
   ChevronDown, ChevronUp, Eye, EyeOff, AlertTriangle, RefreshCw, Trash2,
-  DollarSign, Building2, ShieldAlert, Plus, Radio,
+  DollarSign, Building2, ShieldAlert, Plus,
   ArrowRight, Route, Package, SlidersHorizontal, Map as MapIcon, Edit2,
   Phone, MessageSquare, ExternalLink, Calendar, Clock, BarChart2
 } from 'lucide-react';
@@ -26,9 +26,6 @@ const SEEDED_VEHICLES = [
 
 const LIFECYCLE_STAGES = ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed'];
 const STATUS_FILTERS   = ['All', 'In Transit', 'Pending', 'Dispatched', 'Completed', 'Cancelled'];
-// Trip History keeps its own, narrower filter row: every trip there is
-// already Completed, so lifecycle filters would be dead tabs.
-const HISTORY_FILTERS  = ['All', 'Billed', 'Unbilled'];
 
 // Default Location Coordinates Lookup
 const LOCATION_COORDS = {
@@ -247,11 +244,9 @@ export default function TripDispatcher() {
   const [statusFilter, setStatusFilter] = useState('All');
   // View split: completed trips leave the tracking list and live in Trip
   // History, so the tracking list only ever shows work in progress.
-  const [listView,     setListView]     = useState('active');
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [selectedTripLocation, setSelectedTripLocation] = useState(null);
   const [selectedTripHistory, setSelectedTripHistory] = useState([]);
-  const [autoSync, setAutoSync] = useState(true);
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
 
   // ── Map References ──
@@ -288,15 +283,10 @@ export default function TripDispatcher() {
   // Completed trips do not belong in the tracking list — they move to Trip
   // History. Both views come from the same /trips fetch, so neither can
   // go stale against the other.
-  const activeTrips = trips.filter(t => t.status !== 'Completed');
-  const historyTrips = trips.filter(t => t.status === 'Completed');
-  const viewTrips = listView === 'history' ? historyTrips : activeTrips;
-  const filterOptions = listView === 'history' ? HISTORY_FILTERS : STATUS_FILTERS;
-  const filteredTrips = viewTrips.filter(t => {
-    if (listView === 'history') {
-      // History filters act on billing status.
-      if (statusFilter !== 'All' && t.billing_status !== statusFilter) return false;
-    } else if (statusFilter !== 'All') {
+  // Completed trips live in Trip History (a page of their own); the tracking
+  // list is work in progress only.
+  const filteredTrips = trips.filter(t => t.status !== 'Completed').filter(t => {
+    if (statusFilter !== 'All') {
       if (statusFilter === 'In Transit' && t.status !== 'Dispatched') return false;
       if (statusFilter === 'Pending' && !['Draft', 'Planned'].includes(t.status)) return false;
       if (statusFilter !== 'In Transit' && statusFilter !== 'Pending' && t.status !== statusFilter) return false;
@@ -312,9 +302,8 @@ export default function TripDispatcher() {
     );
   });
 
-  // The map follows the visible list: in Trip History it shows the selected
-  // completed trip, in the tracking list the selected active one.
-  const selectedTrip = viewTrips.find(t => t.id === selectedTripId) || viewTrips[0] || null;
+  // The map follows the tracking list.
+  const selectedTrip = filteredTrips.find(t => t.id === selectedTripId) || filteredTrips[0] || null;
   const selectedGpsIsFresh = isFreshGps(selectedTripLocation);
 
 
@@ -386,33 +375,16 @@ export default function TripDispatcher() {
     };
 
     loadSelectedTripTelemetry();
-    const interval = autoSync ? setInterval(loadSelectedTripTelemetry, 6000) : null;
+    // Live data: GPS telemetry auto-refreshes unconditionally, so there is
+    // no pause/refresh toggle to get wrong.
+    const interval = setInterval(loadSelectedTripTelemetry, 6000);
 
     return () => {
       isMounted = false;
       if (interval) clearInterval(interval);
     };
-  }, [selectedTripId, autoSync]);
+  }, [selectedTripId]);
 
-  const refreshSelectedTripTelemetry = async () => {
-    if (!selectedTripId) return;
-    setIsRefreshingLocation(true);
-    try {
-      const [activeResponse, historyResponse] = await Promise.all([
-        apiRequest('GET', '/locations/active'),
-        apiRequest('GET', `/locations/trip/${selectedTripId}`).catch(() => ({ data: [] }))
-      ]);
-      const activeTrip = (activeResponse.data || []).find(
-        location => String(location.trip_id) === String(selectedTripId)
-      );
-      setSelectedTripLocation(activeTrip || null);
-      setSelectedTripHistory(historyResponse.data || []);
-    } catch (error) {
-      setGeneralError(error.message || 'Unable to refresh selected trip telemetry.');
-    } finally {
-      setIsRefreshingLocation(false);
-    }
-  };
 
   // ── Initialize Map Container ──────────────────────────────────────────
   useEffect(() => {
@@ -869,42 +841,6 @@ export default function TripDispatcher() {
               <h2 className="tl-title">Tracking list</h2>
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <div className="tl-view-toggle" role="tablist" aria-label="Trip list view">
-                <button
-                  role="tab"
-                  aria-selected={listView === 'active'}
-                  className={`tl-view-tab ${listView === 'active' ? 'active' : ''}`}
-                  onClick={() => setListView('active')}
-                >
-                  Active ({activeTrips.length})
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={listView === 'history'}
-                  className={`tl-view-tab ${listView === 'history' ? 'active' : ''}`}
-                  onClick={() => setListView('history')}
-                >
-                  Trip History ({historyTrips.length})
-                </button>
-              </div>
-              <button
-                className="tl-new-btn"
-                style={{ background: autoSync ? '#e6f7ef' : 'var(--surface)', color: autoSync ? '#168454' : 'var(--sub)', borderColor: autoSync ? 'rgba(34, 160, 107, 0.3)' : 'var(--line)' }}
-                onClick={() => setAutoSync(value => !value)}
-                title={autoSync ? 'Pause selected-trip GPS updates' : 'Resume selected-trip GPS updates'}
-                aria-label={autoSync ? 'Pause GPS auto-sync' : 'Resume GPS auto-sync'}
-              >
-                <Radio size={14} />
-              </button>
-              <button
-                className="tl-new-btn"
-                onClick={refreshSelectedTripTelemetry}
-                disabled={!selectedTripId || isRefreshingLocation}
-                title="Refresh selected trip GPS and breadcrumb data"
-                aria-label="Refresh selected trip GPS and breadcrumb data"
-              >
-                <RefreshCw size={14} className={isRefreshingLocation ? 'spin-icon' : ''} />
-              </button>
               <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
                 <Plus size={16} />
                 <span>New</span>
@@ -929,7 +865,7 @@ export default function TripDispatcher() {
           </div>
 
           <div className="tl-filter-tabs">
-            {filterOptions.map(f => (
+            {STATUS_FILTERS.map(f => (
               <button
                 key={f}
                 className={`tl-tab ${statusFilter === f ? 'active' : ''}`}
