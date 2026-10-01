@@ -30,9 +30,9 @@ export default function TripHistory() {
 
   useEffect(() => {
     let isMounted = true;
-    const load = async () => {
+    const load = async (silent = false) => {
       if (!isMounted) return;
-      setLoading(true);
+      if (!silent) setLoading(true);
       try {
         setError('');
         const res = await apiRequest('GET', '/trips');
@@ -40,13 +40,18 @@ export default function TripHistory() {
         // Completed trips only — this page is the record of finished work.
         setTrips((res.data || []).filter(t => t.status === 'Completed'));
       } catch (err) {
-        if (isMounted) setError(err.message || 'Failed to load trip history.');
+        // Silent background refreshes keep the last good data instead of
+        // flashing an error on a transient network hiccup.
+        if (isMounted && !silent) setError(err.message || 'Failed to load trip history.');
       } finally {
         if (isMounted) setLoading(false);
       }
     };
     load();
-    return () => { isMounted = false; };
+    // Auto-refresh, same as the tracking list: trips completed elsewhere
+    // (the mobile app, another dispatcher) appear here without a reload.
+    const interval = setInterval(() => load(true), 6000);
+    return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
   useEffect(() => {
