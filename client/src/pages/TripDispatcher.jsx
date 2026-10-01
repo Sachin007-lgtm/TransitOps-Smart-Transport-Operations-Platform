@@ -28,7 +28,13 @@ const SEEDED_VEHICLES = [
 ];
 
 const LIFECYCLE_STAGES = ['Draft', 'Planned', 'Assigned', 'Dispatched', 'Completed'];
-const STATUS_FILTERS   = ['All', 'In Transit', 'Pending', 'Dispatched', 'Completed', 'Cancelled'];
+// Filter row matches what the list can actually show: 'Dispatched' was
+// dropped because the status badge already renders it as IN TRANSIT
+// (redundant with the In Transit tab), and 'Completed' because completed
+// trips leave this list for Trip History, so that tab could only ever
+// render an empty list. Cancelled stays: the backend supports cancelling
+// and cancelled trips do show here, just not on any bill.
+const STATUS_FILTERS = ['All', 'In Transit', 'Pending', 'Cancelled'];
 
 // Default Location Coordinates Lookup
 const LOCATION_COORDS = {
