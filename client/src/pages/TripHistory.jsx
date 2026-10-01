@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, ChevronDown, Info, MapPin, IndianRupee, CheckCircle2 } from 'lucide-react';
 import { apiRequest } from '../utils/api';
+import { tripCode } from '../utils/tripCode';
 
 // Billing-status filters: every trip here is already Completed, so the
 // question this page answers is "what have we finished and is it billed yet?"
@@ -177,7 +178,7 @@ export default function TripHistory() {
                   >
                     {/* Trip ID */}
                     <td className="mono text-xs font-medium" style={{ paddingLeft: '1.5rem' }}>
-                      {String(t.id).slice(0, 8).toUpperCase()}
+                      {tripCode(t.id)}
                     </td>
 
                     {/* Customer */}

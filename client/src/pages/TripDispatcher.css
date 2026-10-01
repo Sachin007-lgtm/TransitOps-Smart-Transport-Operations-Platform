@@ -207,7 +207,7 @@
 /* Individual Tracking Card */
 .tracking-card {
   background: var(--bg);
-  border: 1.5px solid var(--line);
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 14px;
   cursor: pointer;
@@ -220,14 +220,13 @@
 
 .tracking-card:hover {
   border-color: var(--blue);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .tracking-card.selected {
   border-color: var(--plum-1);
   background: var(--card);
-  box-shadow: 0 4px 14px rgba(122, 74, 99, 0.18);
+  box-shadow: none;
 }
 
 .tc-top-row {
@@ -242,16 +241,20 @@
 }
 
 .tc-code {
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--text);
-  letter-spacing: -0.2px;
+  letter-spacing: 0.2px;
 }
 
 .tc-hash {
   font-size: 11px;
   color: var(--sub);
-  font-family: var(--font-mono);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Status Badges */
@@ -351,6 +354,31 @@
   color: var(--sub);
   border-top: 1px dashed var(--line);
   padding-top: 6px;
+}
+
+.tc-date-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.tc-date-item em {
+  font-style: normal;
+  font-family: var(--font-sans, inherit);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sub);
+}
+
+.tc-no-customer {
+  color: var(--sub);
+  font-weight: 400;
+  font-style: italic;
 }
 
 /* Billing line on a trip card: customer, fare, and whether it is already on a bill */

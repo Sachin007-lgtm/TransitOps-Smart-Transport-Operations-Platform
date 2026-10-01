@@ -11,6 +11,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
+import { tripCode } from '../utils/tripCode';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import './TripDispatcher.css';
@@ -913,8 +914,8 @@ export default function TripDispatcher() {
                 >
                   <div className="tc-top-row">
                     <div className="tc-id-wrap">
-                      <span className="tc-code">2026 - FASLOG - TRIP-{t.id}</span>
-                      <span className="tc-hash">#TRK-{t.id}845</span>
+                      <span className="tc-code">{tripCode(t.id)}</span>
+                      <span className="tc-hash">{t.external_party_name || t.planned_route}</span>
                     </div>
                     <div className="tc-top-right" onClick={e => e.stopPropagation()}>
                       <StatusTag status={t.status} />
@@ -944,17 +945,17 @@ export default function TripDispatcher() {
                   </div>
 
                   <div className="tc-dates-row">
-                    <span>{t.start_time ? new Date(t.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Start Pending'}</span>
-                    <span>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'ETA Pending'}</span>
+                    <span className="tc-date-item"><em>Depart</em>{t.start_time ? new Date(t.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
+                    <span className="tc-date-item"><em>Arrive</em>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
                   </div>
 
                   {/* Billing line: who this trip is billed to, the fare, and
                       whether it has already been put on a bill. */}
                   {(t.external_party_name || parseFloat(t.revenue) > 0) && (
                     <div className="tc-billing-row" title="Customer / fare / billing status">
-                      <span className="tc-billing-company">{t.external_party_name || 'No customer set'}</span>
+                      <span className="tc-billing-company">{t.external_party_name || <span className="tc-no-customer">No customer</span>}</span>
                       <span className="tc-billing-fare">
-                        {parseFloat(t.revenue) > 0 ? `₹${Number(t.revenue).toLocaleString('en-IN')}` : 'No fare'}
+                        {parseFloat(t.revenue) > 0 ? `₹${Number(t.revenue).toLocaleString('en-IN')}` : '--'}
                       </span>
                       <span className={`tc-billing-tag ${t.billing_status === 'Billed' ? 'billed' : ''}`}>
                         {t.billing_status === 'Billed' ? 'Billed' : 'Unbilled'}
@@ -1067,7 +1068,7 @@ export default function TripDispatcher() {
               </strong>
             </div>
             <div className="eta-sub">{selectedTrip?.destination || 'Select a trip'}</div>
-            {selectedTrip ? <div className="eta-code">Trip #{selectedTrip.id}</div> : null}
+            {selectedTrip ? <div className="eta-code">Trip {tripCode(selectedTrip.id)}</div> : null}
           </div>
 
           <div className="map-zoom-controls">
