@@ -12,7 +12,6 @@ import {
   ChevronLeft, 
   LogOut,
   Building2,
-  History,
   IndianRupee
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -83,10 +82,6 @@ export default function Sidebar() {
               <span className="nav-label">Trips</span>
             </NavLink>
 
-            <NavLink to="/trip-history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <History size={20} className="nav-icon" />
-              <span className="nav-label">Trip History</span>
-            </NavLink>
 
             <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <IndianRupee size={20} className="nav-icon" />

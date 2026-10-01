@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  History,
   Search, MapPin, Navigation, X, Check, Activity, FileText,
   CheckCircle2, User, Truck, Info, FileWarning,
   ChevronDown, ChevronUp, Eye, EyeOff, AlertTriangle, RefreshCw, Trash2,
@@ -9,6 +10,7 @@ import {
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useNavigate } from 'react-router-dom';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import './TripDispatcher.css';
@@ -279,6 +281,7 @@ export default function TripDispatcher() {
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [isDriverOverlayOpen, setIsDriverOverlayOpen] = useState(true);
   const [assignModal,   setAssignModal]   = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
+  const navigate = useNavigate();
 
   // Completed trips do not belong in the tracking list — they move to Trip
   // History. Both views come from the same /trips fetch, so neither can
@@ -836,6 +839,12 @@ export default function TripDispatcher() {
       <aside className="td-left-panel">
         <div className="tl-header">
           <div className="tl-title-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button className="tl-history-btn" onClick={() => navigate('/trip-history')} title="Open Trip History">
+                <History size={14} />
+                <span>Trip History</span>
+              </button>
+            </div>
             <div>
               <span className="tl-sub-label">Your Order</span>
               <h2 className="tl-title">Tracking list</h2>

@@ -121,6 +121,28 @@
 }
 
 /* Filter Tabs */
+/* Trip History button — top-left of the page, opens the history page */
+.tl-history-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--sub);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.tl-history-btn:hover {
+  color: var(--text);
+  border-color: var(--sub);
+}
+
 .tl-filter-tabs {
   display: flex;
   gap: 6px;
