@@ -236,3 +236,55 @@
   50% { background-color: rgba(242, 161, 59, 0.1); }
   100% { opacity: 1; transform: translateX(0); background-color: transparent; }
 }
+
+/* Error banner + toolbar + category filter (ledger redesign) */
+.fe-error {
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #fca5a5;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.fe-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  margin: 1.25rem 0 1.25rem;
+  flex-wrap: wrap;
+}
+
+.fe-toolbar-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.fe-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.fe-filter-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+  font-weight: 600;
+}
+
+.fe-modal-hint {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin: -0.5rem 0 1rem;
+}
+
+.fe-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  opacity: 0.5;
+  font-size: 0.9rem;
+}
