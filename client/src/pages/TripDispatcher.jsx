@@ -172,6 +172,75 @@ function ACField({ ac, label, required, placeholder }) {
   );
 }
 
+// Saved-company combobox for the trip drawer: unlike a bare <datalist>, the
+// full saved-customer list opens on focus (or the chevron) without typing —
+// an obvious dropdown — while free text still works for one-time / individual
+// trips (the value is whatever is typed; a company row is auto-created by the
+// backend when a trip names a customer for the first time).
+function CompanyField({ value, onChange, options, placeholder }) {
+  const [isOpen, setIsOpen] = useState(false);
+  // Chevron opens the FULL saved list regardless of what is typed (so a
+  // selected company never hides the others); typing always filters.
+  const [showAll, setShowAll] = useState(false);
+  const query = (value || '').trim().toLowerCase();
+  const matches = showAll || !query
+    ? options
+    : options.filter(o => o.toLowerCase().includes(query));
+
+  return (
+    <div className="field-wrap">
+      <label className="field-label">Company (customer billed)</label>
+      <div className="ac-wrap">
+        <div className="ac-input-row">
+          <Building2 size={13} className="ac-icon" />
+          <input
+            type="text"
+            className="ac-input"
+            value={value}
+            onChange={e => { setShowAll(false); onChange(e.target.value); }}
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => setTimeout(() => setIsOpen(false), 150)}
+            placeholder={placeholder}
+            autoComplete="off"
+          />
+          {options.length > 0 && (
+            <button
+              type="button"
+              className="ac-clear"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { setIsOpen(o => !o); setShowAll(true); }}
+              title={isOpen ? 'Close saved customers' : 'Saved customers'}
+            >
+              {isOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            </button>
+          )}
+        </div>
+        {isOpen && matches.length > 0 && (
+          <div className="ac-menu" style={{ maxHeight: 180, overflowY: 'auto' }}>
+            {matches.map(name => (
+              <div
+                key={name}
+                className="ac-option"
+                onMouseDown={e => { e.preventDefault(); onChange(name); setIsOpen(false); }}
+              >
+                <Building2 size={11} className="ac-opt-icon" />
+                <span>{name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {isOpen && query && matches.length === 0 && (
+          <div className="ac-menu">
+            <div className="ac-opt-icon" style={{ padding: '8px 10px', opacity: 0.65, fontSize: 12 }}>
+              One-time entry — "{value.trim()}" is not in saved customers yet
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StatusTag({ status }) {
   const cls = {
     Draft: 'tag-draft',
@@ -1158,19 +1227,12 @@ export default function TripDispatcher() {
               {/* Billing details: the customer named here decides which bill
                   this trip lands on, and the fare is what that bill charges. */}
               <div className="form-row-2">
-                <div className="field-wrap">
-                  <label className="field-label">Company (customer billed)</label>
-                  <input
-                    className="field-input"
-                    list="trip-company-options"
-                    value={company}
-                    onChange={e => setCompany(e.target.value)}
-                    placeholder="e.g. Sharma Logistics"
-                  />
-                  <datalist id="trip-company-options">
-                    {companyOptions.map(name => <option key={name} value={name} />)}
-                  </datalist>
-                </div>
+                <CompanyField
+                  value={company}
+                  onChange={setCompany}
+                  options={companyOptions}
+                  placeholder="e.g. Sharma Logistics"
+                />
                 <div className="field-wrap">
                   <label className="field-label">Fare (₹)</label>
                   <input type="number" className="field-input" value={revenue} onChange={e => setRevenue(e.target.value)} placeholder="25000" />
