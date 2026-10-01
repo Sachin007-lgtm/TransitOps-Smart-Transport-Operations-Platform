@@ -271,7 +271,7 @@ export default function Maintenance() {
               <div className="input-group flex-1">
                 <label>Cost</label>
                 <div className="currency-input-wrapper">
-                  <span className="currency-symbol">$</span>
+                  <span className="currency-symbol">₹</span>
                   <input 
                     type="text" 
                     className="input" 
@@ -345,7 +345,7 @@ export default function Maintenance() {
                           <span className="vehicle-chip">{log.regNo}</span>
                         </td>
                         <td className="font-medium text-text-primary">{log.service}</td>
-                        <td className="mono">${log.cost}</td>
+                        <td className="mono">₹{Number(String(log.cost).replace(/[^0-9.]/g, '')).toLocaleString('en-IN')}</td>
                         <td>
                           {log.status === 'Active' ? (
                             <span 
