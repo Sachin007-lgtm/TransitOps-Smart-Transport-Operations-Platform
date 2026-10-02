@@ -121,26 +121,39 @@
 }
 
 /* Filter Tabs */
-/* Trip History button — top-left of the page, opens the history page */
+/* Trip History button — top-left of the page, opens the history page.
+   Secondary brand pill: plum-tinted like the page's plum controls (New
+   button, sidebar gradient), not a gray ghost — the plum tint marks it as
+   part of the dashboard theme while staying clearly secondary to New. */
 .tl-history-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--sub);
+  background: rgba(122, 74, 99, 0.08);
+  border: 1px solid rgba(122, 74, 99, 0.35);
+  color: var(--plum-1);
   padding: 5px 12px;
   border-radius: 20px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s ease;
 }
 
 .tl-history-btn:hover {
-  color: var(--text);
-  border-color: var(--sub);
+  background: var(--plum-1);
+  border-color: var(--plum-1);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.tl-history-btn .tl-history-arrow {
+  transition: transform 0.2s ease;
+}
+
+.tl-history-btn:hover .tl-history-arrow {
+  transform: translateX(2px);
 }
 
 .tl-filter-tabs {

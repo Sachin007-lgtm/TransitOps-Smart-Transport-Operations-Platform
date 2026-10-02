@@ -919,6 +919,7 @@ export default function TripDispatcher() {
               <button className="tl-history-btn" onClick={() => navigate('/trip-history')} title="Open Trip History">
                 <History size={14} />
                 <span>Trip History</span>
+                <ArrowRight size={13} className="tl-history-arrow" />
               </button>
             </div>
             <div>
