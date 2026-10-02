@@ -16,6 +16,7 @@ const SELECT_COLUMNS = `
   e.odometer, e.quantity, e.vendor, e.payment_mode, e.recovered_charge_id,
   e.created_at, e.updated_at,
   v.registration_number AS vehicle_registration, v.type AS vehicle_kind,
+  v.status AS vehicle_status,
   d.name AS driver_name,
   c.name AS company_name
 `;

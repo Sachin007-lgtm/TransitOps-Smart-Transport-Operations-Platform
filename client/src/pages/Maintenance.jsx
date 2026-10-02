@@ -1,59 +1,91 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Check, Search, Info, Download } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Check, Info, Download, RefreshCw } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiDownloadFile, apiRequest } from '../utils/api';
 import './Maintenance.css';
 
-// Mock Data
-const initialVehicles = [
-  { id: '1', regNo: 'GJ01AB452', status: 'Available' },
-  { id: '2', regNo: 'GJ01AB998', status: 'Available' },
-  { id: '3', regNo: 'GJ01AB1120', status: 'In shop' },
-  { id: '4', regNo: 'GJ01AB008', status: 'Available' }
-];
+// Service records entered here ride the SAME consolidated expense ledger as
+// the driver-reported repairs (migration 021): saving a record writes the cost
+// into the ledger immediately, and logging it Active flips the vehicle In Shop
+// through the real vehicle endpoint. The manager sees driver tickets from the
+// mobile app in the Driver maintenance panel below.
 
-const initialLogs = [
-  { id: '101', vehicleId: '3', regNo: 'GJ01AB1120', service: 'Engine Repair', cost: '12,000', status: 'Active', date: '2023-10-24' }
-];
+const SERVICE_TYPES = ['Oil Change', 'Engine Repair', 'Tyre Replace', 'Brake Service', 'Battery Replace', 'Clutch Repair', 'Suspension Work', 'Periodic Service'];
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 export default function Maintenance() {
   const { globalSearch } = useGlobalSearch();
-  const [vehicles, setVehicles] = useState(initialVehicles);
-  const [logs, setLogs] = useState(initialLogs);
+  const [vehicles, setVehicles] = useState([]);
+  const [serviceRecords, setServiceRecords] = useState([]);
   const [driverReports, setDriverReports] = useState([]);
   const [reportsError, setReportsError] = useState('');
   const [reportView, setReportView] = useState('active');
-  
+
   // Form State
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [serviceType, setServiceType] = useState('');
   const [cost, setCost] = useState('');
-  const [date, setDate] = useState('');
-  const [status, setStatus] = useState('Active'); // Active or Completed
+  const [date, setDate] = useState(today());
+  const [vendor, setVendor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Animation State
   const [flashType, setFlashType] = useState(null); // 'in' | 'out'
-  const [newLogId, setNewLogId] = useState(null);
+  const [newRecordId, setNewRecordId] = useState(null);
 
   // Form Validation
   const isValid = selectedVehicle && serviceType && cost && date;
 
-  const loadDriverReports = async (view = reportView) => {
+  const showToast = (message) => {
+    const evt = new CustomEvent('app-toast', { detail: message });
+    window.dispatchEvent(evt);
+  };
+
+  // Vehicles for the dropdown + the shop-status table.
+  const loadVehicles = useCallback(async (isBackground = false) => {
+    try {
+      const response = await apiRequest('GET', '/vehicles');
+      setVehicles((response.data && (Array.isArray(response.data) ? response.data : response.data.vehicles)) || []);
+    } catch (error) {
+      if (!isBackground) showToast(error.message || 'Unable to load vehicles.');
+    }
+  }, []);
+
+  // Service records: the MAINTENANCE/TYRES/GARAGE slice of the expense ledger.
+  const loadServiceRecords = useCallback(async (isBackground = false) => {
+    try {
+      const response = await apiRequest('GET', '/expenses');
+      const all = (response.data && response.data.expenses) || [];
+      setServiceRecords(all.filter((e) => ['MAINTENANCE', 'TYRES', 'GARAGE'].includes(e.category)));
+    } catch (error) {
+      // A background refresh hiccup keeps the last good data.
+      if (!isBackground) showToast(error.message || 'Unable to load service records.');
+    }
+  }, []);
+
+  const loadDriverReports = useCallback(async (view = reportView, isBackground = false) => {
     try {
       const response = await apiRequest('GET', `/maintenance/driver-reports?view=${view}`);
       setDriverReports(response.data || []);
       setReportsError('');
     } catch (error) {
-      setReportsError(error.message || 'Unable to load driver reports.');
+      if (!isBackground) setReportsError(error.message || 'Unable to load driver reports.');
     }
-  };
+  }, [reportView]);
 
   useEffect(() => {
+    loadVehicles();
+    loadServiceRecords();
     loadDriverReports(reportView);
-    const interval = setInterval(() => loadDriverReports(reportView), 15000);
+    // Auto-refresh: the tracking list's pattern - silent merges, no flash.
+    const interval = setInterval(() => {
+      loadVehicles(true);
+      loadServiceRecords(true);
+      loadDriverReports(reportView, true);
+    }, 15000);
     return () => clearInterval(interval);
-  }, [reportView]);
+  }, [loadVehicles, loadServiceRecords, loadDriverReports, reportView]);
 
   const handleDownloadReceipt = async (report) => {
     try {
@@ -69,80 +101,77 @@ export default function Maintenance() {
   // Filter available vehicles for dropdown
   const availableVehicles = vehicles.filter(v => v.status === 'Available');
 
-  // Filter logs for table (with global search)
-  const filteredLogs = logs.filter(log => {
-    return log.regNo.toLowerCase().includes(globalSearch.toLowerCase()) ||
-           log.service.toLowerCase().includes(globalSearch.toLowerCase());
+  // Filter records for table (with global search)
+  const filteredRecords = serviceRecords.filter(record => {
+    const search = globalSearch.toLowerCase();
+    return !search ||
+      String(record.vehicle_registration || '').toLowerCase().includes(search) ||
+      String(record.description || '').toLowerCase().includes(search) ||
+      String(record.vendor || '').toLowerCase().includes(search);
   });
 
-  const showToast = (message) => {
-    const evt = new CustomEvent('app-toast', { detail: message });
-    window.dispatchEvent(evt);
-  };
-
-  const handleSave = (e) => {
+  // Log a service record: real endpoint (POST /expenses, category carried),
+  // then flip the vehicle In Shop through the real vehicle endpoint when the
+  // job is still open.
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!isValid) return;
 
     setIsSaving(true);
-    
-    // Simulate network request
-    setTimeout(() => {
-      const v = vehicles.find(v => v.id === selectedVehicle);
-      
-      const newLog = {
-        id: Date.now().toString(),
-        vehicleId: v.id,
-        regNo: v.regNo,
-        service: serviceType,
-        cost,
-        status,
-        date
-      };
+    try {
+      const response = await apiRequest('POST', '/expenses', {
+        vehicle_id: selectedVehicle,
+        category: serviceType === 'Tyre Replace' ? 'TYRES' : 'MAINTENANCE',
+        description: serviceType,
+        amount: parseFloat(String(cost).replace(/[^0-9.]/g, '')),
+        expense_date: date || undefined,
+        vendor: vendor || undefined,
+        payment_mode: 'Cash'
+      });
+      const created = response.data;
 
-      setLogs([newLog, ...logs]);
-      setNewLogId(newLog.id);
-      
       if (status === 'Active') {
-        setVehicles(vehicles.map(vh => vh.id === v.id ? { ...vh, status: 'In shop' } : vh));
+        await apiRequest('PATCH', `/vehicles/${selectedVehicle}/status`, { status: 'In Shop' });
         setFlashType('in');
+        showToast('Vehicle moved to In Shop.');
       } else {
-        // If logged as completed directly, vehicle stays available
+        // Logged as completed directly: the vehicle stays available.
         showToast('Service record completed.');
       }
 
-      // Reset form
+      setNewRecordId(created.id);
       setSelectedVehicle('');
       setServiceType('');
       setCost('');
-      setDate('');
+      setDate(today());
+      setVendor('');
       setStatus('Active');
-      setIsSaving(false);
-      
-      if (status === 'Active') {
-        showToast(`Vehicle ${v.regNo} moved to In Shop.`);
-      }
+
+      await Promise.all([loadVehicles(true), loadServiceRecords(true)]);
 
       setTimeout(() => {
         setFlashType(null);
-        setNewLogId(null);
+        setNewRecordId(null);
       }, 1500);
-      
-    }, 800);
+    } catch (error) {
+      showToast(error.message || 'Could not save the service record.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleCompleteService = (logId, vehicleId, regNo) => {
-    // Update log status
-    setLogs(logs.map(l => l.id === logId ? { ...l, status: 'Completed' } : l));
-    // Update vehicle status
-    setVehicles(vehicles.map(v => v.id === vehicleId ? { ...v, status: 'Available' } : v));
-    
-    setFlashType('out');
-    showToast(`Vehicle ${regNo} marked available.`);
-    
-    setTimeout(() => {
-      setFlashType(null);
-    }, 1500);
+  // Complete an open service record: its cost is already in the ledger
+  // (logged at save time); completing just releases the vehicle.
+  const handleCompleteService = async (record) => {
+    try {
+      await apiRequest('PATCH', `/vehicles/${record.vehicle_id}/status`, { status: 'Available' });
+      setFlashType('out');
+      showToast(`Vehicle ${record.vehicle_registration} marked available.`);
+      await Promise.all([loadVehicles(true), loadServiceRecords(true)]);
+      setTimeout(() => setFlashType(null), 1500);
+    } catch (error) {
+      showToast(error.message || 'Could not release the vehicle.');
+    }
   };
 
   return (
@@ -158,7 +187,7 @@ export default function Maintenance() {
           <div>
             <h2 className="heading text-lg">Driver maintenance</h2>
             <p className="text-xs text-muted">
-              {reportView === 'active' ? 'Open issues on dispatched trips.' : 'Resolved vehicle repairs and receipts.'}
+              {reportView === 'active' ? 'Open issues reported from the mobile app on dispatched trips.' : 'Resolved vehicle repairs and receipts.'}
             </p>
           </div>
           <div className="driver-report-tabs" role="tablist" aria-label="Maintenance reports">
@@ -229,8 +258,8 @@ export default function Maintenance() {
         {/* Left Column: Form */}
         <div className="card">
           <h2 className="heading text-lg mb-2">Log service record</h2>
-          <p className="text-xs text-muted mb-6">Only vehicles currently available for dispatch can be logged for service.</p>
-          
+          <p className="text-xs text-muted mb-6">Only vehicles currently available for dispatch can be logged for service. The cost lands in the expense ledger immediately.</p>
+
           <form onSubmit={handleSave}>
             <div className="input-group mb-4">
               <label>Vehicle</label>
@@ -242,7 +271,7 @@ export default function Maintenance() {
                 <select className="select w-full" value={selectedVehicle} onChange={e => setSelectedVehicle(e.target.value)}>
                   <option value="" disabled>Select vehicle...</option>
                   {availableVehicles.map(v => (
-                    <option key={v.id} value={v.id}>{v.regNo}</option>
+                    <option key={v.id} value={v.id}>{v.registration_number}</option>
                   ))}
                 </select>
               )}
@@ -250,20 +279,16 @@ export default function Maintenance() {
 
             <div className="input-group mb-4">
               <label>Service Type</label>
-              <input 
-                type="text" 
-                className="input w-full" 
-                placeholder="e.g. Oil Change" 
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="e.g. Oil Change"
                 list="service-types"
                 value={serviceType}
                 onChange={e => setServiceType(e.target.value)}
               />
               <datalist id="service-types">
-                <option value="Oil Change" />
-                <option value="Engine Repair" />
-                <option value="Tyre Replace" />
-                <option value="Brake Service" />
-                <option value="Battery Replace" />
+                {SERVICE_TYPES.map((t) => <option key={t} value={t} />)}
               </datalist>
             </div>
 
@@ -272,10 +297,10 @@ export default function Maintenance() {
                 <label>Cost</label>
                 <div className="currency-input-wrapper">
                   <span className="currency-symbol">₹</span>
-                  <input 
-                    type="text" 
-                    className="input" 
-                    placeholder="0.00" 
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="0.00"
                     value={cost}
                     onChange={e => setCost(e.target.value)}
                   />
@@ -283,25 +308,36 @@ export default function Maintenance() {
               </div>
               <div className="input-group flex-1">
                 <label>Date</label>
-                <input 
-                  type="date" 
-                  className="input w-full" 
+                <input
+                  type="date"
+                  className="input w-full"
                   value={date}
                   onChange={e => setDate(e.target.value)}
                 />
               </div>
             </div>
 
+            <div className="input-group mb-4">
+              <label>Workshop / vendor (optional)</label>
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="e.g. Sharma Auto Works"
+                value={vendor}
+                onChange={e => setVendor(e.target.value)}
+              />
+            </div>
+
             <div className="input-group mb-6">
               <label>Status</label>
               <div className="toggle-group">
-                <div 
+                <div
                   className={`toggle-btn ${status === 'Active' ? 'active active-amber' : ''}`}
                   onClick={() => setStatus('Active')}
                 >
                   Active
                 </div>
-                <div 
+                <div
                   className={`toggle-btn ${status === 'Completed' ? 'active active-green' : ''}`}
                   onClick={() => setStatus('Completed')}
                 >
@@ -310,12 +346,12 @@ export default function Maintenance() {
               </div>
             </div>
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className={`btn btn-amber-gradient w-full ${isSaving ? 'btn-loading' : ''}`}
               disabled={!isValid || isSaving}
             >
-              Save record
+              {isSaving ? 'Saving…' : 'Save record'}
             </button>
           </form>
         </div>
@@ -323,35 +359,45 @@ export default function Maintenance() {
         {/* Right Column: Table & Diagram */}
         <div className="flex flex-col gap-6">
           <div className="card p-0 overflow-hidden">
+            <div className="card-header-row">
+              <h3 className="heading text-sm">Service records</h3>
+              <button className="btn-refresh-sm" onClick={() => { loadServiceRecords(true); loadVehicles(true); }} title="Refresh">
+                <RefreshCw size={14} />
+              </button>
+            </div>
             <div className="table-container">
               <table className="maintenance-table w-full">
                 <thead>
                   <tr>
                     <th>Vehicle</th>
                     <th>Service</th>
+                    <th>Vendor</th>
                     <th>Cost</th>
+                    <th>Date</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredLogs.length === 0 ? (
+                  {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="text-center py-8 text-muted">No service records found.</td>
+                      <td colSpan="6" className="text-center py-8 text-muted">No service records found.</td>
                     </tr>
                   ) : (
-                    filteredLogs.map(log => (
-                      <tr key={log.id} className={log.id === newLogId ? 'row-bounce' : ''}>
+                    filteredRecords.map(record => (
+                      <tr key={record.id} className={record.id === newRecordId ? 'row-bounce' : ''}>
                         <td>
-                          <span className="vehicle-chip">{log.regNo}</span>
+                          <span className="vehicle-chip">{record.vehicle_registration}</span>
                         </td>
-                        <td className="font-medium text-text-primary">{log.service}</td>
-                        <td className="mono">₹{Number(String(log.cost).replace(/[^0-9.]/g, '')).toLocaleString('en-IN')}</td>
+                        <td className="font-medium text-text-primary">{record.description}</td>
+                        <td>{record.vendor || '—'}</td>
+                        <td className="mono">₹{Number(record.amount).toLocaleString('en-IN')}</td>
+                        <td className="mono">{record.expense_date}</td>
                         <td>
-                          {log.status === 'Active' ? (
-                            <span 
+                          {String(record.vehicle_status) === 'In Shop' ? (
+                            <span
                               className="pill pill-orange status-interactive flex items-center gap-2"
-                              onClick={() => handleCompleteService(log.id, log.vehicleId, log.regNo)}
-                              title="Click to mark completed"
+                              onClick={() => handleCompleteService(record)}
+                              title="Click to release the vehicle"
                             >
                               <span className="pulsing-dot" style={{ backgroundColor: 'var(--status-orange)' }}></span>
                               In Shop
@@ -372,7 +418,7 @@ export default function Maintenance() {
 
           <div className="diagram-panel">
             <h3 className="heading text-sm mb-4">Vehicle status transitions</h3>
-            
+
             <div className={`flow-row ${flashType === 'in' ? 'diagram-flash-in' : ''}`}>
               <div className="node green">Available</div>
               <div className="path-container">
@@ -382,7 +428,7 @@ export default function Maintenance() {
               </div>
               <div className="node orange">In Shop</div>
             </div>
-            
+
             <div className={`flow-row ${flashType === 'out' ? 'diagram-flash-out' : ''}`}>
               <div className="node orange">In Shop</div>
               <div className="path-container">
@@ -392,8 +438,8 @@ export default function Maintenance() {
               </div>
               <div className="node green">Available</div>
             </div>
-            
-            <p className="text-xs text-muted mt-4">Note: In Shop vehicles are removed from the dispatch pool.</p>
+
+            <p className="text-xs text-muted mt-4">Note: In Shop vehicles are removed from the dispatch pool. Driver-reported repairs resolve from the mobile app; the repair cost lands in the ledger either way.</p>
           </div>
         </div>
       </div>

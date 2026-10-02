@@ -15,7 +15,8 @@ const maintenanceModel = {
 		const result = await query(`
 			SELECT id, vehicle_id, driver_id
 			FROM trips
-			WHERE id = $1 AND organization_id = $2 AND driver_id = $3 AND status = 'Dispatched'
+			WHERE id = $1 AND organization_id = $2 AND driver_id = $3
+				AND status IN ('Dispatched', 'Completed')
 		`, [trip_id, organization_id, driver_id]);
 		return result.rows[0] || null;
 	},
@@ -38,7 +39,7 @@ const maintenanceModel = {
 			FROM maintenance_reports mr
 			JOIN trips t ON t.id = mr.trip_id AND t.organization_id = mr.organization_id
 			WHERE mr.id = $1 AND mr.organization_id = $2 AND mr.driver_id = $3
-				AND mr.status <> 'Resolved' AND t.status = 'Dispatched'
+				AND mr.status <> 'Resolved' AND t.status IN ('Dispatched', 'Completed')
 		`, [id, organization_id, driver_id]);
 		return result.rows[0] || null;
 	},
@@ -90,7 +91,7 @@ const maintenanceModel = {
 			FROM trips t
 			WHERE mr.id = $1 AND mr.organization_id = $2 AND mr.driver_id = $3
 				AND mr.trip_id = t.id AND mr.organization_id = t.organization_id
-				AND mr.status = 'Acknowledged' AND t.status = 'Dispatched' AND t.driver_id = $3
+				AND mr.status = 'Acknowledged' AND t.status IN ('Dispatched', 'Completed') AND t.driver_id = $3
 			RETURNING mr.*
 		`, [
 			id,
@@ -104,7 +105,30 @@ const maintenanceModel = {
 			receipt?.sizeBytes || null
 		]);
 		const updated = result.rows[0] || null;
-		if (updated) await maintenanceModel.releaseVehicleIfNoOpenReports(updated.vehicle_id, organization_id);
+		if (updated) {
+			// The repair's cost lands in the consolidated expense ledger
+			// (migration 021) as the vehicle's MAINTENANCE cost, linked to the
+			// trip and the driver. Zero-cost repairs are not expenses. The
+			// description ties the ledger line back to the driver's report.
+			const repairCost = Number(repair_cost);
+			if (Number.isFinite(repairCost) && repairCost > 0) {
+				await query(
+					`INSERT INTO expenses (
+						organization_id, vehicle_id, trip_id, driver_id, category,
+						description, amount, expense_date, payment_mode
+					) VALUES ($1, $2, $3, $4, 'MAINTENANCE', $5, $6, CURRENT_DATE, 'Cash')`,
+					[
+						organization_id,
+						updated.vehicle_id,
+						updated.trip_id,
+						updated.driver_id,
+						`Vehicle repair — ${updated.description}`.slice(0, 255),
+						repairCost
+					]
+				);
+			}
+			await maintenanceModel.releaseVehicleIfNoOpenReports(updated.vehicle_id, organization_id);
+		}
 		return updated;
 	},
 
