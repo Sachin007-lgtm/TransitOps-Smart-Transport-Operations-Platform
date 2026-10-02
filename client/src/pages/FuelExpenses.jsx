@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, RefreshCw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { apiRequest } from '../utils/api';
+import { tripCode } from '../utils/tripCode';
 import './FuelExpenses.css';
 
 // The consolidated expense ledger (migration 021): one table for every
@@ -35,7 +36,7 @@ export default function FuelExpenses() {
   const [newId, setNewId] = useState(null);
 
   // Form states
-  const [fuelForm, setFuelForm] = useState({ vehicle_id: '', date: today(), liters: '', cost: '', odometer: '', vendor: '' });
+  const [fuelForm, setFuelForm] = useState({ vehicle_id: '', date: today(), liters: '', cost: '', odometer: '', vendor: '', trip_id: '' });
   const [expenseForm, setExpenseForm] = useState({ category: 'MAINTENANCE', vehicle_id: '', trip_id: '', date: today(), amount: '', vendor: '', payment_mode: 'Cash' });
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(val) || 0);
@@ -56,12 +57,18 @@ export default function FuelExpenses() {
     }
   }, []);
 
-  // Pickups for the forms: vehicles for the dropdown.
+  // Pickups for the forms: vehicles for the dropdown, trips for the fuel
+  // form's trip selector (a fill made during a trip links to that trip).
   const fetchPickups = useCallback(async () => {
     try {
       const vRes = await apiRequest('GET', '/vehicles');
       setVehicles((vRes.data && (Array.isArray(vRes.data) ? vRes.data : vRes.data.vehicles)) || []);
     } catch { /* vehicles list is a pickup; the form degrades gracefully */ }
+    try {
+      const tRes = await apiRequest('GET', '/trips');
+      const tData = tRes.data && (Array.isArray(tRes.data) ? tRes.data : tRes.data.trips);
+      setTrips(Array.isArray(tData) ? tData : (tData && tData.trips) || []);
+    } catch { /* trips list is a pickup; auto-detection still works server-side */ }
   }, []);
 
   useEffect(() => {
@@ -91,11 +98,12 @@ export default function FuelExpenses() {
         quantity: parseFloat(fuelForm.liters),
         odometer: parseFloat(fuelForm.odometer),
         expense_date: fuelForm.date || undefined,
+        trip_id: fuelForm.trip_id || undefined,
         vendor: fuelForm.vendor || undefined,
         payment_mode: 'Cash'
       });
       setIsFuelModalOpen(false);
-      setFuelForm({ vehicle_id: '', date: today(), liters: '', cost: '', odometer: '', vendor: '' });
+      setFuelForm({ vehicle_id: '', date: today(), liters: '', cost: '', odometer: '', vendor: '', trip_id: '' });
       setNewId(res.data.id);
       setTimeout(() => setNewId(null), 1000);
       await fetchExpenses(true);
@@ -180,7 +188,7 @@ export default function FuelExpenses() {
                   <th>Vehicle</th>
                   <th>Trip</th>
                   <th>Odometer</th>
-                  <th>km/l</th>
+                  <th>Mileage</th>
                   <th>Vendor</th>
                   <th>Amount</th>
                 </tr>
@@ -200,9 +208,13 @@ export default function FuelExpenses() {
                     </td>
                     <td>{exp.description}</td>
                     <td className="fe-mono font-medium">{exp.vehicle_registration}</td>
-                    <td className="fe-mono">{exp.trip_id ? `${String(exp.trip_id).slice(0, 8)}` : '—'}</td>
+                    <td className="fe-mono">{exp.trip_id ? tripCode(exp.trip_id) : '—'}</td>
                     <td className="fe-mono">{exp.odometer != null ? `${Number(exp.odometer).toLocaleString('en-IN')} km` : '—'}</td>
-                    <td className="fe-mono">{exp.km_per_litre != null ? exp.km_per_litre : '—'}</td>
+                    <td className="fe-mono">
+                      {exp.km_per_litre != null
+                        ? `${exp.distance_since_prev != null ? `${Number(exp.distance_since_prev).toLocaleString('en-IN')} km · ` : ''}${exp.km_per_litre} km/l`
+                        : '—'}
+                    </td>
                     <td>{exp.vendor || '—'}</td>
                     <td className="fe-mono font-medium">{formatCurrency(exp.amount)}</td>
                   </tr>
@@ -261,6 +273,19 @@ export default function FuelExpenses() {
               <div className="input-group mb-6">
                 <label>Pump / vendor (optional)</label>
                 <input type="text" className="input w-full" placeholder="e.g. HP Petrol Pump, Ajmer Road" value={fuelForm.vendor} onChange={(e) => setFuelForm({ ...fuelForm, vendor: e.target.value })} />
+              </div>
+              <div className="input-group mb-6">
+                <label>Trip (optional — auto-fills if the fill happened during one)</label>
+                <select className="select w-full" value={fuelForm.trip_id} onChange={(e) => setFuelForm({ ...fuelForm, trip_id: e.target.value })}>
+                  <option value="">Detect automatically</option>
+                  {trips
+                    .filter((t) => !fuelForm.vehicle_id || t.vehicle_id === fuelForm.vehicle_id)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {tripCode(t.id)} · {t.origin} → {t.destination} · {t.status}
+                      </option>
+                    ))}
+                </select>
               </div>
               <div className="flex justify-end gap-3">
                 <button type="button" className="btn btn-outline" onClick={() => setIsFuelModalOpen(false)}>Cancel</button>

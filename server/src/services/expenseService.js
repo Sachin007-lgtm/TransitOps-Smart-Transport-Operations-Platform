@@ -16,8 +16,10 @@ function toPublicExpense(row) {
   };
 }
 
-// Attach km/l by comparing each fuel entry's odometer with the previous fill
-// on the same vehicle. Rows arrive newest-first, so the delta reads backwards.
+// Attach mileage to each fuel entry by comparing its odometer with the
+// previous fill on the same vehicle. Rows arrive newest-first, so the delta
+// reads backwards: distance_since_prev = how far the truck travelled on that
+// tank, km_per_litre = that distance / litres.
 function withKmPerLitre(rows) {
   const lastOdo = new Map();
   for (const row of rows) {
@@ -25,11 +27,13 @@ function withKmPerLitre(rows) {
     if (row.odometer != null && row.quantity) {
       const prev = lastOdo.get(row.vehicle_id);
       const delta = prev !== undefined ? prev - row.odometer : null;
+      row.distance_since_prev = delta && delta > 0 ? delta : null;
       row.km_per_litre = delta && delta > 0 ? Math.round((delta / Number(row.quantity)) * 100) / 100 : null;
       lastOdo.set(row.vehicle_id, row.odometer);
     } else {
-      // A fill without litres (or odometer) carries no km/l, but still moves
-      // the odometer chain forward so the next fill's delta stays honest.
+      // A fill without litres (or odometer) carries no mileage, but still
+      // moves the odometer chain forward so the next fill's delta stays honest.
+      row.distance_since_prev = null;
       row.km_per_litre = null;
       if (!lastOdo.has(row.vehicle_id) || row.odometer != null) {
         lastOdo.set(row.vehicle_id, row.odometer);
@@ -78,10 +82,28 @@ const expenseService = {
       throw new ExpenseServiceError('Fuel entries need the odometer reading from the bill or dash.');
     }
 
+    // A fill made while one of the org's trucks' trips was running on THIS
+    // vehicle links to that trip automatically (the Trip column shows where
+    // the diesel went) — unless the caller already named a trip.
+    let tripId = payload.trip_id || null;
+    if (!tripId && isFuel) {
+      const fillDate = payload.expense_date || null;
+      const running = await query(
+        `SELECT id FROM trips
+         WHERE organization_id = $1 AND vehicle_id = $2
+           AND status IN ('Dispatched', 'Completed')
+           AND start_time < COALESCE($3::date, CURRENT_DATE)::timestamptz + INTERVAL '1 day'
+           AND COALESCE(actual_arrival, expected_arrival, start_time) >= COALESCE($3::date, CURRENT_DATE)::timestamptz
+         LIMIT 1`,
+        [user.organization_id, payload.vehicle_id, fillDate]
+      );
+      if (running.rows.length > 0) tripId = running.rows[0].id;
+    }
+
     const created = await Expense.create({
       organization_id: user.organization_id,
       vehicle_id: payload.vehicle_id,
-      trip_id: payload.trip_id || null,
+      trip_id: tripId,
       driver_id: payload.driver_id || null,
       category: payload.category,
       description,

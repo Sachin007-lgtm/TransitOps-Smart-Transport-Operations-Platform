@@ -184,6 +184,10 @@ describe('TransitOps Expense Module Backend Tests', () => {
     assert.equal(byOdo.get(45500).km_per_litre, null);
     assert.equal(byOdo.get(45490).km_per_litre, 0.26);
     assert.equal(byOdo.get(45200).km_per_litre, 7.25);
+    // Distance travelled since the previous refill rides the same rows.
+    assert.equal(byOdo.get(45500).distance_since_prev, null);
+    assert.equal(byOdo.get(45490).distance_since_prev, 10);
+    assert.equal(byOdo.get(45200).distance_since_prev, 290);
   });
 
   test('GET /expenses filters by category and recovered status', async () => {
