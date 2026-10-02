@@ -87,6 +87,23 @@ export default function Maintenance() {
     return () => clearInterval(interval);
   }, [loadVehicles, loadServiceRecords, loadDriverReports, reportView]);
 
+  // Approve a driver's ticket from the web: the manager marks it Fixing
+  // (Acknowledged) through the real endpoint, so the driver sees it and can
+  // start the repair. The driver's own self-approve from the app stays
+  // allowed — this is the manager's mirror of the same transition.
+  const handleApproveReport = async (report) => {
+    try {
+      const response = await apiRequest('PATCH', `/maintenance/driver-reports/${report.id}`, {
+        status: 'Acknowledged'
+      });
+      showToast('Ticket approved — the driver can start the repair.');
+      await loadDriverReports(reportView, true);
+      return response.data;
+    } catch (error) {
+      showToast(error.message || 'Could not approve the ticket.');
+    }
+  };
+
   const handleDownloadReceipt = async (report) => {
     try {
       await apiDownloadFile(
@@ -237,7 +254,11 @@ export default function Maintenance() {
                     <span>
                       Repair cost: {report.repair_cost == null ? 'Not recorded' : `₹${Number(report.repair_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
                     </span>
-                    {report.has_receipt ? (
+                    {report.status === 'Open' ? (
+                      <button type="button" className="driver-report-approve" onClick={() => handleApproveReport(report)}>
+                        <Check size={14} /> Approve
+                      </button>
+                    ) : report.has_receipt ? (
                       <button type="button" className="driver-report-download" onClick={() => handleDownloadReceipt(report)}>
                         <Download size={14} /> {report.receipt_file_name || 'Download bill'}
                       </button>

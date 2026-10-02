@@ -364,3 +364,24 @@
 .row-bounce {
   animation: highlightBounce 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
+.driver-report-approve {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--fe-amber, #f2a13b);
+  border-radius: 6px;
+  color: var(--fe-amber, #f2a13b);
+  background: transparent;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.driver-report-approve:hover {
+  background: var(--fe-amber, #f2a13b);
+  color: white;
+}
