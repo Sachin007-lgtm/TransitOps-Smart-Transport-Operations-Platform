@@ -197,6 +197,28 @@ const expenseModel = {
     `;
     const result = await query(sql, values);
     return result.rows;
+  },
+  /**
+   * Monthly breakdown by category: entries, litres, odometer span and spend
+   * per category for one calendar month. This is the summary table of the
+   * Fuel & Expense page's monthly bill.
+   */
+  monthlyBreakdown: async (organization_id, from_date, to_date) => {
+    const result = await query(
+      `SELECT
+        e.category,
+        COUNT(e.id)::int AS entry_count,
+        COALESCE(SUM(e.amount), 0)::float AS total_amount,
+        COALESCE(SUM(e.quantity) FILTER (WHERE e.category = 'FUEL'), 0)::float AS litres,
+        MIN(e.odometer) FILTER (WHERE e.category = 'FUEL') AS first_odometer,
+        MAX(e.odometer) FILTER (WHERE e.category = 'FUEL') AS last_odometer
+      FROM expenses e
+      WHERE e.organization_id = $1 AND e.expense_date >= $2 AND e.expense_date <= $3
+      GROUP BY e.category
+      ORDER BY total_amount DESC;`,
+      [organization_id, from_date, to_date]
+    );
+    return result.rows;
   }
 };
 

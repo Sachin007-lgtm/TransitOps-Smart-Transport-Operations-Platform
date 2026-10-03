@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, FileText } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { apiRequest } from '../utils/api';
+import { apiRequest, apiOpenDocument, apiDownloadFile } from '../utils/api';
 import { tripCode } from '../utils/tripCode';
 import './FuelExpenses.css';
 
@@ -31,6 +31,13 @@ export default function FuelExpenses() {
   // Modal states
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+
+  // Monthly bill: chosen month + its fetched data (entries, breakdown, total)
+  const currentMonth = () => new Date().toISOString().slice(0, 7);
+  const [billMonth, setBillMonth] = useState(currentMonth());
+  const [billData, setBillData] = useState(null);
+  const [billLoading, setBillLoading] = useState(false);
 
   // Animation state (id of newly added row)
   const [newId, setNewId] = useState(null);
@@ -141,6 +148,34 @@ export default function FuelExpenses() {
     }
   };
 
+  // Monthly bill: fetch the chosen month's ledger + breakdown for the preview.
+  const fetchMonthlyBill = useCallback(async (month) => {
+    if (!month) return;
+    setBillLoading(true);
+    try {
+      const res = await apiRequest('GET', `/expenses/monthly-bill?month=${encodeURIComponent(month)}`);
+      setBillData(res.data);
+      setError(null);
+    } catch (err) {
+      setBillData(null);
+      setError(err.message || 'Could not build the monthly bill.');
+    } finally {
+      setBillLoading(false);
+    }
+  }, []);
+
+  const openBillModal = () => {
+    setIsBillModalOpen(true);
+    fetchMonthlyBill(billMonth);
+  };
+
+  const monthLabel = (ym) => {
+    if (!ym) return '';
+    const [y, m] = ym.split('-');
+    const names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${names[Number(m) - 1]} ${y}`;
+  };
+
   return (
     <div className="fuel-page">
       <h1 className="fuel-title">Fuel & Expense Management</h1>
@@ -156,6 +191,9 @@ export default function FuelExpenses() {
           </select>
         </div>
         <div className="fe-toolbar-actions">
+          <button className="fe-btn-ghost" onClick={openBillModal}>
+            <FileText size={16} /> Monthly Bill
+          </button>
           <button className="fe-btn-ghost" onClick={() => setIsExpenseModalOpen(true)}>
             <Plus size={16} /> Add Expense
           </button>
@@ -235,6 +273,70 @@ export default function FuelExpenses() {
           {formatCurrency(totalCost)}
         </div>
       </div>
+
+      {/* Monthly Bill modal — the month's ledger with its breakdown */}
+      {isBillModalOpen && createPortal(
+        <div className="modal-overlay" style={{ backdropFilter: 'blur(5px)', backgroundColor: 'rgba(67, 43, 56, 0.4)' }} onClick={() => setIsBillModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2 className="sora-font text-xl mb-4 font-bold">Monthly Bill</h2>
+            <p className="fe-modal-hint">Every fuel and expense line for one month, broken down by category — print it or download it as the office record.</p>
+            <div className="flex gap-4 mb-4 items-end">
+              <div className="input-group flex-1">
+                <label>Month</label>
+                <input type="month" className="input w-full" value={billMonth} onChange={(e) => { setBillMonth(e.target.value); fetchMonthlyBill(e.target.value); }} />
+              </div>
+              <button className="fe-btn-ghost" onClick={() => apiOpenDocument(`/expenses/monthly-bill/${billMonth}/download`)} disabled={billLoading}>Print / Open</button>
+              <button className="fe-btn-amber" onClick={() => apiDownloadFile(`/expenses/monthly-bill/${billMonth}/download`, `expense-bill-${billMonth}.html`)} disabled={billLoading}>Download</button>
+            </div>
+
+            {billLoading && <div className="fe-empty">Building {monthLabel(billMonth)}…</div>}
+            {!billLoading && !billData && <div className="fe-empty">No data for {monthLabel(billMonth)}.</div>}
+
+            {!billLoading && billData && (
+              <>
+                <div className="fe-bill-breakdown">
+                  <table className="fe-table">
+                    <thead>
+                      <tr>
+                        <th>Category</th>
+                        <th>Entries</th>
+                        <th>Litres</th>
+                        <th>Odometer span</th>
+                        <th>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {billData.breakdown.length === 0 && (
+                        <tr><td colSpan={5} className="fe-empty">No expenses logged in {monthLabel(billMonth)}.</td></tr>
+                      )}
+                      {billData.breakdown.map((b) => (
+                        <tr key={b.category}>
+                          <td><span className="fe-pill fe-pill-blue">{CATEGORY_LABELS[b.category] || b.category}</span></td>
+                          <td className="fe-mono">{b.entry_count}</td>
+                          <td className="fe-mono">{Number(b.litres) > 0 ? `${Number(b.litres).toLocaleString('en-IN')} L` : '—'}</td>
+                          <td className="fe-mono">
+                            {Number(b.first_odometer) > 0 ? `${Number(b.first_odometer).toLocaleString('en-IN')} – ${Number(b.last_odometer).toLocaleString('en-IN')}` : '—'}
+                          </td>
+                          <td className="fe-mono font-medium">{formatCurrency(b.total_amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="fe-total-bar" style={{ marginTop: '1rem' }}>
+                  <div>
+                    <div className="fe-total-label">Total — {monthLabel(billMonth)}</div>
+                    <div className="fe-total-subtext">{billData.entries.length} line(s) · {billData.from_date} to {billData.to_date}</div>
+                  </div>
+                  <div className="fe-total-value">{formatCurrency(billData.total)}</div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Fuel Modal — the pump bill, typed in */}
       {isFuelModalOpen && createPortal(

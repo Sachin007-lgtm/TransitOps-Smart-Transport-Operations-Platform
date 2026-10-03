@@ -288,3 +288,11 @@
   opacity: 0.5;
   font-size: 0.9rem;
 }
+
+/* Monthly bill preview: the breakdown table scrolls inside the modal */
+.fe-bill-breakdown {
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}

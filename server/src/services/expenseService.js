@@ -1,5 +1,6 @@
 const Expense = require('../models/expenseModel');
 const { query } = require('../config/db');
+const { monthlyBillHtml } = require('../utils/monthlyBillHtml');
 
 class ExpenseServiceError extends Error {
   constructor(message, statusCode = 400) {
@@ -192,6 +193,48 @@ const expenseService = {
       filters.from_date || null,
       filters.to_date || null
     );
+  },
+
+  // --- Monthly bill ---------------------------------------------------------
+  //
+  // One document for a calendar month of the cost ledger: a per-category
+  // breakdown (entries, litres, odometer span, spend) plus the full line list.
+  // This is an internal statement — it shows what the operation SPENT, not
+  // what a customer owes, so there are no advances/payments/balance sections.
+
+  // Resolve 'YYYY-MM' (or a full date) to the month's first/last day. The
+  // window is inclusive on both ends, matching how expense_date is compared
+  // everywhere else in this module.
+  resolveMonthWindow: (month) => {
+    const m = String(month || '').match(/^(\d{4})-(\d{2})/);
+    if (!m) throw new ExpenseServiceError('Pick a month as YYYY-MM (e.g. 2026-10).');
+    const year = Number(m[1]);
+    const mon = Number(m[2]);
+    if (mon < 1 || mon > 12) throw new ExpenseServiceError('Month must be between 01 and 12.');
+    const lastDay = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+    return {
+      from_date: `${m[1]}-${m[2]}-01`,
+      to_date: `${m[1]}-${m[2]}-${String(lastDay).padStart(2, '0')}`
+    };
+  },
+
+  getMonthlyBill: async (month, user) => {
+    const { from_date, to_date } = expenseService.resolveMonthWindow(month);
+    const rows = await Expense.findAll(user.organization_id, { from_date, to_date, limit: null });
+    const breakdown = await Expense.monthlyBreakdown(user.organization_id, from_date, to_date);
+    return {
+      month,
+      from_date,
+      to_date,
+      entries: withKmPerLitre(rows.map(toPublicExpense)),
+      breakdown,
+      total: breakdown.reduce((acc, b) => acc + (Number(b.total_amount) || 0), 0)
+    };
+  },
+
+  renderMonthlyBillDocument: async (month, user) => {
+    const data = await expenseService.getMonthlyBill(month, user);
+    return { data, html: monthlyBillHtml(data) };
   }
 };
 

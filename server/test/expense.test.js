@@ -82,7 +82,8 @@ describe('TransitOps Expense Module Backend Tests', () => {
           res.on('end', () => {
             let parsed = null;
             try { parsed = JSON.parse(raw); } catch { parsed = null; }
-            resolve({ status: res.statusCode, body: parsed });
+            // raw rides along: document endpoints answer with HTML, not JSON.
+            resolve({ status: res.statusCode, body: parsed, raw });
           });
         }
       );
@@ -229,5 +230,67 @@ describe('TransitOps Expense Module Backend Tests', () => {
     assert.equal(res.status, 200);
     const afterList = await authedRequest(tokenManagerA, 'GET', '/api/expenses');
     assert.equal(afterList.body.data.total, before - 1);
+  });
+
+  test('GET /expenses/monthly-bill returns the month ledger with its breakdown', async () => {
+    // The fills above were logged today; re-log one with an explicit date so
+    // the month under test has known content, then query that month.
+    const today = new Date().toISOString().slice(0, 7);
+    await authedRequest(tokenManagerA, 'POST', '/api/expenses', {
+      vehicle_id: vehicleA,
+      category: 'TOLL',
+      description: 'Monthly-bill test toll',
+      amount: 500,
+      expense_date: `${today}-05`
+    });
+    const res = await authedRequest(tokenManagerA, 'GET', `/api/expenses/monthly-bill?month=${today}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.month, today);
+    assert.ok(res.body.data.entries.length >= 1);
+    assert.ok(res.body.data.total > 0);
+
+    // Breakdown sums must equal the ledger: every category appears once, and
+    // the categories' amounts add up to the total.
+    const breakdown = res.body.data.breakdown;
+    const distinct = new Set(breakdown.map((b) => b.category));
+    assert.equal(distinct.size, breakdown.length);
+    const sum = breakdown.reduce((acc, b) => acc + Number(b.total_amount), 0);
+    assert.equal(sum, res.body.data.total);
+
+    // The fuel row carries litres + the odometer span; the toll row does not.
+    const fuelRow = breakdown.find((b) => b.category === 'FUEL');
+    assert.ok(fuelRow);
+    assert.ok(Number(fuelRow.litres) > 0);
+    assert.ok(Number(fuelRow.first_odometer) > 0 && Number(fuelRow.last_odometer) >= Number(fuelRow.first_odometer));
+    const tollRow = breakdown.find((b) => b.category === 'TOLL');
+    assert.equal(Number(tollRow.litres), 0);
+    assert.equal(tollRow.first_odometer, null);
+  });
+
+  test('GET /expenses/monthly-bill scopes to the caller organization and validates the month', async () => {
+    // Org B shares no expenses, so its bill for the same month is empty.
+    const month = new Date().toISOString().slice(0, 7);
+    const resB = await authedRequest(tokenManagerB, 'GET', `/api/expenses/monthly-bill?month=${month}`);
+    assert.equal(resB.status, 200);
+    assert.equal(resB.body.data.total, 0);
+    assert.equal(resB.body.data.entries.length, 0);
+
+    // A malformed month is a client error, not a server fault.
+    const bad = await authedRequest(tokenManagerA, 'GET', '/api/expenses/monthly-bill?month=not-a-month');
+    assert.equal(bad.status, 400);
+    assert.match(bad.body.error, /month/i);
+  });
+
+  test('GET /expenses/monthly-bill/:month/download returns the print-ready document', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    const res = await authedRequest(tokenManagerA, 'GET', `/api/expenses/monthly-bill/${month}/download`);
+    assert.equal(res.status, 200);
+    const html = typeof res.body === 'string' ? res.body : res.raw;
+    assert.ok(html.includes('Breakdown by category'));
+    assert.ok(html.includes('Amount in words'));
+    assert.ok(html.includes('Monthly-bill test toll'));
+    // An internal statement never shows customer-bill sections.
+    assert.ok(!html.includes('Bill to'));
+    assert.ok(!html.includes('Payments received'));
   });
 });

@@ -65,4 +65,27 @@ const vehicleSummary = asyncWrapper(async (req, res) => {
   }
 });
 
-module.exports = { createExpense, listExpenses, getExpense, updateExpense, deleteExpense, vehicleSummary };
+// The month's cost ledger with its per-category breakdown — the data behind
+// the Fuel & Expense page's monthly bill (rendered on demand, not stored).
+const getMonthlyBill = asyncWrapper(async (req, res) => {
+  try {
+    const data = await expenseService.getMonthlyBill(req.query.month, req.user);
+    return apiResponse.success(res, data, 'Monthly bill fetched.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+// Print-ready HTML monthly bill document (printing it yields a paper/PDF bill).
+const getMonthlyBillDownload = asyncWrapper(async (req, res) => {
+  try {
+    const { data, html } = await expenseService.renderMonthlyBillDocument(req.params.month, req.user);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="expense-bill-${data.month}.html"`);
+    return res.status(200).send(html);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+module.exports = { createExpense, listExpenses, getExpense, updateExpense, deleteExpense, vehicleSummary, getMonthlyBill, getMonthlyBillDownload };
