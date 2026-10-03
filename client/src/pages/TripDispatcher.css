@@ -39,14 +39,10 @@
   border-bottom: 1px solid var(--line);
 }
 
-.tl-title-row {
+.tl-toolbar {
   display: flex;
   justify-content: space-between;
-  /* Top-align the row: the two pill buttons ride up beside the heading
-     instead of straddling it, so the title doesn't read cramped between
-     them (button height > heading height pushed them outward before). */
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
 }
 
 .tl-title {
