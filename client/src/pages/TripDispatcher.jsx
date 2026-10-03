@@ -915,23 +915,16 @@ export default function TripDispatcher() {
       <aside className="td-left-panel">
         <div className="tl-header">
           <div className="tl-title-row">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button className="tl-history-btn" onClick={() => navigate('/trip-history')} title="Open Trip History">
-                <History size={14} />
-                <span>Trip History</span>
-                <ArrowRight size={13} className="tl-history-arrow" />
-              </button>
-            </div>
-            <div>
-              <span className="tl-sub-label">Your Order</span>
-              <h2 className="tl-title">Tracking list</h2>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
-                <Plus size={16} />
-                <span>New</span>
-              </button>
-            </div>
+            <button className="tl-history-btn" onClick={() => navigate('/trip-history')} title="Open Trip History">
+              <History size={14} />
+              <span>Trip History</span>
+              <ArrowRight size={13} className="tl-history-arrow" />
+            </button>
+            <h2 className="tl-title">Tracking list</h2>
+            <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
+              <Plus size={16} />
+              <span>New</span>
+            </button>
           </div>
 
           <div className="tl-search-wrap">

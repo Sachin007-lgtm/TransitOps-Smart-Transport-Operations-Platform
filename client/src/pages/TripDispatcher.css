@@ -42,22 +42,19 @@
 .tl-title-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-}
-
-.tl-sub-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--sub);
-  font-weight: 600;
+  /* Top-align the row: the two pill buttons ride up beside the heading
+     instead of straddling it, so the title doesn't read cramped between
+     them (button height > heading height pushed them outward before). */
+  align-items: flex-start;
+  gap: 10px;
 }
 
 .tl-title {
   font-size: 20px;
   font-weight: 700;
   color: var(--text);
-  margin: 2px 0 0 0;
+  margin: 0;
+  line-height: 1.3;
 }
 
 .tl-new-btn {
