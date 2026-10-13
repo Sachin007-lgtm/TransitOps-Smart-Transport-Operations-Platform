@@ -304,14 +304,28 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
       body: JSON.stringify({ status: 'Resolved' })
     });
-    assert.equal(prematureFix.status, 400);
+    assert.equal(prematureFix.status, 403);
 
-    const driverFixing = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${createdBody.data.id}`, {
+    const driverSelfApproval = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${createdBody.data.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenDriverA1}` },
       body: JSON.stringify({ status: 'Acknowledged' })
     });
-    assert.equal(driverFixing.status, 200);
+    assert.equal(driverSelfApproval.status, 403);
+
+    const approvalRequest = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${createdBody.data.id}/request-approval`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenDriverA1}` }
+    });
+    assert.equal(approvalRequest.status, 200);
+    assert.equal((await approvalRequest.json()).data.approval_requested, true);
+
+    const managerApproval = await fetch(`${baseUrl.replace('/locations', '/maintenance')}/driver-reports/${createdBody.data.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenManagerA}` },
+      body: JSON.stringify({ status: 'Acknowledged' })
+    });
+    assert.equal(managerApproval.status, 200);
 
     for (const action of ['loaded', 'unloaded']) {
       const blockedMilestone = await fetch(`${tripsBaseUrl}/${tripAId}/loading`, {
@@ -506,6 +520,7 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
         const filePath = getReceiptPath(receipt.receipt_storage_key);
         if (filePath) await fs.unlink(filePath).catch(error => { if (error.code !== 'ENOENT') throw error; });
       }));
+      await query('DELETE FROM expenses WHERE organization_id IN ($1, $2)', [orgA, orgB]);
       await query('DELETE FROM maintenance_reports WHERE organization_id IN ($1, $2)', [orgA, orgB]);
       await query('DELETE FROM trips WHERE organization_id IN ($1, $2)', [orgA, orgB]);
       await query('DELETE FROM vehicles WHERE organization_id IN ($1, $2)', [orgA, orgB]);

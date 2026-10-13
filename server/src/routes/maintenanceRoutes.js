@@ -8,6 +8,7 @@ const {
 	createDriverReport,
 	listReports,
 	getDriverReportForTrip,
+	requestDriverApproval,
 	updateReportStatus,
 	resolveDriverReport,
 	uploadPendingReceipt,
@@ -27,9 +28,11 @@ router.get('/driver-reports', authorize(['Owner/Manager']), listReports);
 
 router.get('/driver-reports/trip/:tripId', authorize(['Driver']), getDriverReportForTrip);
 
+router.post('/driver-reports/:id/request-approval', authorize(['Driver']), requestDriverApproval);
+
 router.post('/driver-reports/:id/fix', authorize(['Driver']), uploadMaintenanceReceipt, resolveDriverReport);
 
-router.post('/driver-reports/:id/receipt', authorize(['Driver']), uploadMaintenanceReceipt, uploadPendingReceipt);
+router.post('/driver-reports/:id/receipt', authorize(['Driver', 'Owner/Manager']), uploadMaintenanceReceipt, uploadPendingReceipt);
 
 router.get('/driver-reports/:id/receipt', authorize(['Owner/Manager', 'Driver']), downloadReceipt);
 

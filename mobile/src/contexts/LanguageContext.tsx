@@ -11,6 +11,7 @@ type LanguageContextValue = {
   setLanguage: (language: AppLanguage) => void;
   t: (key: TranslationKey, params?: TranslationParams) => string;
   tripStatus: (status: string) => string;
+  driverStatus: (status: string) => string;
 };
 
 const LANGUAGE_STORAGE_KEY = 'transitops_language';
@@ -122,6 +123,7 @@ const english = {
   repairReceiptPending: 'Repair receipt pending',
   vehicleIssue: 'VEHICLE ISSUE · {{priority}}',
   fixing: 'Fixing',
+  waitingForApproval: 'Awaiting manager approval. Repair cost and bill upload unlock once it is approved.',
   markFixed: 'Mark Fixed',
   updating: 'Updating...',
   reportVehicleIssue: 'Report vehicle issue',
@@ -188,9 +190,15 @@ const english = {
   completeTrip: 'End Trip & Complete',
   plannedDistance: '{{distance}} km',
   cargoWeight: '{{weight}} kg',
-  email: 'EMAIL',
-  accountId: 'ACCOUNT ID',
   account: 'ACCOUNT',
+  driverStatusLabel: 'STATUS',
+  driverAvailable: 'Available',
+  driverOnTrip: 'On trip',
+  driverOffDuty: 'Off duty',
+  driverSuspended: 'Suspended',
+  totalTrips: 'TOTAL TRIPS',
+  completedTrips: 'COMPLETED',
+  inTransitTrips: 'IN TRANSIT',
   yourProfile: 'Your profile',
 } as const;
 
@@ -301,6 +309,7 @@ const hindi: Record<TranslationKey, string> = {
   repairReceiptPending: 'मरम्मत की रसीद बाकी है',
   vehicleIssue: 'वाहन की समस्या · {{priority}}',
   fixing: 'ठीक कर रहे हैं',
+  waitingForApproval: 'मैनेजर की मंज़ूरी का इंतज़ार है। मंज़ूरी मिलने के बाद मरम्मत लागत और बिल अपलोड कर पाएँगे।',
   markFixed: 'ठीक हो गया दर्ज करें',
   updating: 'अपडेट हो रहा है...',
   reportVehicleIssue: 'वाहन की समस्या बताएँ',
@@ -367,9 +376,15 @@ const hindi: Record<TranslationKey, string> = {
   completeTrip: 'यात्रा समाप्त करें',
   plannedDistance: '{{distance}} km',
   cargoWeight: '{{weight}} kg',
-  email: 'ईमेल',
-  accountId: 'अकाउंट आईडी',
   account: 'अकाउंट',
+  driverStatusLabel: 'स्थिति',
+  driverAvailable: 'उपलब्ध',
+  driverOnTrip: 'यात्रा पर',
+  driverOffDuty: 'छुट्टी पर',
+  driverSuspended: 'निलंबित',
+  totalTrips: 'कुल यात्राएँ',
+  completedTrips: 'पूरी हुईं',
+  inTransitTrips: 'यात्रा जारी',
   yourProfile: 'आपकी प्रोफ़ाइल',
 };
 
@@ -411,7 +426,18 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     return key ? t(key) : status;
   };
 
-  return <LanguageContext.Provider value={{ language, setLanguage, t, tripStatus }}>{children}</LanguageContext.Provider>;
+  const driverStatus = (status: string) => {
+    const statusKey: Partial<Record<string, TranslationKey>> = {
+      Available: 'driverAvailable',
+      'On Trip': 'driverOnTrip',
+      'Off Duty': 'driverOffDuty',
+      Suspended: 'driverSuspended',
+    };
+    const key = statusKey[status];
+    return key ? t(key) : status;
+  };
+
+  return <LanguageContext.Provider value={{ language, setLanguage, t, tripStatus, driverStatus }}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() {

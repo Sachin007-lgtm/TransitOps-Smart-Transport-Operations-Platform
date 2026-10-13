@@ -77,6 +77,15 @@ const getDriverReportForTrip = asyncWrapper(async (req, res) => {
 	}
 });
 
+const requestDriverApproval = asyncWrapper(async (req, res) => {
+	try {
+		const report = await maintenanceService.requestDriverApproval(req.params.id, req.user);
+		return apiResponse.success(res, report, 'Fixing approval requested.');
+	} catch (err) {
+		return handleError(res, err);
+	}
+});
+
 const updateReportStatus = asyncWrapper(async (req, res) => {
 	try {
 		const report = await maintenanceService.updateReportStatus(req.params.id, req.body, req.user);
@@ -90,6 +99,7 @@ module.exports = {
 	createDriverReport,
 	listReports,
 	getDriverReportForTrip,
+	requestDriverApproval,
 	updateReportStatus,
 	resolveDriverReport,
 	uploadPendingReceipt,

@@ -5,6 +5,13 @@ const validate = require('../middleware/validate');
 // so only negatives are rejected here.
 const notNegative = (label) => (val) => (Number(val) < 0 ? `${label} must not be negative.` : null);
 
+const isCoordinate = (value, limit) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit;
+const coordinatePair = (label) => (val) => (
+  Array.isArray(val) && val.length === 2 && isCoordinate(val[0], 90) && isCoordinate(val[1], 180)
+    ? null
+    : `${label} must be [latitude, longitude].`
+);
+
 
 const normalizeOrigin = (req, res, next) => {
   if (!req.body.origin && req.body.source) {
@@ -38,7 +45,9 @@ const createTripSchema = {
   // Billing fields (see billingValidator for the company/bill side).
   company_id: { required: false, type: 'integer', positive: true },
   trip_date: { required: false, type: 'date' },
-  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') }
+  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') },
+  origin_coords: { required: false, custom: coordinatePair('origin_coords') },
+  dest_coords: { required: false, custom: coordinatePair('dest_coords') }
 };
 
 const updateTripSchema = {
@@ -65,7 +74,9 @@ const updateTripSchema = {
   revenue: { required: false, type: 'number' },
   company_id: { required: false, type: 'integer', positive: true },
   trip_date: { required: false, type: 'date' },
-  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') }
+  advance_received: { required: false, type: 'number', custom: notNegative('advance_received') },
+  origin_coords: { required: false, custom: coordinatePair('origin_coords') },
+  dest_coords: { required: false, custom: coordinatePair('dest_coords') }
 };
 
 const updateTripStatusSchema = {
@@ -81,7 +92,8 @@ const updateTripStatusSchema = {
 };
 
 const updateTripLoadingSchema = {
-  action: { required: true, type: 'enum', enum: ['loaded', 'unloaded'] }
+  action: { required: true, type: 'enum', enum: ['loaded', 'unloaded'] },
+  override_reason: { required: false, type: 'string' }
 };
 
 module.exports = {

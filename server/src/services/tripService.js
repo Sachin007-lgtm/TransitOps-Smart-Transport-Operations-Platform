@@ -3,6 +3,7 @@ const Trip = require('../models/tripModel');
 const Vehicle = require('../models/vehicleModel');
 const Driver = require('../models/driverModel');
 const Company = require('../models/companyModel');
+const { haversineMeters } = require('../utils/geo');
 
 class TripServiceError extends Error {
   constructor(message, statusCode = 400) {
@@ -72,6 +73,58 @@ async function resolveCompanyId({ company_id, external_party_name, organization_
   return null;
 }
 
+const MILESTONE_RADIUS_M = Number(process.env.MILESTONE_RADIUS_M) || 3000;
+const MAX_GPS_AGE_MS = 2 * 60 * 1000;
+const MAX_GPS_ACCURACY_M = 500;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Coordinates arrive as [lat, lng] pairs. Changing an address without new coordinates clears the old ones, so a stale pin never decides a geofence.
+function coordinateColumns({ origin_coords, dest_coords, origin, destination }, current = {}) {
+  const columns = {};
+  const place = (coords, textChanged, latKey, lngKey) => {
+    if (Array.isArray(coords)) {
+      columns[latKey] = coords[0];
+      columns[lngKey] = coords[1];
+    } else if (coords === null || textChanged) {
+      columns[latKey] = null;
+      columns[lngKey] = null;
+    }
+  };
+  place(origin_coords, origin !== undefined && origin !== current.origin, 'origin_lat', 'origin_lng');
+  place(dest_coords, destination !== undefined && destination !== current.destination, 'dest_lat', 'dest_lng');
+  return columns;
+}
+
+// Drivers must be near the pickup (loading) or drop-off (unloading), judged from the server's own latest GPS point. Trips with no coordinates on file are not enforced.
+async function checkMilestoneLocation(client, trip, action) {
+  const isLoading = action === 'loaded';
+  const target = isLoading ? [trip.origin_lat, trip.origin_lng] : [trip.dest_lat, trip.dest_lng];
+  if (target[0] == null || target[1] == null) return {};
+
+  const latestResult = await client.query(
+    `SELECT latitude, longitude, accuracy, captured_at FROM vehicle_locations
+     WHERE trip_id = $1 AND organization_id = $2 ORDER BY captured_at DESC LIMIT 1`,
+    [trip.id, trip.organization_id]
+  );
+  const latest = latestResult.rows[0];
+  if (!latest || Date.now() - new Date(latest.captured_at).getTime() > MAX_GPS_AGE_MS) {
+    throw new TripServiceError(`No recent GPS location. Make sure location is on, wait a few seconds, then try again to mark this trip ${action}.`, 409);
+  }
+  if (latest.accuracy != null && latest.accuracy > MAX_GPS_ACCURACY_M) {
+    throw new TripServiceError(`GPS signal is too weak (accuracy ${Math.round(latest.accuracy)} m). Move to open sky and try again.`, 409);
+  }
+
+  const distance = Math.round(haversineMeters([latest.latitude, latest.longitude], target));
+  if (distance > MILESTONE_RADIUS_M) {
+    const away = distance >= 1000 ? `${(distance / 1000).toFixed(1)} km` : `${distance} m`;
+    throw new TripServiceError(
+      `You are ${away} from the ${isLoading ? 'pickup point' : 'drop-off point'}. Move within ${MILESTONE_RADIUS_M / 1000} km to mark this trip ${action}.`,
+      409
+    );
+  }
+  return { latitude: latest.latitude, longitude: latest.longitude, accuracy: latest.accuracy, distance_m: distance };
+}
+
 const tripService = {
   /**
    * Create a new trip scoped strictly to the authenticated user's organization.
@@ -93,7 +146,9 @@ const tripService = {
       status = 'Draft',
       company_id,
       trip_date,
-      advance_received = 0.00
+      advance_received = 0.00,
+      origin_coords,
+      dest_coords
     } = tripData;
 
     // Validate vehicle if provided
@@ -167,7 +222,8 @@ const tripService = {
         organization_id: orgId
       }),
       trip_date: trip_date || deriveTripDate(start_time),
-      advance_received
+      advance_received,
+      ...coordinateColumns({ origin_coords, dest_coords })
     });
 
     return await Trip.findById(created.id, orgId);
@@ -422,6 +478,8 @@ const tripService = {
         fields.trip_date = deriveTripDate(fields.start_time);
       }
 
+      Object.assign(fields, coordinateColumns(fields, trip));
+
       const updated = await Trip.update(id, fields, user.organization_id, client);
       if (!updated) {
         throw new TripServiceError('Trip not found or belongs to another organization.', 404);
@@ -436,7 +494,7 @@ const tripService = {
     }
   },
 
-  updateLoadingMilestone: async (id, action, user) => {
+  updateLoadingMilestone: async (id, action, user, { override_reason } = {}) => {
     const client = await pool.connect();
 
     try {
@@ -471,7 +529,28 @@ const tripService = {
         throw new TripServiceError("Action must be either 'loaded' or 'unloaded'.", 400);
       }
 
+      const isDriver = user.role === 'Driver';
+      let evidence = {};
+      let reason = null;
+      if (isDriver) {
+        evidence = await checkMilestoneLocation(client, trip, action);
+      } else {
+        reason = String(override_reason || '').trim();
+        if (reason.length < 5) {
+          throw new TripServiceError('Give a reason (at least 5 characters) for marking this without the driver on site.', 400);
+        }
+      }
+
       await Trip.update(id, updateFields, user.organization_id, client);
+      await client.query(
+        `INSERT INTO trip_milestone_events
+           (organization_id, trip_id, action, source, user_id, latitude, longitude, accuracy, distance_m, override_reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          user.organization_id, trip.id, action, isDriver ? 'driver' : 'manager_override', UUID_PATTERN.test(String(user.id)) ? user.id : null,
+          evidence.latitude ?? null, evidence.longitude ?? null, evidence.accuracy ?? null, evidence.distance_m ?? null, reason
+        ]
+      );
       await client.query('COMMIT');
       return await Trip.findById(id, user.organization_id);
     } catch (err) {

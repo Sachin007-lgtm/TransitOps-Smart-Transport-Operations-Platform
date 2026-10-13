@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   History,
   Search, MapPin, Navigation, X, Check, Activity, FileText,
@@ -69,23 +69,42 @@ function formatVehicleSpeed(speed) {
   return `${kilometersPerHour.toFixed(1)} km/h`;
 }
 
+function gpsPoint(location) {
+  if (location?.latitude == null || location?.longitude == null) return null;
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) ? [latitude, longitude] : null;
+}
+
+// Successful lookups are cached so the 6 s GPS poll does not re-request the same road geometry.
+async function fetchRoadPath(from, to, cache) {
+  const key = [from, to].map(p => `${p[0].toFixed(3)},${p[1].toFixed(3)}`).join(';');
+  if (cache.has(key)) return cache.get(key);
+  if (MAPBOX_TOKEN) {
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${from[1]},${from[0]};${to[1]},${to[0]}?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const coordinates = (await res.json()).routes?.[0]?.geometry?.coordinates;
+        if (coordinates?.length > 0) {
+          const path = coordinates.map(c => [c[1], c[0]]);
+          if (cache.size > 200) cache.clear();
+          cache.set(key, path);
+          return path;
+        }
+      }
+    } catch (e) {
+      console.warn('Mapbox Directions API fallback to polyline:', e);
+    }
+  }
+  return [from, to];
+}
+
 /** Format a datetime string to a readable time (e.g. "02:45 PM") */
 function formatTime(dateStr) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-/** Format elapsed time since a date string (e.g. "2h 14m" or "45m") */
-function formatElapsed(dateStr) {
-  if (!dateStr) return '—';
-  const ms = Date.now() - new Date(dateStr).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return '—';
-  const totalMinutes = Math.floor(ms / 60_000);
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 // ─── MAPBOX SEARCH BOX / GEOCODING API HOOK ──────────────────────────────────
@@ -289,8 +308,8 @@ function getCityCode(addressStr) {
 
 const geocodeCache = {};
 
-async function resolveCoordsAsync(addressStr, isOrigin = true) {
-  if (!addressStr) return isOrigin ? [23.2156, 72.6369] : [23.0225, 72.5714];
+async function resolveCoordsAsync(addressStr, isOrigin = true, useFallback = true) {
+  if (!addressStr) return useFallback ? (isOrigin ? [23.2156, 72.6369] : [23.0225, 72.5714]) : null;
 
   // 1. Preset lookup
   if (LOCATION_COORDS[addressStr]) return LOCATION_COORDS[addressStr];
@@ -318,7 +337,29 @@ async function resolveCoordsAsync(addressStr, isOrigin = true) {
   }
 
   // Default fallback
+  if (!useFallback) return null;
   return isOrigin ? [23.2156, 72.6369] : [23.0225, 72.5714];
+}
+
+function haversineKm(a, b) {
+  const toRad = degrees => (degrees * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+// 0 until loaded, 100 once unloaded; in between, the share of the pickup-to-drop-off straight line covered. null = unknown.
+function tripProgressPct(trip, location, coords) {
+  if (trip.status === 'Completed') return 100;
+  if (trip.status !== 'Dispatched' || !trip.loaded_at) return 0;
+  if (trip.unloaded_at) return 100;
+  const point = gpsPoint(location);
+  if (!point || !coords) return null;
+  const total = haversineKm(coords.origin, coords.dest);
+  if (total < 0.5) return null;
+  const covered = 1 - haversineKm(point, coords.dest) / total;
+  return Math.min(99, Math.max(0, Math.round(covered * 100)));
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────
@@ -344,6 +385,8 @@ export default function TripDispatcher() {
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [selectedTripLocation, setSelectedTripLocation] = useState(null);
   const [selectedTripHistory, setSelectedTripHistory] = useState([]);
+  const [activeLocations, setActiveLocations] = useState({});
+  const [tripCoords, setTripCoords] = useState({});
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
@@ -354,6 +397,8 @@ export default function TripDispatcher() {
   const truckMarkerRef  = useRef(null);
   const originMarkerRef = useRef(null);
   const destMarkerRef   = useRef(null);
+  const routeCacheRef   = useRef(new Map());
+  const fittedTruckTripRef = useRef(null);
 
   // ── Drawer & Form State ──
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -406,7 +451,17 @@ export default function TripDispatcher() {
 
   // The map follows the tracking list.
   const selectedTrip = filteredTrips.find(t => t.id === selectedTripId) || filteredTrips[0] || null;
-  const selectedGpsIsFresh = isFreshGps(selectedTripLocation);
+  // Telemetry state lags a trip switch by one poll, so only trust rows tagged with this trip.
+  const tripLocation = selectedTrip && String(selectedTripLocation?.trip_id) === String(selectedTrip.id) ? selectedTripLocation : null;
+  const tripHistory = useMemo(
+    () => (selectedTrip ? selectedTripHistory.filter(point => String(point.trip_id) === String(selectedTrip.id)) : []),
+    [selectedTripHistory, selectedTrip?.id]
+  );
+  // idle: no truck card | awaiting-gps: dispatched, no fix yet | to-pickup: not loaded yet | delivering: loaded
+  const tripPhase = !selectedTrip || selectedTrip.status !== 'Dispatched' ? 'idle'
+    : !gpsPoint(tripLocation) ? 'awaiting-gps'
+    : selectedTrip.loaded_at ? 'delivering' : 'to-pickup';
+  const selectedGpsIsFresh = isFreshGps(tripLocation);
 
 
   // Load data — useCallback so the polling interval gets a stable reference
@@ -472,6 +527,7 @@ export default function TripDispatcher() {
         const activeTrip = (activeResponse.data || []).find(
           location => String(location.trip_id) === String(selectedTripId)
         );
+        setActiveLocations(Object.fromEntries((activeResponse.data || []).map(location => [String(location.trip_id), location])));
         setSelectedTripLocation(activeTrip || null);
         setSelectedTripHistory(historyResponse.data || []);
       } catch (error) {
@@ -494,6 +550,23 @@ export default function TripDispatcher() {
       if (interval) clearInterval(interval);
     };
   }, [selectedTripId]);
+
+  // Coordinates for in-transit cards, keyed by route; false marks a failed lookup so it is not retried every poll.
+  useEffect(() => {
+    const pending = trips.filter(t => t.status === 'Dispatched' && tripCoords[`${t.origin}|${t.destination}`] === undefined);
+    if (pending.length === 0) return undefined;
+    let cancelled = false;
+    Promise.all(pending.map(async t => {
+      const [origin, dest] = await Promise.all([
+        resolveCoordsAsync(t.origin, true, false),
+        resolveCoordsAsync(t.destination, false, false)
+      ]);
+      return [`${t.origin}|${t.destination}`, origin && dest ? { origin, dest } : false];
+    })).then(entries => {
+      if (!cancelled) setTripCoords(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => { cancelled = true; };
+  }, [trips, tripCoords]);
 
 
   // ── Initialize Map Container ──────────────────────────────────────────
@@ -629,31 +702,13 @@ export default function TripDispatcher() {
         iconAnchor: [20, 44]
       });
 
-      let routePath = [originCoords, destCoords];
-
-      // Fetch Mapbox Directions API for real road driving geometry between origin & destination
-      if (MAPBOX_TOKEN) {
-        try {
-          const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${originCoords[1]},${originCoords[0]};${destCoords[1]},${destCoords[0]}?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
-          const res = await fetch(directionsUrl);
-          if (res.ok) {
-            const data = await res.json();
-            const route = data.routes?.[0];
-            if (route?.geometry?.coordinates && route.geometry.coordinates.length > 0) {
-              routePath = route.geometry.coordinates.map(c => [c[1], c[0]]);
-            }
-          }
-        } catch (e) {
-          console.warn('Mapbox Directions API fallback to polyline:', e);
-        }
-      }
+      const routePath = await fetchRoadPath(originCoords, destCoords, routeCacheRef.current);
 
       if (!isMounted) return;
 
-      const liveLatitude = Number(selectedTripLocation?.latitude);
-      const liveLongitude = Number(selectedTripLocation?.longitude);
-      const hasRecordedLocation = Number.isFinite(liveLatitude) && Number.isFinite(liveLongitude);
-      const hasLiveLocation = selectedGpsIsFresh && hasRecordedLocation;
+      // Only a real GPS fix places the truck; there is no estimated position.
+      const truckPos = tripPhase === 'to-pickup' || tripPhase === 'delivering' ? gpsPoint(tripLocation) : null;
+      const hasLiveLocation = selectedGpsIsFresh && Boolean(truckPos);
 
       // Distance calculation in km between two lat/lng points
       const getDistKm = (p1, p2) => {
@@ -662,42 +717,17 @@ export default function TripDispatcher() {
         return Math.sqrt(dLat * dLat + dLng * dLng);
       };
 
-      // Check if recorded GPS is close enough to the route (within 80km)
-      let minDistanceToRoute = Infinity;
-      if (hasRecordedLocation && routePath && routePath.length > 0) {
-        for (const pt of routePath) {
-          const d = getDistKm([liveLatitude, liveLongitude], pt);
-          if (d < minDistanceToRoute) minDistanceToRoute = d;
-        }
-      }
-      const isGpsOnRoute = minDistanceToRoute < 80;
-
-      // Position vehicle:
-      // 1. If GPS is within reasonable distance to route (< 80km), use real GPS position
-      // 2. If GPS is stale or far away (e.g. test GPS in another state), place along the trip route according to status!
-      let truckPos = null;
-      let displayStatus = 'AT ORIGIN';
-
-      if (hasRecordedLocation && isGpsOnRoute) {
-        truckPos = [liveLatitude, liveLongitude];
-        displayStatus = hasLiveLocation ? 'LIVE' : 'LAST SEEN';
-      } else if (selectedTrip.status === 'Dispatched') {
-        // Dispatched (In Transit): place vehicle at 45% along the actual road route
-        const midIdx = Math.max(0, Math.floor(routePath.length * 0.45));
-        truckPos = routePath[midIdx] || originCoords;
-        displayStatus = hasLiveLocation ? 'LIVE' : hasRecordedLocation ? 'LAST SEEN' : 'IN TRANSIT';
-      } else if (selectedTrip.status === 'Completed') {
-        truckPos = destCoords;
-        displayStatus = 'COMPLETED';
-      } else {
-        // Draft, Planned, Assigned
-        truckPos = originCoords;
-        displayStatus = 'AT ORIGIN';
+      // Before loading, the truck first drives to the pickup point (the trip origin).
+      let pickupPath = [];
+      if (tripPhase === 'to-pickup' && getDistKm(truckPos, originCoords) > 0.3) {
+        pickupPath = [truckPos, ...(await fetchRoadPath(truckPos, originCoords, routeCacheRef.current))];
+        if (!isMounted) return;
       }
 
+      const displayStatus = hasLiveLocation ? 'LIVE' : 'LAST SEEN';
       const statusTag = ` · ${displayStatus}`;
 
-      const truckIdx = truckPos
+      const truckIdx = tripPhase === 'delivering'
         ? routePath.reduce((closestIndex, point, index) => {
             const closestPoint = routePath[closestIndex];
             const currentDistance = (point[0] - truckPos[0]) ** 2 + (point[1] - truckPos[1]) ** 2;
@@ -706,15 +736,18 @@ export default function TripDispatcher() {
           }, 0)
         : -1;
 
-      const breadcrumbPath = selectedTripHistory
+      const breadcrumbPath = tripHistory
         .map(point => [Number(point.latitude), Number(point.longitude)])
         .filter(([latitude, longitude]) => Number.isFinite(latitude) && Number.isFinite(longitude));
+
+      // The first GPS point is the best record of when the driver started the trip.
+      const startedAt = tripHistory[0]?.captured_at || null;
 
       const truckIcon = L.divIcon({
         className: 'map-truck-marker leaflet-truck-marker',
         html: `
           <div class="marker-badge">${selectedTrip.vehicle?.registration_number || selectedTrip.vehicle_registration || 'Vehicle'}${statusTag}</div>
-          <div class="marker-icon-pulse ${hasLiveLocation && isGpsOnRoute ? '' : 'secondary'}">
+          <div class="marker-icon-pulse ${hasLiveLocation ? '' : 'secondary'}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="1" y="3" width="15" height="13"></rect>
               <polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon>
@@ -727,66 +760,46 @@ export default function TripDispatcher() {
         iconAnchor: [70, 56]
       });
 
-      // Refined Route Polylines
-      const hasProgress = truckIdx > 0 || selectedTrip.status === 'Dispatched';
-      const activeIdx = truckIdx >= 0 ? truckIdx : Math.floor(routePath.length * 0.45);
-      const activePath = hasProgress ? routePath.slice(0, Math.max(activeIdx + 1, 2)) : [];
-      const remainingPath = hasProgress ? routePath.slice(Math.max(activeIdx, 0)) : routePath;
+      const routeLayers = [];
+      const addLine = (path, options) => {
+        routeLayers.push(L.polyline(path, { lineCap: 'round', lineJoin: 'round', ...options }).addTo(map));
+      };
 
-      // 1. Remaining Segment: Soft Outer Halo
-      const glowLine = L.polyline(remainingPath, {
-        color: '#7a4a63',
-        weight: 7,
-        opacity: 0.25,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(map);
+      if (tripPhase === 'to-pickup') {
+        // Leg 1 (solid amber): truck to pickup. Leg 2 (dashed): the loaded run, driven after loading.
+        addLine(routePath, { color: '#7a4a63', weight: 3.5, opacity: 0.55, dashArray: '10, 8' });
+        if (pickupPath.length > 1) {
+          addLine(pickupPath, { color: '#e08a1e', weight: 8, opacity: 0.25 });
+          addLine(pickupPath, { color: '#e08a1e', weight: 4, opacity: 0.95 });
+        }
+      } else {
+        const activeIdx = Math.max(truckIdx, 0);
+        const hasProgress = tripPhase === 'delivering' && activeIdx > 0;
+        const remainingPath = hasProgress ? routePath.slice(activeIdx) : routePath;
+        addLine(remainingPath, { color: '#7a4a63', weight: 7, opacity: 0.25 });
+        addLine(remainingPath, { color: '#7a4a63', weight: 3.5, opacity: 0.95 });
+        if (hasProgress) {
+          const coveredPath = routePath.slice(0, Math.max(activeIdx + 1, 2));
+          addLine(coveredPath, { color: '#7a4a63', weight: 5, opacity: 0.9 });
+          addLine(coveredPath, { color: '#f9f9f9', weight: 2.5, opacity: 1 });
+        }
+      }
 
-      // 2. Remaining Segment: Bold Core Line (Weight 3.5px)
-      const remainingLine = L.polyline(remainingPath, {
-        color: '#7a4a63',
-        weight: 3.5,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(map);
-
-      // 3. Active Segment (Covered): Bordered Solid Line (Google Maps style past route)
-      const activeLineOuter = hasProgress ? L.polyline(activePath, {
-        color: '#7a4a63',
-        weight: 5,
-        opacity: 0.9,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(map) : null;
-
-      const activeLineInner = hasProgress ? L.polyline(activePath, {
-        color: '#f9f9f9',
-        weight: 2.5,
-        opacity: 1,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(map) : null;
-
-      const breadcrumbLine = breadcrumbPath.length > 1 ? L.polyline(breadcrumbPath, {
-        color: '#e08a1e',
-        weight: 4,
-        opacity: 0.9,
-        dashArray: '8, 7',
-        lineJoin: 'round'
-      }).addTo(map) : null;
+      if (breadcrumbPath.length > 1) {
+        addLine(breadcrumbPath, { color: '#64748b', weight: 3, opacity: 0.8, dashArray: '2, 6' });
+      }
 
       // Telemetry metric values
-      const speedVal = (selectedGpsIsFresh && isGpsOnRoute) ? formatVehicleSpeed(selectedTripLocation?.speed) : '--';
-      const statusVal = !(selectedGpsIsFresh && isGpsOnRoute)
-        ? (selectedTrip.status === 'Dispatched' ? 'In Transit' : selectedTrip.status || 'Waiting')
-        : (Number(selectedTripLocation?.speed || 0) < STATIONARY_SPEED_MS ? 'Stalled' : 'Moving');
-      const statusClass = (selectedGpsIsFresh && isGpsOnRoute) ? 'is-live' : 'is-waiting';
-      const accVal = (selectedGpsIsFresh && isGpsOnRoute && selectedTripLocation?.accuracy != null)
-        ? `${Number(selectedTripLocation.accuracy).toFixed(0)} m`
+      const speedVal = hasLiveLocation ? formatVehicleSpeed(tripLocation.speed) : '--';
+      const statusVal = hasLiveLocation
+        ? (Number(tripLocation.speed || 0) < STATIONARY_SPEED_MS ? 'Stalled' : 'Moving')
+        : 'In Transit';
+      const statusClass = hasLiveLocation ? 'is-live' : 'is-waiting';
+      const accVal = hasLiveLocation && tripLocation.accuracy != null
+        ? `${Number(tripLocation.accuracy).toFixed(0)} m`
         : '--';
-      const signalVal = selectedTripLocation?.captured_at
-        ? formatTime(selectedTripLocation.captured_at)
+      const signalVal = tripLocation?.captured_at
+        ? formatTime(tripLocation.captured_at)
         : 'Never';
 
       const driverName = selectedTrip.driver?.name || selectedTrip.driver_name || 'Assigned Driver';
@@ -815,7 +828,7 @@ export default function TripDispatcher() {
           </div>
           <div class="dtp-time-bar">
             <div class="dtp-time-item">
-              <span class="dtp-time-label">DEPARTURE</span>
+              <span class="dtp-time-label">PLANNED START</span>
               <span class="dtp-time-val">${formatTime(selectedTrip.start_time)}</span>
             </div>
             <div class="dtp-time-item">
@@ -890,7 +903,7 @@ export default function TripDispatcher() {
           </div>
           <div class="dtp-time-bar">
             <div class="dtp-time-item">
-              <span class="dtp-time-label">EST. ARRIVAL</span>
+              <span class="dtp-time-label">PLANNED ARRIVAL</span>
               <span class="dtp-time-val highlight">${formatTime(selectedTrip.expected_arrival)}</span>
             </div>
             <div class="dtp-time-item">
@@ -973,22 +986,13 @@ export default function TripDispatcher() {
           
           <div class="dtp-route-summary">
             <div class="dtp-route-text">${selectedTrip.origin} <span>→</span> ${selectedTrip.destination}</div>
-            <div class="dtp-status-pill ${hasLiveLocation && isGpsOnRoute ? 'live' : 'waiting'}">● ${displayStatus}</div>
+            <div class="dtp-status-pill ${hasLiveLocation ? 'live' : 'waiting'}">● ${displayStatus}</div>
           </div>
 
-          <!-- Real Time Metrics Section -->
-          <div class="dtp-time-bar">
+          <div class="dtp-time-bar single">
             <div class="dtp-time-item">
               <span class="dtp-time-label">TRIP STARTED</span>
-              <span class="dtp-time-val">${formatTime(selectedTrip.start_time)}</span>
-            </div>
-            <div class="dtp-time-item">
-              <span class="dtp-time-label">ELAPSED</span>
-              <span class="dtp-time-val highlight">${formatElapsed(selectedTrip.start_time)}</span>
-            </div>
-            <div class="dtp-time-item">
-              <span class="dtp-time-label">EST. ARRIVAL</span>
-              <span class="dtp-time-val">${formatTime(selectedTrip.expected_arrival)}</span>
+              <span class="dtp-time-val">${formatTime(startedAt)}</span>
             </div>
           </div>
 
@@ -1045,6 +1049,8 @@ export default function TripDispatcher() {
         }
       };
 
+      const firstTruckForTrip = Boolean(truckPos) && fittedTruckTripRef.current !== selectedTrip.id;
+
       if (truckPos) {
         if (truckMarkerRef.current) {
           // Marker already exists: smoothly update position and content without DOM reconstruction
@@ -1085,21 +1091,18 @@ export default function TripDispatcher() {
           truckMarkerRef.current = truckMarker;
 
           // Auto-open on initial load so the card is open and visible
-          if (isNewTrip) {
+          if (firstTruckForTrip) {
             setTimeout(() => {
               if (truckMarkerRef.current) truckMarkerRef.current.openPopup();
             }, 350);
           }
         }
+      } else if (truckMarkerRef.current) {
+        truckMarkerRef.current.remove();
+        truckMarkerRef.current = null;
       }
 
-      map._tripLayers.push(
-        glowLine,
-        ...(activeLineOuter ? [activeLineOuter] : []),
-        ...(activeLineInner ? [activeLineInner] : []),
-        remainingLine,
-        ...(breadcrumbLine ? [breadcrumbLine] : [])
-      );
+      map._tripLayers.push(...routeLayers);
       if (originMarkerRef.current && !map._tripLayers.includes(originMarkerRef.current)) {
         map._tripLayers.push(originMarkerRef.current);
       }
@@ -1110,19 +1113,20 @@ export default function TripDispatcher() {
         map._tripLayers.push(truckMarkerRef.current);
       }
 
-      // Fit map view bounds ONLY if we switched to a new trip (don't auto-pan continuously as GPS updates)
-      if (prevSelectedTripIdRef.current !== selectedTrip.id) {
+      // Fit on a new trip, and once more when its truck first appears so the pickup leg is in view.
+      if (isNewTrip || firstTruckForTrip) {
         map.invalidateSize();
-        const bounds = L.latLngBounds(routePath);
+        const bounds = L.latLngBounds([...routePath, ...pickupPath, ...(truckPos ? [truckPos] : [])]);
         map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14, animate: true });
         prevSelectedTripIdRef.current = selectedTrip.id;
+        if (truckPos) fittedTruckTripRef.current = selectedTrip.id;
       }
     };
 
     updateRoute();
 
     return () => { isMounted = false; };
-  }, [selectedTrip, selectedTripLocation, selectedTripHistory, selectedGpsIsFresh]);
+  }, [selectedTrip, tripLocation, tripHistory, selectedGpsIsFresh, tripPhase]);
 
   const handleZoomIn  = () => mapInstanceRef.current?.zoomIn();
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
@@ -1131,7 +1135,8 @@ export default function TripDispatcher() {
     mapInstanceRef.current.invalidateSize();
     const originCoords = selectedTrip.origin_coords || await resolveCoordsAsync(selectedTrip.origin, true);
     const destCoords   = selectedTrip.dest_coords   || await resolveCoordsAsync(selectedTrip.destination, false);
-    mapInstanceRef.current.fitBounds(L.latLngBounds([originCoords, destCoords]), { padding: [70, 70], animate: true });
+    const truckPoint = tripPhase === 'to-pickup' || tripPhase === 'delivering' ? gpsPoint(tripLocation) : null;
+    mapInstanceRef.current.fitBounds(L.latLngBounds([originCoords, destCoords, ...(truckPoint ? [truckPoint] : [])]), { padding: [70, 70], animate: true });
   };
 
   const showToast = (msg) => window.dispatchEvent(new CustomEvent('app-toast', { detail: msg }));
@@ -1178,8 +1183,8 @@ export default function TripDispatcher() {
     const payload = {
       origin:          originAC.query.trim(),
       destination:     destAC.query.trim(),
-      origin_coords:   originAC.selectedLocation?.center || await resolveCoordsAsync(originAC.query.trim(), true),
-      dest_coords:     destAC.selectedLocation?.center   || await resolveCoordsAsync(destAC.query.trim(), false),
+      origin_coords:   originAC.selectedLocation?.center || await resolveCoordsAsync(originAC.query.trim(), true, false) || undefined,
+      dest_coords:     destAC.selectedLocation?.center   || await resolveCoordsAsync(destAC.query.trim(), false, false) || undefined,
       planned_route:   `${originAC.query.trim()} -> ${destAC.query.trim()}`,
       status:          editingTrip ? initialStatus : creationStatus,
       start_time:      startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
@@ -1223,6 +1228,22 @@ export default function TripDispatcher() {
     try {
       await apiRequest('PATCH', `/trips/${trip.id}/status`, { status: nextStatus });
       showToast(`Trip #${trip.id} status updated to ${nextStatus}`);
+      await loadData(true);
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    }
+  };
+
+  const handleMilestoneOverride = async (trip, action) => {
+    const reason = window.prompt(`Why is this trip being marked ${action} without the driver on site? The reason is saved in the trip log.`);
+    if (reason === null) return;
+    if (reason.trim().length < 5) {
+      showToast('Enter a reason of at least 5 characters.');
+      return;
+    }
+    try {
+      await apiRequest('PATCH', `/trips/${trip.id}/loading`, { action, override_reason: reason.trim() });
+      showToast(`Trip #${trip.id} marked ${action}.`);
       await loadData(true);
     } catch (err) {
       showToast(`Error: ${err.message}`);
@@ -1311,9 +1332,8 @@ export default function TripDispatcher() {
             filteredTrips.map(t => {
               const isSelected = selectedTrip && selectedTrip.id === t.id;
 
-              const progressPct = t.status === 'Completed' ? 100
-                : t.status === 'Dispatched' ? 65
-                : t.status === 'Assigned' ? 35 : 15;
+              const progressPct = tripProgressPct(t, activeLocations[String(t.id)], tripCoords[`${t.origin}|${t.destination}`] || null);
+              const barPct = progressPct ?? 0;
 
               return (
                 <div
@@ -1405,6 +1425,15 @@ export default function TripDispatcher() {
                             <span>Unloading <strong>{t.unloaded_at ? 'Unloaded' : 'Waiting to unload'}</strong></span>
                           ) : null}
                         </div>
+                        {!t.unloaded_at && (
+                          <button
+                            className="tc-act tc-act-override"
+                            onClick={() => handleMilestoneOverride(t, t.loaded_at ? 'unloaded' : 'loaded')}
+                            title="Record this without the driver on site. A reason is required and logged."
+                          >
+                            Override: mark {t.loaded_at ? 'unloaded' : 'loaded'}
+                          </button>
+                        )}
                         {t.loaded_at && t.unloaded_at && (
                           <span className="tc-checkpoint-awaiting">Awaiting driver to end trip in the mobile app</span>
                         )}
@@ -1415,11 +1444,14 @@ export default function TripDispatcher() {
                   <div className="tc-progress-wrap">
                     <span className="tc-start-dot" />
                     <div className="tc-progress-track">
-                      <div className="tc-progress-fill" style={{ width: `${progressPct}%` }} />
-                      <div className="tc-truck-node" style={{ left: `${Math.min(progressPct, 92)}%` }}>
+                      <div className="tc-progress-fill" style={{ width: `${barPct}%` }} />
+                      <div className="tc-truck-node" style={{ left: `${Math.min(barPct, 92)}%` }}>
                         <Truck size={12} />
                       </div>
                     </div>
+                    <span className="tc-progress-pct" title="Share of the loaded run covered, from live GPS">
+                      {progressPct == null ? '--' : `${progressPct}%`}
+                    </span>
                     <MapPin size={14} className="tc-pin-icon" />
                   </div>
                 </div>
@@ -1436,9 +1468,24 @@ export default function TripDispatcher() {
         <section className="td-map-container full-height">
           <div className="td-dark-map-canvas" ref={mapContainerRef} />
 
+          {tripPhase !== 'idle' ? (
+            <div className="map-phase-chip">
+              {tripPhase === 'awaiting-gps' ? <span>Waiting for the driver's first GPS location</span> : null}
+              {tripPhase === 'to-pickup' ? (
+                <>
+                  <span><i className="phase-swatch pickup" />Truck to pickup · {selectedTrip.origin}</span>
+                  <span><i className="phase-swatch delivery" />After loading · {selectedTrip.destination}</span>
+                </>
+              ) : null}
+              {tripPhase === 'delivering' ? (
+                <span><i className="phase-swatch loaded" />{selectedTrip.unloaded_at ? 'Unloaded' : 'Loaded'} · {selectedTrip.destination}</span>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="map-eta-callout">
             <div className="eta-title">
-              <span>Drop - off ETA:</span>
+              <span>Scheduled drop-off:</span>
               <strong>
                 {selectedTrip?.expected_arrival 
                   ? new Date(selectedTrip.expected_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

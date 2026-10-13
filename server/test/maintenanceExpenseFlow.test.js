@@ -4,6 +4,8 @@ const jwt = require('jsonwebtoken');
 const app = require('../src/app');
 const { JWT_SECRET } = require('../src/config/jwt');
 const { query, pool } = require('../src/config/db');
+const fs = require('fs').promises;
+const { getReceiptPath } = require('../src/services/maintenanceReceiptStorage');
 
 // The mobile driver reports a breakdown from the truck; this suite proves the
 // round trip the owner asked about: driver ticket -> manager's web view AND
@@ -72,6 +74,11 @@ describe('TransitOps maintenance reports -> expense ledger integration', () => {
 
   after(async () => {
     await query('DELETE FROM expenses WHERE organization_id = $1', [ORG]);
+    const stored = await query('SELECT receipt_storage_key FROM maintenance_reports WHERE organization_id = $1', [ORG]);
+    await Promise.all(stored.rows.map(async ({ receipt_storage_key }) => {
+      const filePath = getReceiptPath(receipt_storage_key);
+      if (filePath) await fs.unlink(filePath).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    }));
     await query('DELETE FROM maintenance_reports WHERE organization_id = $1', [ORG]);
     await query('DELETE FROM trips WHERE organization_id = $1', [ORG]);
     await query('DELETE FROM users WHERE organization_id = $1', [ORG]);
@@ -153,7 +160,17 @@ describe('TransitOps maintenance reports -> expense ledger integration', () => {
     const report = list.body.data;
     assert.equal(report.status, 'Open');
 
-    const ack = await api(tokenDriver, 'PATCH', `/api/maintenance/driver-reports/${report.id}`, { status: 'Acknowledged' });
+    const unrequestedApproval = await api(tokenManager, 'PATCH', `/api/maintenance/driver-reports/${report.id}`, { status: 'Acknowledged' });
+    assert.equal(unrequestedApproval.status, 409);
+
+    const driverSelfApproval = await api(tokenDriver, 'PATCH', `/api/maintenance/driver-reports/${report.id}`, { status: 'Acknowledged' });
+    assert.equal(driverSelfApproval.status, 403);
+
+    const approvalRequest = await api(tokenDriver, 'POST', `/api/maintenance/driver-reports/${report.id}/request-approval`);
+    assert.equal(approvalRequest.status, 200);
+    assert.equal(approvalRequest.body.data.approval_requested, true);
+
+    const ack = await api(tokenManager, 'PATCH', `/api/maintenance/driver-reports/${report.id}`, { status: 'Acknowledged' });
     assert.equal(ack.status, 200);
     assert.equal(ack.body.data.status, 'Acknowledged');
 
@@ -198,5 +215,30 @@ describe('TransitOps maintenance reports -> expense ledger integration', () => {
     assert.ok(row, 'the resolved repair must appear in the manager web History tab');
     assert.equal(row.status, 'Resolved');
     assert.equal(row.receipt_pending, true);
+  });
+
+  test('manager uploads the pending bill from the History tab', async () => {
+    const history = await api(tokenManager, 'GET', '/api/maintenance/driver-reports?view=history');
+    const row = history.body.data.find((r) => r.receipt_pending);
+    assert.ok(row, 'a resolved report is waiting for its bill');
+
+    const upload = () => {
+      const form = new FormData();
+      form.set('receipt', new Blob(['%PDF-1.4 manager uploaded bill'], { type: 'application/pdf' }), 'manager-bill.pdf');
+      return fetch(`http://127.0.0.1:${server.address().port}/api/maintenance/driver-reports/${row.id}/receipt`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenManager}` },
+        body: form
+      });
+    };
+
+    const uploaded = await upload();
+    assert.equal(uploaded.status, 200);
+    const body = await uploaded.json();
+    assert.equal(body.data.receipt_pending, false);
+    assert.equal(body.data.receipt_file_name, 'manager-bill.pdf');
+
+    const duplicate = await upload();
+    assert.equal(duplicate.status, 409);
   });
 });

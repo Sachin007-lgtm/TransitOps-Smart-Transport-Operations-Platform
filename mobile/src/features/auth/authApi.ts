@@ -7,6 +7,7 @@ export type AuthUser = {
   role: string;
   role_id: string | number;
   driver_id?: number | null;
+  driver_status?: string | null;
   organization_id?: string | null;
   must_change_password?: boolean;
 };

@@ -24,6 +24,7 @@ function publicUser(user) {
 		role: user.role,
 		role_id: user.role_id,
 		driver_id: user.driver_id,
+		driver_status: user.driver_status || null,
 		organization_id: user.organization_id,
 		organization_name: user.organization_name || null,
 		avatar_url: user.avatar_url || null,

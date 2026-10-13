@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Check, Info, Download, RefreshCw } from 'lucide-react';
+import { Check, Info, Download, Upload, RefreshCw } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
-import { apiDownloadFile, apiRequest } from '../utils/api';
+import { apiDownloadFile, apiRequest, apiUploadFile } from '../utils/api';
 import './Maintenance.css';
 
 // Service records entered here ride the SAME consolidated expense ledger as
@@ -21,6 +21,7 @@ export default function Maintenance() {
   const [driverReports, setDriverReports] = useState([]);
   const [reportsError, setReportsError] = useState('');
   const [reportView, setReportView] = useState('active');
+  const [uploadingReceiptId, setUploadingReceiptId] = useState(null);
 
   // Form State
   const [selectedVehicle, setSelectedVehicle] = useState('');
@@ -87,10 +88,7 @@ export default function Maintenance() {
     return () => clearInterval(interval);
   }, [loadVehicles, loadServiceRecords, loadDriverReports, reportView]);
 
-  // Approve a driver's ticket from the web: the manager marks it Fixing
-  // (Acknowledged) through the real endpoint, so the driver sees it and can
-  // start the repair. The driver's own self-approve from the app stays
-  // allowed — this is the manager's mirror of the same transition.
+  // The driver must request fixing first; the server rejects approval otherwise.
   const handleApproveReport = async (report) => {
     try {
       const response = await apiRequest('PATCH', `/maintenance/driver-reports/${report.id}`, {
@@ -101,6 +99,30 @@ export default function Maintenance() {
       return response.data;
     } catch (error) {
       showToast(error.message || 'Could not approve the ticket.');
+    }
+  };
+
+  const handleUploadReceipt = async (report, event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
+      showToast('Upload the bill as a PDF, JPEG, or PNG file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('The bill must be 10 MB or smaller.');
+      return;
+    }
+    setUploadingReceiptId(report.id);
+    try {
+      await apiUploadFile(`/maintenance/driver-reports/${report.id}/receipt`, 'receipt', file);
+      showToast('Bill uploaded.');
+      await loadDriverReports(reportView, true);
+    } catch (error) {
+      showToast(error.message || 'Could not upload the bill.');
+    } finally {
+      setUploadingReceiptId(null);
     }
   };
 
@@ -243,7 +265,9 @@ export default function Maintenance() {
                     <span className="vehicle-chip">{report.vehicle_registration}</span>
                     <span className={`driver-report-priority priority-${report.priority.toLowerCase()}`}>{report.priority}</span>
                     <span className={`driver-report-status status-${report.status.toLowerCase()}`}>
-                      {report.status === 'Open' ? 'Reported' : report.status === 'Acknowledged' ? 'Fixing' : report.status}
+                      {report.status === 'Open'
+                        ? report.approval_requested ? 'Approval requested' : 'Reported'
+                        : report.status === 'Acknowledged' ? 'Fixing' : report.status}
                     </span>
                   </div>
                   <p className="driver-report-description">{report.description}</p>
@@ -254,16 +278,30 @@ export default function Maintenance() {
                     <span>
                       Repair cost: {report.repair_cost == null ? 'Not recorded' : `₹${Number(report.repair_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
                     </span>
-                    {report.status === 'Open' ? (
+                    {report.status === 'Open' && report.approval_requested ? (
                       <button type="button" className="driver-report-approve" onClick={() => handleApproveReport(report)}>
                         <Check size={14} /> Approve
                       </button>
+                    ) : report.status === 'Open' ? (
+                      <span>Waiting for the driver to request fixing</span>
                     ) : report.has_receipt ? (
                       <button type="button" className="driver-report-download" onClick={() => handleDownloadReceipt(report)}>
                         <Download size={14} /> {report.receipt_file_name || 'Download bill'}
                       </button>
                     ) : report.receipt_pending ? (
-                      <span className="receipt-pending-badge">Receipt pending</span>
+                      <>
+                        <span className="receipt-pending-badge">Receipt pending</span>
+                        <label className={`driver-report-upload${uploadingReceiptId === report.id ? ' is-uploading' : ''}`}>
+                          <Upload size={14} /> {uploadingReceiptId === report.id ? 'Uploading…' : 'Upload bill'}
+                          <input
+                            type="file"
+                            accept="application/pdf,image/jpeg,image/png"
+                            hidden
+                            disabled={uploadingReceiptId === report.id}
+                            onChange={event => handleUploadReceipt(report, event)}
+                          />
+                        </label>
+                      </>
                     ) : report.status === 'Resolved' && Number(report.repair_cost) === 0 ? (
                       <span>No bill required</span>
                     ) : null}

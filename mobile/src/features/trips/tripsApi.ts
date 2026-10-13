@@ -95,6 +95,7 @@ export type MaintenanceReport = {
   description: string;
   priority: MaintenancePriority;
   status: MaintenanceReportStatus;
+  approval_requested?: boolean;
   repair_cost?: number | string | null;
   receipt_pending?: boolean;
   receipt_file_name?: string | null;
@@ -137,14 +138,9 @@ export async function createMaintenanceReport(
   return response.data;
 }
 
-export async function updateMaintenanceReportStatus(
-  reportId: string,
-  status: Exclude<MaintenanceReportStatus, 'Resolved'>,
-  token: string,
-): Promise<MaintenanceReport> {
-  const response = await authenticatedRequest<{ data: MaintenanceReport }>(`/maintenance/driver-reports/${reportId}`, token, {
-    method: 'PATCH',
-    body: JSON.stringify({ status }),
+export async function requestMaintenanceApproval(reportId: string, token: string): Promise<MaintenanceReport> {
+  const response = await authenticatedRequest<{ data: MaintenanceReport }>(`/maintenance/driver-reports/${reportId}/request-approval`, token, {
+    method: 'POST',
   });
   return response.data;
 }

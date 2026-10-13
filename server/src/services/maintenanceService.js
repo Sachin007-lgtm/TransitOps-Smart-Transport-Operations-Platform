@@ -54,14 +54,20 @@ const maintenanceService = {
 		return toPublicReport(report);
 	},
 
+	requestDriverApproval: async (id, user) => {
+		const report = await Maintenance.requestDriverApproval(id, user.organization_id, user.driver_id);
+		if (!report) throw new MaintenanceServiceError('This report cannot request fixing approval.', 409);
+		return toPublicReport(report);
+	},
+
 	updateReportStatus: async (id, { status, resolution_note }, user) => {
 		if (user.role === 'Driver') {
-			const current = await Maintenance.findActiveDriverReport(id, user.organization_id, user.driver_id);
-			if (!current) throw new MaintenanceServiceError('Active maintenance report not found for this trip.', 404);
-			const allowed = ['Open', 'Acknowledged'];
-			if (!allowed.includes(status)) {
-				throw new MaintenanceServiceError('Use the repair close-out step to record cost and receipt before marking the issue fixed.', 400);
-			}
+			throw new MaintenanceServiceError('Only a manager can approve a fixing request.', 403);
+		}
+		if (status === 'Acknowledged') {
+			const approved = await Maintenance.approveDriverReport(id, user.organization_id);
+			if (!approved) throw new MaintenanceServiceError('The driver must request fixing approval before it can be approved.', 409);
+			return toPublicReport(approved);
 		}
 		const updated = await Maintenance.updateReportStatus(id, user.organization_id, status, resolution_note);
 		if (!updated) throw new MaintenanceServiceError('Maintenance report not found.', 404);
@@ -72,7 +78,7 @@ const maintenanceService = {
 		const current = await Maintenance.findActiveDriverReport(id, user.organization_id, user.driver_id);
 		if (!current || current.status !== 'Acknowledged') {
 			if (file) await deleteReceiptFile(file.path);
-			throw new MaintenanceServiceError("Mark the report as 'Fixing' before completing the repair.", 409);
+			throw new MaintenanceServiceError('Wait for a manager to approve the fixing request before completing the repair.', 409);
 		}
 
 		const repairCost = Number(repair_cost);
@@ -120,7 +126,13 @@ const maintenanceService = {
 	},
 
 	addPendingReceipt: async (id, { receipt_original_name }, file, user) => {
-		const current = await Maintenance.findReportForDriver(id, user.organization_id, user.driver_id);
+		// A null scope means manager access; a driver must always be scoped to their own reports.
+		const driverScope = user.role === 'Driver' ? user.driver_id : null;
+		if (user.role === 'Driver' && !driverScope) {
+			if (file) await deleteReceiptFile(file.path);
+			throw new MaintenanceServiceError('Driver account is not linked to a driver profile.', 403);
+		}
+		const current = await Maintenance.findReport(id, user.organization_id, driverScope);
 		if (!current || current.status !== 'Resolved' || !current.receipt_pending || current.receipt_storage_key) {
 			if (file) await deleteReceiptFile(file.path);
 			throw new MaintenanceServiceError('This report is not waiting for a receipt.', 409);
@@ -134,7 +146,7 @@ const maintenanceService = {
 			const updated = await Maintenance.addPendingReceipt({
 				id,
 				organization_id: user.organization_id,
-				driver_id: user.driver_id,
+				driver_id: driverScope,
 				receipt: {
 					storageKey: file.filename,
 					originalName: sanitizeReceiptName(receipt_original_name, file.originalname),

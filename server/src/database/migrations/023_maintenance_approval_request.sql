@@ -1,0 +1,2 @@
+ALTER TABLE maintenance_reports
+  ADD COLUMN IF NOT EXISTS approval_requested BOOLEAN NOT NULL DEFAULT FALSE;

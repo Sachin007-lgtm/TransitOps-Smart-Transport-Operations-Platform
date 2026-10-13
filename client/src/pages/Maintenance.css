@@ -140,6 +140,20 @@
   font-weight: 700;
 }
 
+.driver-report-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--plum-1);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.driver-report-upload.is-uploading {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 @media (max-width: 700px) {
   .driver-report-row { align-items: flex-start; flex-direction: column; }
 }

@@ -5,6 +5,7 @@ const publicUserColumns = `
 	r.name AS role, u.organization_id, u.driver_id,
 	u.avatar_url,
 	o.name AS organization_name,
+	d.status AS driver_status,
 	u.must_change_password, u.is_active, u.created_at, u.updated_at
 `;
 
@@ -28,6 +29,7 @@ const User = {
 			FROM users u
 			JOIN roles r ON r.id = u.role_id
 			LEFT JOIN organizations o ON o.id = u.organization_id
+			LEFT JOIN drivers d ON d.id = u.driver_id AND d.organization_id = u.organization_id
 			WHERE u.id = $1
 		`, [id]);
 		return result.rows[0];

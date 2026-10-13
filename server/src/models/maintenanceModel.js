@@ -47,7 +47,7 @@ const maintenanceModel = {
 	findAllReports: async (organization_id, history = false) => {
 		const result = await query(`
 			SELECT mr.id, mr.organization_id, mr.trip_id, mr.vehicle_id, mr.driver_id,
-					mr.description, mr.priority, mr.status, mr.repair_cost, mr.receipt_pending,
+					mr.description, mr.priority, mr.status, mr.approval_requested, mr.repair_cost, mr.receipt_pending,
 					mr.receipt_file_name, mr.receipt_mime_type, mr.receipt_size_bytes,
 					mr.resolution_note, mr.resolved_at, mr.created_at, mr.updated_at,
 					(mr.receipt_storage_key IS NOT NULL) AS has_receipt,
@@ -66,13 +66,33 @@ const maintenanceModel = {
 		return result.rows;
 	},
 
-	findReportForDriver: async (id, organization_id, driver_id) => {
+	findReport: async (id, organization_id, driver_id = null) => {
 		const result = await query(`
 			SELECT mr.*, t.status AS trip_status
 			FROM maintenance_reports mr
 			JOIN trips t ON t.id = mr.trip_id AND t.organization_id = mr.organization_id
-			WHERE mr.id = $1 AND mr.organization_id = $2 AND mr.driver_id = $3
+			WHERE mr.id = $1 AND mr.organization_id = $2 AND ($3::uuid IS NULL OR mr.driver_id = $3)
 		`, [id, organization_id, driver_id]);
+		return result.rows[0] || null;
+	},
+
+	requestDriverApproval: async (id, organization_id, driver_id) => {
+		const result = await query(`
+			UPDATE maintenance_reports
+			SET approval_requested = TRUE, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1 AND organization_id = $2 AND driver_id = $3 AND status = 'Open'
+			RETURNING *
+		`, [id, organization_id, driver_id]);
+		return result.rows[0] || null;
+	},
+
+	approveDriverReport: async (id, organization_id) => {
+		const result = await query(`
+			UPDATE maintenance_reports
+			SET status = 'Acknowledged', approval_requested = FALSE, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1 AND organization_id = $2 AND status = 'Open' AND approval_requested = TRUE
+			RETURNING *
+		`, [id, organization_id]);
 		return result.rows[0] || null;
 	},
 
@@ -132,7 +152,7 @@ const maintenanceModel = {
 		return updated;
 	},
 
-	addPendingReceipt: async ({ id, organization_id, driver_id, receipt }) => {
+	addPendingReceipt: async ({ id, organization_id, driver_id = null, receipt }) => {
 		const result = await query(`
 			UPDATE maintenance_reports
 			SET receipt_storage_key = $4,
@@ -141,7 +161,7 @@ const maintenanceModel = {
 				receipt_size_bytes = $7,
 				receipt_pending = FALSE,
 				updated_at = CURRENT_TIMESTAMP
-			WHERE id = $1 AND organization_id = $2 AND driver_id = $3
+			WHERE id = $1 AND organization_id = $2 AND ($3::uuid IS NULL OR driver_id = $3)
 				AND status = 'Resolved' AND receipt_pending = TRUE AND receipt_storage_key IS NULL
 			RETURNING *
 		`, [id, organization_id, driver_id, receipt.storageKey, receipt.originalName, receipt.mimeType, receipt.sizeBytes]);

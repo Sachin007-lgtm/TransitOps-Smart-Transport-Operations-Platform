@@ -1,15 +1,36 @@
 import { Redirect, router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DriverNav } from '@/components/driver/DriverNav';
 import { LanguageToggle } from '@/components/driver/LanguageToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getCurrentUser } from '@/features/auth/authApi';
+import { getTrips, Trip } from '@/features/trips/tripsApi';
 
 export default function ProfileScreen() {
-  const { isRestoring, signOut, user } = useAuth();
-  const { t } = useLanguage();
+  const { isRestoring, signOut, token, user } = useAuth();
+  const { t, driverStatus } = useLanguage();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [driverState, setDriverState] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  async function loadProfileData() {
+    if (!token) return;
+    try {
+      const [loadedTrips, currentUser] = await Promise.all([getTrips(token), getCurrentUser(token)]);
+      setTrips(loadedTrips);
+      setDriverState(currentUser.driver_status ?? null);
+    } catch {
+      // Keep the last values; the profile is still usable offline.
+    }
+  }
+
+  useEffect(() => {
+    void loadProfileData();
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isRestoring) {
     return null;
@@ -19,14 +40,28 @@ export default function ProfileScreen() {
     return <Redirect href="/" />;
   }
 
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await loadProfileData();
+    setIsRefreshing(false);
+  }
+
   async function handleSignOut() {
     await signOut();
     router.replace('/');
   }
 
+  const currentStatus = driverState ?? user.driver_status ?? null;
+  const completedCount = trips.filter(trip => trip.status === 'Completed').length;
+  const inTransitCount = trips.filter(trip => trip.status === 'Dispatched').length;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void handleRefresh()} tintColor="#D97D00" />}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.eyebrow}>{t('account')}</Text>
         <Text style={styles.title}>{t('yourProfile')}</Text>
         <LanguageToggle />
@@ -38,20 +73,33 @@ export default function ProfileScreen() {
           <Text style={styles.name}>{user.name}</Text>
           <Text style={styles.role}>{user.role}</Text>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('email')}</Text>
-            <Text style={styles.detailValue}>{user.email}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('accountId')}</Text>
-            <Text style={styles.detailValue}>{user.id}</Text>
+          {currentStatus ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>{t('driverStatusLabel')}</Text>
+              <Text style={styles.detailValue}>{driverStatus(currentStatus)}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{trips.length}</Text>
+              <Text style={styles.statLabel}>{t('totalTrips')}</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{completedCount}</Text>
+              <Text style={styles.statLabel}>{t('completedTrips')}</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{inTransitCount}</Text>
+              <Text style={styles.statLabel}>{t('inTransitTrips')}</Text>
+            </View>
           </View>
         </View>
 
         <Pressable onPress={handleSignOut} style={styles.signOutButton}>
           <Text style={styles.signOutText}>{t('signOut')}</Text>
         </Pressable>
-      </View>
+      </ScrollView>
       <DriverNav />
     </SafeAreaView>
   );
@@ -63,7 +111,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     padding: 24,
   },
   eyebrow: {
@@ -131,6 +179,35 @@ const styles = StyleSheet.create({
     color: '#2A2030',
     fontSize: 15,
     marginTop: 5,
+  },
+  statsRow: {
+    alignSelf: 'stretch',
+    borderTopColor: '#E5E1E8',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+    paddingTop: 16,
+  },
+  statBox: {
+    alignItems: 'center',
+    backgroundColor: '#F7F5F8',
+    borderRadius: 12,
+    flex: 1,
+    paddingVertical: 12,
+  },
+  statValue: {
+    color: '#2A2030',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  statLabel: {
+    color: '#7D7382',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginTop: 3,
+    textAlign: 'center',
   },
   signOutButton: {
     alignItems: 'center',

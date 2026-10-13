@@ -162,8 +162,9 @@ describe('TransitOps Trip Module Backend Tests', () => {
   }
 
   async function markTripLoadedAndUnloaded(tripId) {
-    await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded' } });
-    return api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded' } });
+    const override_reason = 'Test: driver confirmed by phone';
+    await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded', override_reason } });
+    return api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded', override_reason } });
   }
 
   // TEST 1: Unauthenticated request rejected
@@ -417,17 +418,18 @@ describe('TransitOps Trip Module Backend Tests', () => {
     assert.equal(dispatchRes.status, 200);
     assert.equal(dispatchRes.data.data.status, 'Dispatched');
 
-    const unloadFirst = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded' } });
+    const override_reason = 'Test: driver confirmed by phone';
+    const unloadFirst = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded', override_reason } });
     assert.equal(unloadFirst.status, 400);
 
-    const loaded = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded' } });
+    const loaded = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded', override_reason } });
     assert.equal(loaded.status, 200);
     assert.ok(loaded.data.data.loaded_at);
 
-    const duplicateLoad = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded' } });
+    const duplicateLoad = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'loaded', override_reason } });
     assert.equal(duplicateLoad.status, 409);
 
-    const unloaded = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded' } });
+    const unloaded = await api(`/${tripId}/loading`, { method: 'PATCH', body: { action: 'unloaded', override_reason } });
     assert.equal(unloaded.status, 200);
     assert.ok(unloaded.data.data.unloaded_at);
 

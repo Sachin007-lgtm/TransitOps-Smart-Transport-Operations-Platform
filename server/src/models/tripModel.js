@@ -29,7 +29,11 @@ const Trip = {
     // bill should show, and the fare already received up front.
     company_id = null,
     trip_date = null,
-    advance_received = 0.00
+    advance_received = 0.00,
+    origin_lat = null,
+    origin_lng = null,
+    dest_lat = null,
+    dest_lng = null
   }, client = null) => {
     assertOrganizationId(organization_id, 'create');
 
@@ -40,8 +44,9 @@ const Trip = {
         vehicle_id, driver_id,
         cargo_weight, revenue,
         start_time, expected_arrival, status,
-        company_id, trip_date, advance_received
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        company_id, trip_date, advance_received,
+        origin_lat, origin_lng, dest_lat, dest_lng
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *;
     `;
     const values = [
@@ -60,7 +65,11 @@ const Trip = {
       status,
       company_id,
       trip_date,
-      advance_received
+      advance_received,
+      origin_lat,
+      origin_lng,
+      dest_lat,
+      dest_lng
     ];
 
     const executor = client || { query };
@@ -283,7 +292,11 @@ const Trip = {
       // them), so a trip edit can never forge a billed state.
       'company_id',
       'trip_date',
-      'advance_received'
+      'advance_received',
+      'origin_lat',
+      'origin_lng',
+      'dest_lat',
+      'dest_lng'
     ];
 
     const setClause = [];

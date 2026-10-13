@@ -57,7 +57,12 @@ const updateTripStatus = asyncWrapper(async (req, res) => {
 
 const updateTripLoadingMilestone = asyncWrapper(async (req, res) => {
   try {
-    const updated = await tripService.updateLoadingMilestone(req.params.id, req.body.action, req.user);
+    const updated = await tripService.updateLoadingMilestone(
+      req.params.id,
+      req.body.action,
+      req.user,
+      { override_reason: req.body.override_reason }
+    );
     return apiResponse.success(res, updated, `Trip marked ${req.body.action}.`);
   } catch (err) {
     return handleError(res, err);

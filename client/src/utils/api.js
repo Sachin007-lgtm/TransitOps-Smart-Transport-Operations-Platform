@@ -118,6 +118,37 @@ export async function apiOpenDocument(path) {
   return opened;
 }
 
+export async function apiUploadFile(path, fieldName, file) {
+  const token = getStoredToken();
+  const body = new FormData();
+  body.append('receipt_original_name', file.name);
+  body.append(fieldName, file);
+
+  // No Content-Type header: the browser sets the multipart boundary itself.
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body
+  });
+
+  if (response.status === 401) {
+    clearStoredAuth();
+    window.dispatchEvent(new CustomEvent('transitops-unauthorized'));
+    throw new Error('Unauthorized');
+  }
+
+  let json = null;
+  try {
+    json = await response.json();
+  } catch {
+    /* non-JSON error body */
+  }
+  if (!response.ok) {
+    throw new Error(json?.error || json?.message || 'Upload failed.');
+  }
+  return json;
+}
+
 export async function apiDownloadFile(path, fileName) {
   const token = getStoredToken();
   const response = await fetch(`${API_URL}${path}`, {

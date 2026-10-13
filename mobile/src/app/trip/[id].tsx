@@ -31,7 +31,7 @@ import {
   Trip,
   resolveMaintenanceReport,
   updateTripLoadingMilestone,
-  updateMaintenanceReportStatus,
+  requestMaintenanceApproval,
   uploadPendingMaintenanceReceipt,
   updateTripStatus,
 } from '@/features/trips/tripsApi';
@@ -58,7 +58,7 @@ export default function TripDetailScreen() {
 
   const tripId = id ? String(id) : null;
   const isDispatched = trip?.status === 'Dispatched';
-  const isMaintenanceFixing = maintenanceReport?.status === 'Acknowledged';
+  const isMaintenanceFixing = maintenanceReport?.status === 'Acknowledged' || maintenanceReport?.approval_requested === true;
 
   // Live Location Tracking Hook
   const {
@@ -120,7 +120,7 @@ export default function TripDetailScreen() {
       return undefined;
     }
     let isMounted = true;
-    getTripMaintenanceReport(tripId, token)
+    const loadReport = () => getTripMaintenanceReport(tripId, token)
       .then((report) => {
         if (!isMounted) return;
         setMaintenanceReport(report);
@@ -129,7 +129,10 @@ export default function TripDetailScreen() {
       .catch(() => {
         if (isMounted) setMaintenanceReport(null);
       });
-    return () => { isMounted = false; };
+    void loadReport();
+    // Picks up the manager's approval without reopening the trip.
+    const interval = setInterval(() => { void loadReport(); }, 15000);
+    return () => { isMounted = false; clearInterval(interval); };
   }, [token, tripId]);
 
   if (isRestoring) {
@@ -246,11 +249,11 @@ export default function TripDetailScreen() {
     }
   }
 
-  async function handleMaintenanceStatus(status: 'Open' | 'Acknowledged') {
+  async function handleRequestMaintenanceApproval() {
     if (!token || !maintenanceReport) return;
     try {
       setActionLoading(true);
-      const updated = await updateMaintenanceReportStatus(maintenanceReport.id, status, token);
+      const updated = await requestMaintenanceApproval(maintenanceReport.id, token);
       setMaintenanceReport(updated);
     } catch (err) {
       Alert.alert(t('unableUpdateIssue'), err instanceof Error ? err.message : t('tryAgain'));
@@ -596,12 +599,14 @@ export default function TripDetailScreen() {
                   <View style={styles.maintenanceWorkflow}>
                     <Text style={styles.maintenanceWorkflowTitle}>{t('vehicleIssue', { priority: maintenanceReport.priority === 'Routine' ? t('routine') : maintenanceReport.priority === 'Urgent' ? t('urgent') : t('critical') })}</Text>
                     <Text style={styles.maintenanceWorkflowDescription}>{maintenanceReport.description}</Text>
-                    {maintenanceReport.status === 'Open' ? (
+                    {maintenanceReport.status === 'Open' && maintenanceReport.approval_requested ? (
+                      <Text style={styles.tripPausedText}>{t('waitingForApproval')}</Text>
+                    ) : maintenanceReport.status === 'Open' ? (
                       <Pressable
                         accessibilityRole="button"
                         disabled={actionLoading}
-                        onPress={() => handleMaintenanceStatus('Acknowledged')}
-                        style={[styles.maintenanceChoice, styles.maintenanceChoiceSelected]}
+                        onPress={handleRequestMaintenanceApproval}
+                        style={[styles.maintenanceChoice, styles.maintenanceChoiceSelected, actionLoading && styles.buttonDisabled]}
                       >
                         <Text style={[styles.maintenanceChoiceText, styles.maintenanceChoiceTextSelected]}>{t('fixing')}</Text>
                       </Pressable>
