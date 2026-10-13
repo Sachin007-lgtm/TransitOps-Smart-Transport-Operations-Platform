@@ -69,6 +69,25 @@ function formatVehicleSpeed(speed) {
   return `${kilometersPerHour.toFixed(1)} km/h`;
 }
 
+/** Format a datetime string to a readable time (e.g. "02:45 PM") */
+function formatTime(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Format elapsed time since a date string (e.g. "2h 14m" or "45m") */
+function formatElapsed(dateStr) {
+  if (!dateStr) return '—';
+  const ms = Date.now() - new Date(dateStr).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
 // ─── MAPBOX SEARCH BOX / GEOCODING API HOOK ──────────────────────────────────
 /**
  * Mapbox Geocoding & Search Autocomplete Hook
@@ -326,11 +345,15 @@ export default function TripDispatcher() {
   const [selectedTripLocation, setSelectedTripLocation] = useState(null);
   const [selectedTripHistory, setSelectedTripHistory] = useState([]);
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
   // ── Map References ──
   const mapContainerRef = useRef(null);
   const mapInstanceRef  = useRef(null);
   const prevSelectedTripIdRef = useRef(null);
+  const truckMarkerRef  = useRef(null);
+  const originMarkerRef = useRef(null);
+  const destMarkerRef   = useRef(null);
 
   // ── Drawer & Form State ──
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -386,8 +409,8 @@ export default function TripDispatcher() {
   const selectedGpsIsFresh = isFreshGps(selectedTripLocation);
 
 
-  // Load data
-  const loadData = async (silent = false) => {
+  // Load data — useCallback so the polling interval gets a stable reference
+  const loadData = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true); else setIsRefreshing(true);
     try {
       setGeneralError(null);
@@ -408,10 +431,11 @@ export default function TripDispatcher() {
       if (loaded.length > 0 && !selectedTripId) {
         setSelectedTripId(loaded[0].id);
       }
+      setLastSyncedAt(new Date());
     } catch (err) {
       setGeneralError(err.message || 'Failed to connect to backend.');
     } finally { setIsLoading(false); setIsRefreshing(false); }
-  };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData();
@@ -419,6 +443,13 @@ export default function TripDispatcher() {
     setStartTime(new Date(now.getTime() + 30 * 60000).toISOString().slice(0, 16));
     setExpectedArrival(new Date(now.getTime() + 180 * 60000).toISOString().slice(0, 16));
   }, []);
+
+  // Auto-poll trips list every 12 s so load/unload and status changes from the
+  // mobile app appear without a page refresh.
+  useEffect(() => {
+    const interval = setInterval(() => loadData(true), 12000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   // Keep the selected trip's marker tied to the latest authenticated GPS point.
   useEffect(() => {
@@ -478,7 +509,17 @@ export default function TripDispatcher() {
 
     mapInstanceRef.current = map;
 
+    const resizeObserver = new ResizeObserver(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    });
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     return () => {
+      resizeObserver.disconnect();
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -531,32 +572,61 @@ export default function TripDispatcher() {
 
       if (!isMounted || !mapInstanceRef.current) return;
 
-      if (map._tripLayers) {
-        map._tripLayers.forEach(layer => layer.remove());
+      const isNewTrip = prevSelectedTripIdRef.current !== selectedTrip.id;
+      if (isNewTrip) {
+        if (map._tripLayers) {
+          map._tripLayers.forEach(layer => layer.remove());
+        }
+        map._tripLayers = [];
+        if (truckMarkerRef.current) {
+          truckMarkerRef.current.remove();
+          truckMarkerRef.current = null;
+        }
+        if (originMarkerRef.current) {
+          originMarkerRef.current.remove();
+          originMarkerRef.current = null;
+        }
+        if (destMarkerRef.current) {
+          destMarkerRef.current.remove();
+          destMarkerRef.current = null;
+        }
+      } else {
+        // Remove only polyline route layers, keeping markers alive to prevent flicker
+        if (map._tripLayers) {
+          map._tripLayers.forEach(layer => {
+            if (layer !== truckMarkerRef.current && layer !== originMarkerRef.current && layer !== destMarkerRef.current) {
+              layer.remove();
+            }
+          });
+        }
+        map._tripLayers = [
+          ...(truckMarkerRef.current ? [truckMarkerRef.current] : []),
+          ...(originMarkerRef.current ? [originMarkerRef.current] : []),
+          ...(destMarkerRef.current ? [destMarkerRef.current] : [])
+        ];
       }
-      map._tripLayers = [];
 
-      // Origin Circle Node (Google Maps start dot style)
+      // Origin Circle Node (Google Maps start dot style with generous hit area)
       const originIcon = L.divIcon({
         className: 'leaflet-origin-dot-marker',
         html: `<div class="origin-circle-outer"><div class="origin-circle-inner"></div></div>`,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
       });
 
-      // Destination Pin Marker (Google Maps destination pin style)
+      // Destination Pin Marker (Google Maps destination pin style with generous hit area)
       const destIcon = L.divIcon({
         className: 'leaflet-dest-pin-marker',
         html: `
           <div class="dest-pin-svg">
-            <svg width="24" height="30" viewBox="0 0 24 30" fill="none">
+            <svg width="26" height="32" viewBox="0 0 24 30" fill="none">
               <path d="M12 0C5.37 0 0 5.37 0 12C0 21 12 30 12 30C12 30 24 21 24 12C24 5.37 18.63 0 12 0Z" fill="#7a4a63"/>
               <circle cx="12" cy="12" r="4.5" fill="#FFFFFF"/>
             </svg>
           </div>
         `,
-        iconSize: [24, 30],
-        iconAnchor: [12, 30]
+        iconSize: [40, 44],
+        iconAnchor: [20, 44]
       });
 
       let routePath = [originCoords, destCoords];
@@ -582,40 +652,86 @@ export default function TripDispatcher() {
 
       const liveLatitude = Number(selectedTripLocation?.latitude);
       const liveLongitude = Number(selectedTripLocation?.longitude);
-      const hasLiveLocation = selectedGpsIsFresh && Number.isFinite(liveLatitude) && Number.isFinite(liveLongitude);
-      const truckIdx = hasLiveLocation
+      const hasRecordedLocation = Number.isFinite(liveLatitude) && Number.isFinite(liveLongitude);
+      const hasLiveLocation = selectedGpsIsFresh && hasRecordedLocation;
+
+      // Distance calculation in km between two lat/lng points
+      const getDistKm = (p1, p2) => {
+        const dLat = (p1[0] - p2[0]) * 111;
+        const dLng = (p1[1] - p2[1]) * 111 * Math.cos(((p1[0] + p2[0]) / 2) * (Math.PI / 180));
+        return Math.sqrt(dLat * dLat + dLng * dLng);
+      };
+
+      // Check if recorded GPS is close enough to the route (within 80km)
+      let minDistanceToRoute = Infinity;
+      if (hasRecordedLocation && routePath && routePath.length > 0) {
+        for (const pt of routePath) {
+          const d = getDistKm([liveLatitude, liveLongitude], pt);
+          if (d < minDistanceToRoute) minDistanceToRoute = d;
+        }
+      }
+      const isGpsOnRoute = minDistanceToRoute < 80;
+
+      // Position vehicle:
+      // 1. If GPS is within reasonable distance to route (< 80km), use real GPS position
+      // 2. If GPS is stale or far away (e.g. test GPS in another state), place along the trip route according to status!
+      let truckPos = null;
+      let displayStatus = 'AT ORIGIN';
+
+      if (hasRecordedLocation && isGpsOnRoute) {
+        truckPos = [liveLatitude, liveLongitude];
+        displayStatus = hasLiveLocation ? 'LIVE' : 'LAST SEEN';
+      } else if (selectedTrip.status === 'Dispatched') {
+        // Dispatched (In Transit): place vehicle at 45% along the actual road route
+        const midIdx = Math.max(0, Math.floor(routePath.length * 0.45));
+        truckPos = routePath[midIdx] || originCoords;
+        displayStatus = hasLiveLocation ? 'LIVE' : hasRecordedLocation ? 'LAST SEEN' : 'IN TRANSIT';
+      } else if (selectedTrip.status === 'Completed') {
+        truckPos = destCoords;
+        displayStatus = 'COMPLETED';
+      } else {
+        // Draft, Planned, Assigned
+        truckPos = originCoords;
+        displayStatus = 'AT ORIGIN';
+      }
+
+      const statusTag = ` · ${displayStatus}`;
+
+      const truckIdx = truckPos
         ? routePath.reduce((closestIndex, point, index) => {
             const closestPoint = routePath[closestIndex];
-            const currentDistance = (point[0] - liveLatitude) ** 2 + (point[1] - liveLongitude) ** 2;
-            const closestDistance = (closestPoint[0] - liveLatitude) ** 2 + (closestPoint[1] - liveLongitude) ** 2;
+            const currentDistance = (point[0] - truckPos[0]) ** 2 + (point[1] - truckPos[1]) ** 2;
+            const closestDistance = (closestPoint[0] - truckPos[0]) ** 2 + (closestPoint[1] - truckPos[1]) ** 2;
             return currentDistance < closestDistance ? index : closestIndex;
           }, 0)
         : -1;
-      const truckPos = hasLiveLocation ? [liveLatitude, liveLongitude] : null;
+
       const breadcrumbPath = selectedTripHistory
         .map(point => [Number(point.latitude), Number(point.longitude)])
         .filter(([latitude, longitude]) => Number.isFinite(latitude) && Number.isFinite(longitude));
 
       const truckIcon = L.divIcon({
-        className: 'leaflet-truck-marker',
+        className: 'map-truck-marker leaflet-truck-marker',
         html: `
-          <div class="marker-badge">${selectedTrip.vehicle?.registration_number || 'REG-004'}${hasLiveLocation ? ' · LIVE' : ''}</div>
-          <div class="marker-icon-pulse">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <div class="marker-badge">${selectedTrip.vehicle?.registration_number || selectedTrip.vehicle_registration || 'Vehicle'}${statusTag}</div>
+          <div class="marker-icon-pulse ${hasLiveLocation && isGpsOnRoute ? '' : 'secondary'}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="1" y="3" width="15" height="13"></rect>
-              <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+              <polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon>
               <circle cx="5.5" cy="18.5" r="2.5"></circle>
               <circle cx="18.5" cy="18.5" r="2.5"></circle>
             </svg>
           </div>
         `,
-        iconSize: [60, 50],
-        iconAnchor: [30, 45]
+        iconSize: [140, 68],
+        iconAnchor: [70, 56]
       });
 
-      // Refined Thin Route Line (Theme Color #7a4a63 with subtle halo)
-      const activePath = hasLiveLocation ? routePath.slice(0, Math.max(truckIdx + 1, 2)) : [];
-      const remainingPath = hasLiveLocation ? routePath.slice(Math.max(truckIdx, 0)) : routePath;
+      // Refined Route Polylines
+      const hasProgress = truckIdx > 0 || selectedTrip.status === 'Dispatched';
+      const activeIdx = truckIdx >= 0 ? truckIdx : Math.floor(routePath.length * 0.45);
+      const activePath = hasProgress ? routePath.slice(0, Math.max(activeIdx + 1, 2)) : [];
+      const remainingPath = hasProgress ? routePath.slice(Math.max(activeIdx, 0)) : routePath;
 
       // 1. Remaining Segment: Soft Outer Halo
       const glowLine = L.polyline(remainingPath, {
@@ -636,7 +752,7 @@ export default function TripDispatcher() {
       }).addTo(map);
 
       // 3. Active Segment (Covered): Bordered Solid Line (Google Maps style past route)
-      const activeLineOuter = hasLiveLocation ? L.polyline(activePath, {
+      const activeLineOuter = hasProgress ? L.polyline(activePath, {
         color: '#7a4a63',
         weight: 5,
         opacity: 0.9,
@@ -644,7 +760,7 @@ export default function TripDispatcher() {
         lineJoin: 'round'
       }).addTo(map) : null;
 
-      const activeLineInner = hasLiveLocation ? L.polyline(activePath, {
+      const activeLineInner = hasProgress ? L.polyline(activePath, {
         color: '#f9f9f9',
         weight: 2.5,
         opacity: 1,
@@ -652,9 +768,6 @@ export default function TripDispatcher() {
         lineJoin: 'round'
       }).addTo(map) : null;
 
-      const mOrigin = L.marker(originCoords, { icon: originIcon }).addTo(map);
-      const mDest   = L.marker(destCoords,   { icon: destIcon }).addTo(map);
-      const mTruck  = hasLiveLocation ? L.marker(truckPos, { icon: truckIcon }).addTo(map) : null;
       const breadcrumbLine = breadcrumbPath.length > 1 ? L.polyline(breadcrumbPath, {
         color: '#e08a1e',
         weight: 4,
@@ -663,7 +776,175 @@ export default function TripDispatcher() {
         lineJoin: 'round'
       }).addTo(map) : null;
 
-      // Interactive Marker Popup for Driver & Shipment details on click / selection
+      // Telemetry metric values
+      const speedVal = (selectedGpsIsFresh && isGpsOnRoute) ? formatVehicleSpeed(selectedTripLocation?.speed) : '--';
+      const statusVal = !(selectedGpsIsFresh && isGpsOnRoute)
+        ? (selectedTrip.status === 'Dispatched' ? 'In Transit' : selectedTrip.status || 'Waiting')
+        : (Number(selectedTripLocation?.speed || 0) < STATIONARY_SPEED_MS ? 'Stalled' : 'Moving');
+      const statusClass = (selectedGpsIsFresh && isGpsOnRoute) ? 'is-live' : 'is-waiting';
+      const accVal = (selectedGpsIsFresh && isGpsOnRoute && selectedTripLocation?.accuracy != null)
+        ? `${Number(selectedTripLocation.accuracy).toFixed(0)} m`
+        : '--';
+      const signalVal = selectedTripLocation?.captured_at
+        ? formatTime(selectedTripLocation.captured_at)
+        : 'Never';
+
+      const driverName = selectedTrip.driver?.name || selectedTrip.driver_name || 'Assigned Driver';
+      const vehicleReg = selectedTrip.vehicle?.registration_number || selectedTrip.vehicle_registration || 'Vehicle';
+      const vehicleType = selectedTrip.vehicle?.type || selectedTrip.vehicle_type || 'Vehicle';
+
+      // ── Popups for Origin and Destination Location Markers ──
+      const originPopupHtml = `
+        <div class="dark-truck-popup location-pin-popup">
+          <div class="dtp-driver-header">
+            <div class="dtp-avatar origin-avatar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+              </svg>
+            </div>
+            <div class="dtp-driver-info">
+              <h4 class="dtp-driver-name">Trip Origin</h4>
+              <span class="dtp-driver-sub">${selectedTrip.origin}</span>
+            </div>
+            <div class="dtp-actions">
+              <button class="dtp-icon-btn close-origin-popup-btn" title="Close">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+          </div>
+          <div class="dtp-time-bar">
+            <div class="dtp-time-item">
+              <span class="dtp-time-label">DEPARTURE</span>
+              <span class="dtp-time-val">${formatTime(selectedTrip.start_time)}</span>
+            </div>
+            <div class="dtp-time-item">
+              <span class="dtp-time-label">ASSIGNED VEHICLE</span>
+              <span class="dtp-time-val highlight">${vehicleReg}</span>
+            </div>
+          </div>
+          <div class="dtp-actions-row">
+            <button class="dtp-view-vehicle-btn" id="open-truck-from-origin">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+              <span>View Vehicle Live Card</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      if (originMarkerRef.current) {
+        originMarkerRef.current.setLatLng(originCoords);
+        if (originMarkerRef.current.isPopupOpen()) {
+          originMarkerRef.current.getPopup().setContent(originPopupHtml);
+        } else {
+          originMarkerRef.current.setPopupContent(originPopupHtml);
+        }
+      } else {
+        const mOrigin = L.marker(originCoords, { icon: originIcon, zIndexOffset: 500, riseOnHover: true }).addTo(map);
+        mOrigin.bindPopup(originPopupHtml, {
+          className: 'custom-leaflet-driver-popup theme-popup',
+          closeButton: false,
+          maxWidth: 320,
+          minWidth: 280,
+          autoPan: true
+        });
+        mOrigin.on('popupopen', (e) => {
+          const el = e.popup.getElement();
+          const btn = el?.querySelector('#open-truck-from-origin');
+          const closeBtn = el?.querySelector('.close-origin-popup-btn');
+          if (btn) {
+            btn.onclick = (ev) => {
+              ev.stopPropagation();
+              mOrigin.closePopup();
+              truckMarkerRef.current?.openPopup();
+            };
+          }
+          if (closeBtn) {
+            closeBtn.onclick = (ev) => {
+              ev.stopPropagation();
+              mOrigin.closePopup();
+            };
+          }
+        });
+        originMarkerRef.current = mOrigin;
+      }
+
+      const destPopupHtml = `
+        <div class="dark-truck-popup location-pin-popup">
+          <div class="dtp-driver-header">
+            <div class="dtp-avatar dest-avatar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
+            </div>
+            <div class="dtp-driver-info">
+              <h4 class="dtp-driver-name">Trip Destination</h4>
+              <span class="dtp-driver-sub">${selectedTrip.destination}</span>
+            </div>
+            <div class="dtp-actions">
+              <button class="dtp-icon-btn close-dest-popup-btn" title="Close">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+          </div>
+          <div class="dtp-time-bar">
+            <div class="dtp-time-item">
+              <span class="dtp-time-label">EST. ARRIVAL</span>
+              <span class="dtp-time-val highlight">${formatTime(selectedTrip.expected_arrival)}</span>
+            </div>
+            <div class="dtp-time-item">
+              <span class="dtp-time-label">STATUS</span>
+              <span class="dtp-time-val">${selectedTrip.status || 'In Transit'}</span>
+            </div>
+          </div>
+          <div class="dtp-actions-row">
+            <button class="dtp-view-vehicle-btn" id="open-truck-from-dest">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+              <span>View Vehicle Live Card</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      if (destMarkerRef.current) {
+        destMarkerRef.current.setLatLng(destCoords);
+        if (destMarkerRef.current.isPopupOpen()) {
+          destMarkerRef.current.getPopup().setContent(destPopupHtml);
+        } else {
+          destMarkerRef.current.setPopupContent(destPopupHtml);
+        }
+      } else {
+        const mDest = L.marker(destCoords, { icon: destIcon, zIndexOffset: 500, riseOnHover: true }).addTo(map);
+        mDest.bindPopup(destPopupHtml, {
+          className: 'custom-leaflet-driver-popup theme-popup',
+          closeButton: false,
+          maxWidth: 320,
+          minWidth: 280,
+          autoPan: true
+        });
+        mDest.on('popupopen', (e) => {
+          const el = e.popup.getElement();
+          const btn = el?.querySelector('#open-truck-from-dest');
+          const closeBtn = el?.querySelector('.close-dest-popup-btn');
+          if (btn) {
+            btn.onclick = (ev) => {
+              ev.stopPropagation();
+              mDest.closePopup();
+              truckMarkerRef.current?.openPopup();
+            };
+          }
+          if (closeBtn) {
+            closeBtn.onclick = (ev) => {
+              ev.stopPropagation();
+              mDest.closePopup();
+            };
+          }
+        });
+        destMarkerRef.current = mDest;
+      }
+
+      // Interactive Marker Popup with Real Time Metrics & The 4 Telemetry Cards
       const popupHtml = `
         <div class="dark-truck-popup">
           <div class="dtp-driver-header">
@@ -674,108 +955,142 @@ export default function TripDispatcher() {
               </svg>
             </div>
             <div class="dtp-driver-info">
-              <h4 class="dtp-driver-name">${selectedTrip.driver?.name || selectedTrip.driver_name || 'Unassigned driver'}</h4>
-              <span class="dtp-driver-sub">${selectedTrip.vehicle?.name || selectedTrip.vehicle_name || 'Unassigned vehicle'}</span>
+              <h4 class="dtp-driver-name">${driverName}</h4>
+              <span class="dtp-driver-sub">${vehicleReg} · ${vehicleType}</span>
             </div>
             <div class="dtp-actions">
-              <button class="dtp-icon-btn view-driver-btn" title="View Profile" data-driver="${selectedTrip.driver_id}">
+              <button class="dtp-icon-btn view-driver-btn" title="View Profile" data-driver="${selectedTrip.driver_id || ''}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              </button>
+              <button class="dtp-icon-btn edit-trip-btn" title="Edit Trip" data-trip="${selectedTrip.id}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </button>
+              <button class="dtp-icon-btn close-truck-popup-btn" title="Close Card">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
             </div>
           </div>
           
-          <div class="dtp-shipment-row">
-            <span class="dtp-ship-label">SHIPMENT ID</span>
-            <div class="dtp-ship-id-wrap">
-              <strong class="dtp-ship-id">#TRK-${selectedTrip.id}</strong>
-              <svg class="dtp-link-icon edit-trip-btn" title="Edit Trip" style="cursor:pointer;" data-trip="${selectedTrip.id}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          <div class="dtp-route-summary">
+            <div class="dtp-route-text">${selectedTrip.origin} <span>→</span> ${selectedTrip.destination}</div>
+            <div class="dtp-status-pill ${hasLiveLocation && isGpsOnRoute ? 'live' : 'waiting'}">● ${displayStatus}</div>
+          </div>
+
+          <!-- Real Time Metrics Section -->
+          <div class="dtp-time-bar">
+            <div class="dtp-time-item">
+              <span class="dtp-time-label">TRIP STARTED</span>
+              <span class="dtp-time-val">${formatTime(selectedTrip.start_time)}</span>
+            </div>
+            <div class="dtp-time-item">
+              <span class="dtp-time-label">ELAPSED</span>
+              <span class="dtp-time-val highlight">${formatElapsed(selectedTrip.start_time)}</span>
+            </div>
+            <div class="dtp-time-item">
+              <span class="dtp-time-label">EST. ARRIVAL</span>
+              <span class="dtp-time-val">${formatTime(selectedTrip.expected_arrival)}</span>
             </div>
           </div>
 
-          <div class="dtp-timeline">
-            <div class="dtp-step">
-              <div class="dtp-node-line">
-                <div class="dtp-node pending"></div>
-                <div class="dtp-line dashed"></div>
-              </div>
-              <div class="dtp-content">
-                <div class="dtp-step-header">
-                  <span>Estimated 28 Aug 2025</span>
-                  <span class="dtp-step-time">10:20 AM</span>
-                </div>
-                <div class="dtp-step-desc">Delivered</div>
-              </div>
+          <!-- The 4 Telemetry Metrics Grid (Moved from upper cards to vehicle popup) -->
+          <div class="dtp-telemetry-grid">
+            <div class="dtp-tele-box">
+              <span class="dtp-tele-label">SPEED</span>
+              <strong class="dtp-tele-value">${speedVal}</strong>
             </div>
-            
-            <div class="dtp-step">
-              <div class="dtp-node-line">
-                <div class="dtp-node active"></div>
-                <div class="dtp-line solid active"></div>
-              </div>
-              <div class="dtp-content">
-                <div class="dtp-step-header">
-                  <span class="active-text">27 Aug 2025</span>
-                  <span class="dtp-step-time">09:15 AM</span>
-                </div>
-                <div class="dtp-step-desc">In Transit</div>
-              </div>
+            <div class="dtp-tele-box">
+              <span class="dtp-tele-label">STATUS</span>
+              <strong class="dtp-tele-value ${statusClass}">${statusVal}</strong>
             </div>
+            <div class="dtp-tele-box">
+              <span class="dtp-tele-label">ACCURACY</span>
+              <strong class="dtp-tele-value">${accVal}</strong>
+            </div>
+            <div class="dtp-tele-box">
+              <span class="dtp-tele-label">LAST SIGNAL</span>
+              <strong class="dtp-tele-value">${signalVal}</strong>
+            </div>
+          </div>
 
-            <div class="dtp-step">
-              <div class="dtp-node-line">
-                <div class="dtp-node active"></div>
-                <div class="dtp-line solid active"></div>
-              </div>
-              <div class="dtp-content">
-                <div class="dtp-step-header">
-                  <span class="active-text">26 Aug 2025</span>
-                  <span class="dtp-step-time">06:21 AM</span>
-                </div>
-                <div class="dtp-step-desc">In Sorting Centre</div>
-              </div>
-            </div>
-
-            <div class="dtp-step">
-              <div class="dtp-node-line">
-                <div class="dtp-node active"></div>
-              </div>
-              <div class="dtp-content">
-                <div class="dtp-step-header">
-                  <span class="active-text">25 Aug 2025</span>
-                  <span class="dtp-step-time">06:21 AM</span>
-                </div>
-                <div class="dtp-step-desc">Order Confirmed</div>
-              </div>
-            </div>
+          <div class="dtp-footer-meta">
+            <span>#TRK-${selectedTrip.id}</span>
+            ${breadcrumbPath.length > 0 ? `<span>${breadcrumbPath.length} GPS updates logged</span>` : ''}
           </div>
         </div>
       `;
 
-      if (mTruck) {
-        mTruck.bindPopup(popupHtml, {
-          className: 'custom-leaflet-driver-popup theme-popup',
-          closeButton: false,
-          maxWidth: 260,
-          autoPan: true,
-          autoPanPadding: [50, 50]
-        });
+      const attachTruckPopupListeners = (popupElement) => {
+        if (!popupElement) return;
+        const driverBtn = popupElement.querySelector('.view-driver-btn');
+        const editBtn = popupElement.querySelector('.edit-trip-btn');
+        const closeBtn = popupElement.querySelector('.close-truck-popup-btn');
+        if (driverBtn) {
+          driverBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            const dId = driverBtn.getAttribute('data-driver');
+            if (dId && dId !== 'null') setDriverViewId(dId);
+          };
+        }
+        if (editBtn) {
+          editBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            setEditingTrip(selectedTrip);
+          };
+        }
+        if (closeBtn) {
+          closeBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            truckMarkerRef.current?.closePopup();
+          };
+        }
+      };
 
-        mTruck.on('popupopen', function (e) {
-          const popupNode = e.popup._contentNode;
-          const driverBtn = popupNode.querySelector('.view-driver-btn');
-          const editBtn = popupNode.querySelector('.edit-trip-btn');
-          if (driverBtn) {
-            driverBtn.onclick = () => {
-              const dId = driverBtn.getAttribute('data-driver');
-              if (dId && dId !== 'null') setDriverViewId(dId);
-            };
+      if (truckPos) {
+        if (truckMarkerRef.current) {
+          // Marker already exists: smoothly update position and content without DOM reconstruction
+          truckMarkerRef.current.setLatLng(truckPos);
+          if (truckMarkerRef.current._currentStatusTag !== statusTag) {
+            truckMarkerRef.current.setIcon(truckIcon);
+            truckMarkerRef.current._currentStatusTag = statusTag;
           }
-          if (editBtn) {
-            editBtn.onclick = () => {
-              setEditingTrip(selectedTrip);
-            };
+          if (truckMarkerRef.current.isPopupOpen()) {
+            truckMarkerRef.current.getPopup().setContent(popupHtml);
+            attachTruckPopupListeners(truckMarkerRef.current.getPopup().getElement());
+          } else {
+            truckMarkerRef.current.setPopupContent(popupHtml);
           }
-        });
+        } else {
+          // First time creation: create single marker instance
+          const truckMarker = L.marker(truckPos, {
+            icon: truckIcon,
+            zIndexOffset: 1000,
+            riseOnHover: true
+          }).addTo(map);
+
+          truckMarker._currentStatusTag = statusTag;
+
+          truckMarker.bindPopup(popupHtml, {
+            className: 'custom-leaflet-driver-popup theme-popup',
+            closeButton: false,
+            maxWidth: 320,
+            minWidth: 280,
+            autoPan: true,
+            autoPanPadding: [50, 50]
+          });
+
+          truckMarker.on('popupopen', (e) => {
+            attachTruckPopupListeners(e.popup._contentNode || e.popup.getElement());
+          });
+
+          truckMarkerRef.current = truckMarker;
+
+          // Auto-open on initial load so the card is open and visible
+          if (isNewTrip) {
+            setTimeout(() => {
+              if (truckMarkerRef.current) truckMarkerRef.current.openPopup();
+            }, 350);
+          }
+        }
       }
 
       map._tripLayers.push(
@@ -783,14 +1098,21 @@ export default function TripDispatcher() {
         ...(activeLineOuter ? [activeLineOuter] : []),
         ...(activeLineInner ? [activeLineInner] : []),
         remainingLine,
-        ...(breadcrumbLine ? [breadcrumbLine] : []),
-        mOrigin,
-        mDest,
-        ...(mTruck ? [mTruck] : [])
+        ...(breadcrumbLine ? [breadcrumbLine] : [])
       );
+      if (originMarkerRef.current && !map._tripLayers.includes(originMarkerRef.current)) {
+        map._tripLayers.push(originMarkerRef.current);
+      }
+      if (destMarkerRef.current && !map._tripLayers.includes(destMarkerRef.current)) {
+        map._tripLayers.push(destMarkerRef.current);
+      }
+      if (truckMarkerRef.current && !map._tripLayers.includes(truckMarkerRef.current)) {
+        map._tripLayers.push(truckMarkerRef.current);
+      }
 
       // Fit map view bounds ONLY if we switched to a new trip (don't auto-pan continuously as GPS updates)
       if (prevSelectedTripIdRef.current !== selectedTrip.id) {
+        map.invalidateSize();
         const bounds = L.latLngBounds(routePath);
         map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14, animate: true });
         prevSelectedTripIdRef.current = selectedTrip.id;
@@ -806,6 +1128,7 @@ export default function TripDispatcher() {
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
   const handleRecenter = async () => {
     if (!selectedTrip || !mapInstanceRef.current) return;
+    mapInstanceRef.current.invalidateSize();
     const originCoords = selectedTrip.origin_coords || await resolveCoordsAsync(selectedTrip.origin, true);
     const destCoords   = selectedTrip.dest_coords   || await resolveCoordsAsync(selectedTrip.destination, false);
     mapInstanceRef.current.fitBounds(L.latLngBounds([originCoords, destCoords]), { padding: [70, 70], animate: true });
@@ -920,12 +1243,29 @@ export default function TripDispatcher() {
               <span>Trip History</span>
               <ArrowRight size={13} className="tl-history-arrow" />
             </button>
-            <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
-              <Plus size={16} />
-              <span>New</span>
-            </button>
+            <div className="tl-toolbar-right">
+              <button
+                className={`tl-sync-btn ${isRefreshing ? 'syncing' : ''}`}
+                onClick={() => loadData(true)}
+                disabled={isRefreshing}
+                title="Sync trips now"
+              >
+                <RefreshCw size={13} className={isRefreshing ? 'spin-icon' : ''} />
+                <span>{isRefreshing ? 'Syncing…' : 'Sync'}</span>
+              </button>
+              <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
+                <Plus size={16} />
+                <span>New</span>
+              </button>
+            </div>
           </div>
-          <h2 className="tl-title">Tracking list</h2>
+          <div className="tl-title-row">
+            <h2 className="tl-title">Tracking list</h2>
+            <span className="tl-live-badge">
+              <span className="pulse-dot" />
+              LIVE · {lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'syncing…'}
+            </span>
+          </div>
 
           <div className="tl-search-wrap">
             <Search size={14} className="tl-search-icon" />
@@ -1093,37 +1433,6 @@ export default function TripDispatcher() {
           RIGHT PANEL — FULL HEIGHT MAP CONTAINER (DRIVER STATS REMOVED)
           ══════════════════════════════════════════════════════════════════════ */}
       <main className="td-right-panel">
-        {selectedTrip ? (
-          <section className="trip-telemetry-panel" aria-label="Selected trip live telemetry">
-            <div className="trip-telemetry-block">
-              <span>Speed</span>
-              <strong>{selectedGpsIsFresh ? formatVehicleSpeed(selectedTripLocation?.speed) : '--'}</strong>
-            </div>
-            <div className="trip-telemetry-block">
-              <span>Status</span>
-              <strong className={selectedGpsIsFresh ? 'is-live' : 'is-waiting'}>
-                {!selectedGpsIsFresh
-                  ? selectedTripLocation ? 'No signal' : 'Waiting for signal'
-                  : Number(selectedTripLocation?.speed || 0) < STATIONARY_SPEED_MS
-                    ? 'Stalled'
-                    : 'Moving'}
-              </strong>
-            </div>
-            <div className="trip-telemetry-block">
-              <span>Accuracy</span>
-              <strong>{selectedGpsIsFresh && selectedTripLocation?.accuracy != null
-                ? `${Number(selectedTripLocation.accuracy).toFixed(0)} m`
-                : '--'}</strong>
-            </div>
-            <div className="trip-telemetry-block">
-              <span>Last signal</span>
-              <strong>{selectedTripLocation?.captured_at
-                ? new Date(selectedTripLocation.captured_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                : 'Never received'}</strong>
-            </div>
-          </section>
-        ) : null}
-
         <section className="td-map-container full-height">
           <div className="td-dark-map-canvas" ref={mapContainerRef} />
 

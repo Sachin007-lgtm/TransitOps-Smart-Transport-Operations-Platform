@@ -17,7 +17,6 @@ import TripHistory from './pages/TripHistory';
 import Billing from './pages/Billing';
 import Maintenance from './pages/Maintenance';
 import FuelExpenses from './pages/FuelExpenses';
-import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 
 class ErrorBoundary extends React.Component {
@@ -146,7 +145,7 @@ function App() {
                 <Route path="billing" element={<Billing />} />
                 <Route path="maintenance" element={<Maintenance />} />
                 <Route path="fuel" element={<FuelExpenses />} />
-                <Route path="analytics" element={<Analytics />} />
+                <Route path="analytics" element={<Navigate to="/" replace />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>

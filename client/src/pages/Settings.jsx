@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Shield, Check, Lock, KeyRound, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings as SettingsIcon, Shield, Check, Lock, KeyRound, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, User, Camera, Upload, Trash2, Mail, Phone } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './Settings.css';
 
 const INITIAL_RBAC_DATA = [
-  { id: 'admin', role: 'Platform Admin', dotClass: 'manager', permissions: { fleet: 'none', drivers: 'none', trips: 'none', fuel: 'none', analytics: 'full' } },
-  { id: 'manager', role: 'Owner/Manager', dotClass: 'manager', permissions: { fleet: 'full', drivers: 'full', trips: 'full', fuel: 'full', analytics: 'full' } },
-  { id: 'driver', role: 'Driver', dotClass: 'dispatcher', permissions: { fleet: 'none', drivers: 'none', trips: 'view', fuel: 'none', analytics: 'none' } },
+  { id: 'admin', role: 'Platform Admin', dotClass: 'manager', permissions: { fleet: 'none', drivers: 'none', trips: 'none', fuel: 'none', billing: 'full' } },
+  { id: 'manager', role: 'Owner/Manager', dotClass: 'manager', permissions: { fleet: 'full', drivers: 'full', trips: 'full', fuel: 'full', billing: 'full' } },
+  { id: 'driver', role: 'Driver', dotClass: 'dispatcher', permissions: { fleet: 'none', drivers: 'none', trips: 'view', fuel: 'none', billing: 'none' } },
 ];
 
 const PERMISSION_CYCLE = {
@@ -22,7 +22,18 @@ const PERMISSION_LABELS = {
 };
 
 export default function Settings() {
-  const { changePassword } = useAuth();
+  const { user, changePassword, updateProfile } = useAuth();
+  const profileFileInputRef = useRef(null);
+
+  // Profile details states
+  const [profileName, setProfileName] = useState(user?.name || '');
+  const [profileEmail, setProfileEmail] = useState(user?.email || '');
+  const [profilePhone, setProfilePhone] = useState(user?.phone_number || '');
+  const [profileAvatar, setProfileAvatar] = useState(user?.avatar_url || '');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState('');
+
   const [depotName, setDepotName] = useState('Gandhinagar Depot GJ4');
   const [currency, setCurrency] = useState('INR');
   const [distanceUnit, setDistanceUnit] = useState('km');
@@ -41,6 +52,61 @@ export default function Settings() {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [pwdError, setPwdError] = useState('');
   const [pwdSuccess, setPwdSuccess] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || '');
+      setProfileEmail(user.email || '');
+      setProfilePhone(user.phone_number || '');
+      setProfileAvatar(user.avatar_url || '');
+    }
+  }, [user]);
+
+  const handleProfileAvatarUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setProfileError('Please select a valid image file.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setProfileError('Image size must be under 3 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setProfileAvatar(event.target?.result);
+      setProfileError('');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (!profileName.trim()) {
+      setProfileError('Full name cannot be empty.');
+      return;
+    }
+    setProfileSaving(true);
+    setProfileError('');
+    try {
+      await updateProfile({
+        name: profileName.trim(),
+        email: profileEmail.trim() || null,
+        phone_number: profilePhone.trim() || null,
+        avatar_url: profileAvatar || null
+      });
+      setProfileSaved(true);
+      window.dispatchEvent(
+        new CustomEvent('app-toast', { detail: 'Profile updated successfully!' })
+      );
+      setTimeout(() => setProfileSaved(false), 2500);
+    } catch (err) {
+      setProfileError(err.message || 'Failed to update profile.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   // Smooth scroll and pulse highlight if #security hash is in URL
   useEffect(() => {
@@ -137,6 +203,128 @@ export default function Settings() {
     <div className="settings-page">
       <div className="st-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          {/* Panel: Profile & Account Information */}
+          <div className="st-card panel-profile" id="profile-panel">
+            <div className="st-card-header">
+              <div className="st-icon-box violet">
+                <User size={20} />
+              </div>
+              <div className="st-header-text">
+                <h2 className="st-title">Profile & Personal Details</h2>
+                <div className="st-subtitle">Your real name & profile picture</div>
+              </div>
+            </div>
+
+            {profileError && (
+              <div className="st-error-banner">
+                <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                <span>{profileError}</span>
+              </div>
+            )}
+
+            {profileSaved && (
+              <div className="st-success-banner">
+                <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                <span>Profile updated successfully!</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveProfile}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div style={{ position: 'relative', width: '56px', height: '56px', borderRadius: '50%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', flexShrink: 0 }}>
+                  {profileAvatar ? (
+                    <img src={profileAvatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #7a4a63 0%, #4c2c3d 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', fontWeight: 700 }}>
+                      {(profileName || 'U').trim().slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <input
+                    ref={profileFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfileAvatarUpload}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => profileFileInputRef.current?.click()}
+                    className="st-pill view"
+                    style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '0.4rem 0.75rem' }}
+                  >
+                    <Camera size={13} /> Change Photo
+                  </button>
+                  {profileAvatar && (
+                    <button
+                      type="button"
+                      onClick={() => setProfileAvatar('')}
+                      className="st-pill none"
+                      style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '0.4rem 0.75rem' }}
+                    >
+                      <Trash2 size={13} /> Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="st-form-group">
+                <label>Real Full Name</label>
+                <input
+                  type="text"
+                  className="st-input"
+                  placeholder="Enter full name"
+                  value={profileName}
+                  onChange={e => setProfileName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="st-form-group">
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  className="st-input"
+                  placeholder="Enter email"
+                  value={profileEmail}
+                  onChange={e => setProfileEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="st-form-group">
+                <label>Phone Number</label>
+                <input
+                  type="tel"
+                  className="st-input"
+                  placeholder="Enter phone number"
+                  value={profilePhone}
+                  onChange={e => setProfilePhone(e.target.value)}
+                />
+              </div>
+
+              <div className="st-save-area">
+                <button
+                  type="submit"
+                  className={`st-save-btn ${profileSaved ? 'saved' : ''}`}
+                  disabled={profileSaving}
+                >
+                  {profileSaving ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      <span>{profileSaved ? 'Saved' : 'Save Profile'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
           {/* Panel 1: General */}
           <div className="st-card panel-1">
             <div className="st-card-header">
@@ -343,7 +531,7 @@ export default function Settings() {
                 <th>Drivers</th>
                 <th>Trips</th>
                 <th>Fuel/Exp.</th>
-                <th>Analytics</th>
+                <th>Billing</th>
               </tr>
             </thead>
             <tbody>
@@ -359,7 +547,7 @@ export default function Settings() {
                   <td>{renderPill(row.id, 'drivers', row.permissions.drivers)}</td>
                   <td>{renderPill(row.id, 'trips', row.permissions.trips)}</td>
                   <td>{renderPill(row.id, 'fuel', row.permissions.fuel)}</td>
-                  <td>{renderPill(row.id, 'analytics', row.permissions.analytics)}</td>
+                  <td>{renderPill(row.id, 'billing', row.permissions.billing)}</td>
                 </tr>
               ))}
             </tbody>

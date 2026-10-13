@@ -128,6 +128,20 @@ export function AuthProvider({ children }) {
     return res;
   }, []);
 
+  const updateProfile = useCallback(async (profileData) => {
+    const currentToken = getStoredToken();
+    const res = await apiRequest('PATCH', '/auth/profile', profileData, currentToken);
+    const updatedUser = res?.data || res;
+    if (updatedUser) {
+      setUser(prev => {
+        const merged = { ...prev, ...updatedUser };
+        if (currentToken) storeAuthSession(currentToken, merged);
+        return merged;
+      });
+    }
+    return updatedUser;
+  }, []);
+
   const value = {
     user,
     token,
@@ -135,7 +149,8 @@ export function AuthProvider({ children }) {
     isLoading,
     login,
     logout,
-    changePassword
+    changePassword,
+    updateProfile
   };
 
   return (

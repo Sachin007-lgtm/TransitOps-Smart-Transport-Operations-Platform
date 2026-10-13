@@ -7,8 +7,6 @@ import {
   Map, 
   Wrench, 
   Droplet, 
-  BarChart2, 
-  Settings, 
   ChevronLeft, 
   LogOut,
   Building2,
@@ -97,16 +95,6 @@ export default function Sidebar() {
             <NavLink to="/fuel" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Droplet size={20} className="nav-icon" />
               <span className="nav-label">Fuel & expenses</span>
-            </NavLink>
-
-            <NavLink to="/analytics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <BarChart2 size={20} className="nav-icon" />
-              <span className="nav-label">Analytics</span>
-            </NavLink>
-
-            <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <Settings size={20} className="nav-icon" />
-              <span className="nav-label">Settings</span>
             </NavLink>
           </>
         )}

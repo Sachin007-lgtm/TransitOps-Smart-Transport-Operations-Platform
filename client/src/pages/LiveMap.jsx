@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Navigation, RefreshCw, Truck, Radio, MapPin, Gauge,
-  Clock, User, CheckCircle2, AlertCircle, Compass, Layers
+  Clock, User, CheckCircle2, AlertCircle, Compass, Layers, Timer
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -18,7 +18,99 @@ function isLocationStale(trip) {
   return !Number.isFinite(capturedAt) || age < 0 || age > LOCATION_STALE_MS;
 }
 
-// ─── Mapbox tile URL helper (same logic as TripDispatcher) ───────────────────
+/** Format elapsed time since a date string (e.g. "2h 14m" or "45m") */
+function formatElapsed(dateStr) {
+  if (!dateStr) return '—';
+  const ms = Date.now() - new Date(dateStr).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+/** Format a datetime string to a readable time */
+function formatTime(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function createLiveMapPopupHtml(trip) {
+  const isStale = isLocationStale(trip);
+  const isLive = trip.latitude != null && trip.longitude != null && !isStale;
+  const hasLastKnown = trip.latitude != null && trip.longitude != null;
+  const statusLabel = isLive ? '● LIVE GPS' : hasLastKnown ? '● LAST KNOWN' : 'AWAITING GPS';
+  const statusClass = isLive ? 'live' : hasLastKnown ? 'warning' : 'awaiting';
+  const driverName = trip.driver_name || 'Assigned Driver';
+  const vehicleReg = trip.vehicle_registration || 'Vehicle';
+  const vehicleType = trip.vehicle_name ? `${trip.vehicle_name} · ${trip.vehicle_type || 'Vehicle'}` : (trip.vehicle_type || 'Vehicle');
+  const speedVal = trip.speed != null ? `${parseFloat(trip.speed).toFixed(0)} km/h` : '—';
+  const coordsVal = hasLastKnown ? `${parseFloat(trip.latitude).toFixed(4)}, ${parseFloat(trip.longitude).toFixed(4)}` : '—';
+  const lastSync = trip.captured_at ? formatTime(trip.captured_at) : 'Never';
+
+  return `
+    <div class="live-marker-popup">
+      <div class="lmp-header">
+        <div class="lmp-avatar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+        </div>
+        <div class="lmp-title-wrap">
+          <h4 class="lmp-driver">${driverName}</h4>
+          <span class="lmp-vehicle">${vehicleReg} · ${vehicleType}</span>
+        </div>
+      </div>
+
+      <div class="lmp-route-row">
+        <div class="lmp-route-text">${trip.origin || 'Origin'} <span>→</span> ${trip.destination || 'Destination'}</div>
+        <div class="lmp-status-pill ${statusClass}">${statusLabel}</div>
+      </div>
+
+      <!-- Real Time Metrics Section -->
+      <div class="lmp-time-bar">
+        <div class="lmp-time-item">
+          <span class="lmp-time-label">TRIP STARTED</span>
+          <span class="lmp-time-val">${formatTime(trip.start_time)}</span>
+        </div>
+        <div class="lmp-time-item">
+          <span class="lmp-time-label">ELAPSED</span>
+          <span class="lmp-time-val highlight">${formatElapsed(trip.start_time)}</span>
+        </div>
+      </div>
+
+      <!-- 4 Telemetry Metrics Grid -->
+      <div class="lmp-telemetry-grid">
+        <div class="lmp-tele-box">
+          <span class="lmp-tele-label">SPEED</span>
+          <strong class="lmp-tele-value">${speedVal}</strong>
+        </div>
+        <div class="lmp-tele-box">
+          <span class="lmp-tele-label">STATUS</span>
+          <strong class="lmp-tele-value ${statusClass}">${isLive ? 'Moving' : hasLastKnown ? 'Stalled' : 'Waiting'}</strong>
+        </div>
+        <div class="lmp-tele-box">
+          <span class="lmp-tele-label">COORDINATES</span>
+          <strong class="lmp-tele-value mono">${coordsVal}</strong>
+        </div>
+        <div class="lmp-tele-box">
+          <span class="lmp-tele-label">LAST SIGNAL</span>
+          <strong class="lmp-tele-value">${lastSync}</strong>
+        </div>
+      </div>
+
+      <div class="lmp-footer">
+        <span>Trip #${trip.trip_id}</span>
+        ${trip.cargo_weight ? `<span>Cargo: ${trip.cargo_weight} kg</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ─── Mapbox tile URL helper ───────────────────────────────────────────────────
 function getMapboxTileLayer(theme = 'streets') {
   if (!MAPBOX_TOKEN) {
     return {
@@ -48,8 +140,8 @@ function getMapboxTileLayer(theme = 'streets') {
 // ─── Custom vehicle marker ────────────────────────────────────────────────────
 function createVehicleIcon(vehicle, isSelected, isStale) {
   const heading = vehicle.heading != null ? vehicle.heading : 0;
-  const isLive = vehicle.latitude != null && vehicle.longitude != null;
-  const bg = isSelected ? '#e08a1e' : isLive && !isStale ? '#22a06b' : '#d97706';
+  const hasGps = vehicle.latitude != null && vehicle.longitude != null;
+  const bg = isSelected ? '#e08a1e' : hasGps && !isStale ? '#22a06b' : '#d97706';
 
   return L.divIcon({
     className: 'custom-vehicle-marker-wrapper',
@@ -70,8 +162,8 @@ function createVehicleIcon(vehicle, isSelected, isStale) {
         transform: rotate(${heading}deg);
         transition: background 0.3s ease;
       ">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-          <polygon points="12 2 19 21 12 17 5 21 12 2"></polygon>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white" stroke="none">
+          <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3m-4 12h8a2 2 0 0 0 2-2v-5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2zm7-5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
         </svg>
       </div>
       <div style="
@@ -117,8 +209,10 @@ export default function LiveMap() {
   const tileLayerRef = useRef(null);
   const markersGroupRef = useRef(null);
   const trailLayerRef = useRef(null);
+  // Keep a stable map of markerRefs so we can update icons without clearing all layers
+  const markerMapRef = useRef({}); // tripId -> L.marker
 
-  // ─── Initialize Mapbox Map ─────────────────────────────────────────────────
+  // ─── Initialize Map ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -140,23 +234,21 @@ export default function LiveMap() {
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
+      markerMapRef.current = {};
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Swap tile layer when theme changes ────────────────────────────────────
+  // ─── Swap tile layer when theme changes ──────────────────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
-
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-    }
+    if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
     const { url, options } = getMapboxTileLayer(mapTheme);
     tileLayerRef.current = L.tileLayer(url, options).addTo(map);
   }, [mapTheme]);
 
-  // ─── Fetch active trips ────────────────────────────────────────────────────
+  // ─── Fetch active trips ──────────────────────────────────────────────────────
   const fetchActiveLocations = useCallback(async (isManual = false) => {
     try {
       if (isManual) setIsRefreshing(true);
@@ -182,7 +274,7 @@ export default function LiveMap() {
     return () => clearInterval(interval);
   }, [autoPoll, fetchActiveLocations]);
 
-  // ─── Breadcrumb trail for selected trip ───────────────────────────────────
+  // ─── Breadcrumb trail for selected trip ─────────────────────────────────────
   useEffect(() => {
     if (!selectedTripId) {
       setBreadcrumbs([]);
@@ -201,7 +293,6 @@ export default function LiveMap() {
           trailLayerRef.current.clearLayers();
           const latLngs = points.map(p => [parseFloat(p.latitude), parseFloat(p.longitude)]);
 
-          // Dashed amber polyline for the breadcrumb trail
           const polyline = L.polyline(latLngs, {
             color: '#e08a1e',
             weight: 4,
@@ -210,7 +301,6 @@ export default function LiveMap() {
             lineJoin: 'round'
           }).addTo(trailLayerRef.current);
 
-          // Small dot at every recorded point
           latLngs.forEach((pt, i) => {
             if (i === 0 || i === latLngs.length - 1) return;
             L.circleMarker(pt, {
@@ -232,75 +322,110 @@ export default function LiveMap() {
 
   const hasInitialFittedRef = useRef(false);
 
-  // ─── Update markers when activeTrips change ───────────────────────────────
+  // ─── Update markers without full clear (prevents flicker) ────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
     const markersGroup = markersGroupRef.current;
     if (!map || !markersGroup) return;
 
-    markersGroup.clearLayers();
-    const validMarkers = [];
+    const currentMarkerMap = markerMapRef.current;
+    const newTripIds = new Set(activeTrips.map(t => t.trip_id));
+    const validBounds = [];
 
+    // Remove markers for trips that are no longer active
+    Object.keys(currentMarkerMap).forEach(tripId => {
+      if (!newTripIds.has(Number(tripId))) {
+        markersGroup.removeLayer(currentMarkerMap[tripId]);
+        delete currentMarkerMap[tripId];
+      }
+    });
+
+    // Add or update markers
     activeTrips.forEach((trip) => {
-      if (trip.latitude == null || trip.longitude == null) return;
-      if (isLocationStale(trip)) return;
+      if (trip.latitude == null || trip.longitude == null) {
+        // No GPS yet: remove existing marker if any
+        if (currentMarkerMap[trip.trip_id]) {
+          markersGroup.removeLayer(currentMarkerMap[trip.trip_id]);
+          delete currentMarkerMap[trip.trip_id];
+        }
+        return;
+      }
       const lat = parseFloat(trip.latitude);
       const lng = parseFloat(trip.longitude);
       if (isNaN(lat) || isNaN(lng)) return;
 
+      const isStale = isLocationStale(trip);
       const isSelected = trip.trip_id === selectedTripId;
-      const icon = createVehicleIcon(trip, isSelected, false);
+      const icon = createVehicleIcon(trip, isSelected, isStale);
 
-      const popup = `
-        <div style="font-family: Inter, sans-serif; padding: 4px; min-width: 200px;">
-          <h4 style="margin: 0 0 6px 0; font-size: 14px; font-weight: 800; color: #2b2530;">
-            ${trip.vehicle_registration || 'Vehicle'} · ${trip.vehicle_name || ''}
-          </h4>
-          <p style="margin: 0 0 4px 0; font-size: 12px; color: #555;">
-            <strong>Driver:</strong> ${trip.driver_name || 'Assigned Driver'}
-          </p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; color: #555;">
-            <strong>Route:</strong> ${trip.origin} → ${trip.destination}
-          </p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; color: #555;">
-            <strong>Speed:</strong> ${trip.speed != null ? `${trip.speed} km/h` : '—'}
-          </p>
-          <p style="margin: 0; font-size: 11px; color: #22a06b; font-weight: 700;">
-            ● Live GPS
-            &nbsp;·&nbsp;${trip.captured_at ? new Date(trip.captured_at).toLocaleTimeString() : 'No update'}
-          </p>
-        </div>
-      `;
+      const popupHtml = createLiveMapPopupHtml(trip);
+      const iconKey = `${isSelected}-${isStale}-${trip.heading}`;
 
-      const marker = L.marker([lat, lng], { icon }).bindPopup(popup);
-      marker.on('click', () => setSelectedTripId(trip.trip_id));
-      markersGroup.addLayer(marker);
-      validMarkers.push([lat, lng]);
+      if (currentMarkerMap[trip.trip_id]) {
+        // Update existing marker position & icon only when changed (no flicker)
+        currentMarkerMap[trip.trip_id].setLatLng([lat, lng]);
+        if (currentMarkerMap[trip.trip_id]._iconKey !== iconKey) {
+          currentMarkerMap[trip.trip_id].setIcon(icon);
+          currentMarkerMap[trip.trip_id]._iconKey = iconKey;
+        }
+        if (currentMarkerMap[trip.trip_id].isPopupOpen()) {
+          currentMarkerMap[trip.trip_id].getPopup().setContent(popupHtml);
+        } else {
+          currentMarkerMap[trip.trip_id].setPopupContent(popupHtml);
+        }
+      } else {
+        // Create new marker with rich popup
+        const marker = L.marker([lat, lng], { icon, riseOnHover: true, zIndexOffset: 500 });
+        marker._iconKey = iconKey;
+        marker.bindPopup(popupHtml, {
+          className: 'custom-live-marker-popup',
+          closeButton: false,
+          maxWidth: 320,
+          minWidth: 280,
+          autoPan: true,
+          autoPanPadding: [50, 50]
+        });
+        marker.on('click', (e) => {
+          if (e.originalEvent) e.originalEvent.stopPropagation();
+          setSelectedTripId(trip.trip_id);
+          marker.openPopup();
+        });
+        markersGroup.addLayer(marker);
+        currentMarkerMap[trip.trip_id] = marker;
+      }
+
+      validBounds.push([lat, lng]);
     });
 
-    if (validMarkers.length > 0 && !selectedTripId && !hasInitialFittedRef.current) {
-      map.fitBounds(L.latLngBounds(validMarkers), { padding: [60, 60], maxZoom: 14 });
+    if (validBounds.length > 0 && !selectedTripId && !hasInitialFittedRef.current) {
+      map.fitBounds(L.latLngBounds(validBounds), { padding: [60, 60], maxZoom: 14 });
       hasInitialFittedRef.current = true;
     }
   }, [activeTrips, selectedTripId]);
 
-  // ─── Fly to selected trip location ───────────────────────────────────────
+  // ─── Fly to selected trip location ───────────────────────────────────────────
   const handleSelectTrip = (trip) => {
     setSelectedTripId(trip.trip_id);
-    if (trip.latitude != null && trip.longitude != null && !isLocationStale(trip) && mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo(
-        [parseFloat(trip.latitude), parseFloat(trip.longitude)],
-        15,
-        { duration: 1.2, easeLinearity: 0.25 }
-      );
+    if (trip.latitude != null && trip.longitude != null && mapInstanceRef.current) {
+      const lat = parseFloat(trip.latitude);
+      const lng = parseFloat(trip.longitude);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        mapInstanceRef.current.flyTo(
+          [lat, lng],
+          15,
+          { duration: 1.2, easeLinearity: 0.25 }
+        );
+        const marker = markerMapRef.current[trip.trip_id];
+        if (marker) {
+          setTimeout(() => marker.openPopup(), 350);
+        }
+      }
     }
   };
 
+  const selectedTrip = activeTrips.find(t => t.trip_id === selectedTripId) || null;
   const liveCount     = activeTrips.filter(t => !isLocationStale(t)).length;
   const awaitingCount = activeTrips.length - liveCount;
-  const avgSpeed      = activeTrips.length > 0
-    ? Math.round(activeTrips.reduce((acc, t) => acc + (parseFloat(t.speed) || 0), 0) / activeTrips.length)
-    : 0;
 
   return (
     <div className="live-map-container">
@@ -355,55 +480,17 @@ export default function LiveMap() {
         </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="live-stats-bar">
-        <div className="live-stat-card">
-          <div className="live-stat-icon" style={{ background: '#fdf1e0', color: '#e08a1e' }}>
-            <Truck size={22} />
-          </div>
-          <div>
-            <div className="live-stat-label">Dispatched Trips</div>
-            <div className="live-stat-val">{activeTrips.length}</div>
-          </div>
-        </div>
-
-        <div className="live-stat-card">
-          <div className="live-stat-icon" style={{ background: '#e6f7ef', color: '#22a06b' }}>
-            <Radio size={22} />
-          </div>
-          <div>
-            <div className="live-stat-label">Active GPS Signals</div>
-            <div className="live-stat-val">{liveCount}</div>
-          </div>
-        </div>
-
-        <div className="live-stat-card">
-          <div className="live-stat-icon" style={{ background: '#f7eadc', color: '#d97706' }}>
-            <AlertCircle size={22} />
-          </div>
-          <div>
-            <div className="live-stat-label">Awaiting Driver GPS</div>
-            <div className="live-stat-val">{awaitingCount}</div>
-          </div>
-        </div>
-
-        <div className="live-stat-card">
-          <div className="live-stat-icon" style={{ background: '#e8f0fe', color: '#2f6fed' }}>
-            <Gauge size={22} />
-          </div>
-          <div>
-            <div className="live-stat-label">Average Fleet Speed</div>
-            <div className="live-stat-val">{avgSpeed} km/h</div>
-          </div>
-        </div>
-      </div>
-
       {/* Main Body Split: Sidebar + Map */}
       <div className="live-map-body">
         {/* Active Dispatched Vehicles Sidebar */}
         <div className="live-trips-sidebar">
           <div className="live-trips-sidebar-header">
-            <span>Dispatched Vehicles ({activeTrips.length})</span>
+            <span>
+              Dispatched Vehicles ({activeTrips.length})
+              {liveCount > 0 && (
+                <span className="sidebar-live-badge">{liveCount} Live</span>
+              )}
+            </span>
             {selectedTripId ? (
               <button
                 onClick={() => setSelectedTripId(null)}
@@ -416,6 +503,8 @@ export default function LiveMap() {
               </button>
             ) : null}
           </div>
+
+
 
           <div className="live-trips-list">
             {isLoading ? (
@@ -434,7 +523,8 @@ export default function LiveMap() {
             ) : (
               activeTrips.map((trip) => {
                 const isSelected  = trip.trip_id === selectedTripId;
-                const hasLocation = trip.latitude != null && trip.longitude != null && !isLocationStale(trip);
+                const isLive = trip.latitude != null && trip.longitude != null && !isLocationStale(trip);
+                const hasLastKnown = trip.latitude != null && trip.longitude != null;
 
                 return (
                   <div
@@ -452,8 +542,8 @@ export default function LiveMap() {
                         </div>
                       </div>
 
-                      <span className={`gps-status-pill ${hasLocation ? 'live' : 'awaiting'}`}>
-                        {hasLocation ? '● Live' : 'Awaiting GPS'}
+                      <span className={`gps-status-pill ${isLive ? 'live' : hasLastKnown ? 'warning' : 'awaiting'}`}>
+                        {isLive ? '● Live' : hasLastKnown ? '● Last Known' : 'Awaiting GPS'}
                       </span>
                     </div>
 
@@ -462,15 +552,24 @@ export default function LiveMap() {
                     </div>
 
                     <div className="live-trip-meta-row">
-                      <span>Driver: {trip.driver_name || 'Assigned'}</span>
-                      {hasLocation && trip.speed != null ? (
-                        <span>{trip.speed} km/h</span>
-                      ) : null}
+                      <span>
+                        <User size={11} style={{ display: 'inline', marginRight: 3 }} />
+                        {trip.driver_name || 'Assigned'}
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {trip.speed != null ? (
+                          <span>{parseFloat(trip.speed).toFixed(0)} km/h</span>
+                        ) : trip.start_time ? (
+                          <span style={{ color: 'var(--sub)', fontSize: '0.7rem' }}>
+                            <Timer size={10} style={{ display: 'inline' }} /> {formatElapsed(trip.start_time)}
+                          </span>
+                        ) : null}
+                      </span>
                     </div>
 
-                    {hasLocation && trip.captured_at ? (
+                    {hasLastKnown && trip.captured_at ? (
                       <div style={{ fontSize: '0.7rem', color: 'var(--sub)', marginTop: '0.35rem' }}>
-                        Last sync: {new Date(trip.captured_at).toLocaleTimeString()}
+                        Last sync: {formatTime(trip.captured_at)}
                       </div>
                     ) : null}
                   </div>
@@ -483,15 +582,6 @@ export default function LiveMap() {
         {/* Mapbox Map Surface */}
         <div className="live-map-view-wrapper">
           <div ref={mapContainerRef} className="map-container-element" />
-
-          {selectedTripId ? (
-            <div className="map-floating-overlay">
-              <div style={{ fontWeight: 800, color: 'var(--amber)', marginBottom: '0.25rem' }}>
-                Trip #{selectedTripId} Selected
-              </div>
-              <div>Showing live position &amp; GPS breadcrumb trail ({breadcrumbs.length} points)</div>
-            </div>
-          ) : null}
 
           {/* Last refresh timestamp */}
           <div style={{

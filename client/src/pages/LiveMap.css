@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: calc(100vh - 80px);
-  gap: 1.25rem;
+  gap: 1rem;
   padding: 1.5rem;
   overflow: hidden;
 }
@@ -13,6 +13,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .live-map-title-group h1 {
@@ -84,47 +85,7 @@
   border-color: #dcd8e0;
 }
 
-.live-stats-bar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1rem;
-}
-
-.live-stat-card {
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 1rem 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-}
-
-.live-stat-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.live-stat-label {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--sub);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.live-stat-val {
-  font-size: 1.35rem;
-  font-weight: 800;
-  color: var(--text);
-  margin-top: 0.2rem;
-}
-
+/* Main layout: sidebar + map, fills remaining height */
 .live-map-body {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -139,6 +100,7 @@
   }
 }
 
+/* ─── Sidebar ─────────────────────────────────────────────────────────────── */
 .live-trips-sidebar {
   background: white;
   border: 1px solid var(--line);
@@ -158,8 +120,59 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
+.sidebar-live-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  background: #e6f7ef;
+  color: #22a06b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 160, 107, 0.25);
+}
+
+/* ─── Fleet summary strip ─────────────────────────────────────────────────── */
+.fleet-summary-strip {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: #faf9fb;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.fleet-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--sub);
+}
+
+.fleet-stat-live {
+  color: #22a06b;
+}
+
+.fleet-stat-warn {
+  color: #d97706;
+}
+
+.micro-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22a06b;
+  animation: pulse-ring 1.8s infinite;
+  display: inline-block;
+}
+
+/* ─── Trip list ───────────────────────────────────────────────────────────── */
 .live-trips-list {
   flex: 1;
   overflow-y: auto;
@@ -175,7 +188,7 @@
   border-radius: 10px;
   padding: 1rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.18s ease;
 }
 
 .live-trip-card:hover {
@@ -186,7 +199,7 @@
 .live-trip-card.selected {
   background: #fdf6ec;
   border-color: var(--amber);
-  box-shadow: 0 2px 8px rgba(224, 138, 30, 0.15);
+  box-shadow: 0 2px 12px rgba(224, 138, 30, 0.2);
 }
 
 .live-trip-card-header {
@@ -214,6 +227,7 @@
   padding: 0.2rem 0.5rem;
   border-radius: 6px;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .gps-status-pill.live {
@@ -226,7 +240,7 @@
   color: #e08a1e;
 }
 
-.gps-status-pill.stale {
+.gps-status-pill.warning {
   background: #f7eadc;
   color: #d97706;
 }
@@ -241,10 +255,71 @@
 .live-trip-meta-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 0.75rem;
   color: var(--sub);
 }
 
+/* ─── Expanded vehicle detail panel ──────────────────────────────────────── */
+.vehicle-detail-panel {
+  border-top: 1px solid rgba(224, 138, 30, 0.2);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  animation: fade-slide-in 0.18s ease;
+}
+
+@keyframes fade-slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.vd-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.vd-metric {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  color: var(--sub);
+}
+
+.vd-metric svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--amber);
+}
+
+.vd-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vd-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 0.1rem;
+}
+
+.vd-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--sub);
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+
+/* ─── Map surface ─────────────────────────────────────────────────────────── */
 .live-map-view-wrapper {
   background: white;
   border: 1px solid var(--line);
@@ -259,21 +334,7 @@
   height: 100%;
 }
 
-.map-floating-overlay {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0.75rem 1rem;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  font-size: 0.8rem;
-  color: var(--text);
-}
-
+/* ─── Misc ────────────────────────────────────────────────────────────────── */
 .empty-trips-state {
   text-align: center;
   padding: 2.5rem 1.5rem;
@@ -314,4 +375,235 @@
 .theme-btn.active {
   background: #e6f7ef;
   color: #22a06b;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ─── Leaflet marker popup on live map ────────────────────────────────────── */
+.leaflet-popup.custom-live-marker-popup .leaflet-popup-content-wrapper {
+  background: #ffffff;
+  border: 1px solid rgba(224, 138, 30, 0.4);
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: 0 12px 32px rgba(43, 37, 48, 0.16);
+}
+
+.leaflet-popup.custom-live-marker-popup .leaflet-popup-tip {
+  background: #ffffff;
+}
+
+.leaflet-popup.custom-live-marker-popup .leaflet-popup-content {
+  margin: 0;
+  width: 300px !important;
+}
+
+.live-marker-popup {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: Inter, sans-serif;
+  color: var(--text);
+}
+
+.lmp-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lmp-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(224, 138, 30, 0.12);
+  color: var(--amber);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.lmp-title-wrap {
+  flex: 1;
+  overflow: hidden;
+}
+
+.lmp-driver {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lmp-vehicle {
+  font-size: 11px;
+  color: var(--sub);
+  display: block;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lmp-route-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #faf8fa;
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.lmp-route-text {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lmp-route-text span {
+  color: var(--sub);
+  font-weight: 400;
+}
+
+.lmp-status-pill {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.lmp-status-pill.live {
+  background: #e6f7ef;
+  color: #168454;
+  border: 1px solid rgba(22, 132, 84, 0.25);
+}
+
+.lmp-status-pill.warning {
+  background: #fdf5ea;
+  color: #b66a09;
+  border: 1px solid rgba(182, 106, 9, 0.25);
+}
+
+.lmp-status-pill.awaiting {
+  background: #f0eef2;
+  color: #7a7585;
+  border: 1px solid rgba(122, 117, 133, 0.2);
+}
+
+.lmp-time-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: #faf8fa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.lmp-time-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+
+.lmp-time-label {
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.lmp-time-val {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: monospace;
+}
+
+.lmp-time-val.highlight {
+  color: var(--amber);
+}
+
+.lmp-telemetry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.lmp-tele-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.lmp-tele-label {
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.lmp-tele-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lmp-tele-value.mono {
+  font-family: monospace;
+  font-size: 10.5px;
+}
+
+.lmp-tele-value.live {
+  color: #168454;
+}
+
+.lmp-tele-value.warning {
+  color: #b66a09;
+}
+
+.lmp-tele-value.awaiting {
+  color: #7a7585;
+}
+
+.lmp-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9.5px;
+  color: var(--sub);
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
 }

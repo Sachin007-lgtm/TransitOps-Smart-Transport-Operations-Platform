@@ -38,4 +38,14 @@ const changePassword = asyncWrapper(async (req, res) => {
 	}
 });
 
-module.exports = { login, me, changePassword };
+const updateProfile = asyncWrapper(async (req, res) => {
+	try {
+		const { name, email, phone_number, avatar_url } = req.body || {};
+		const updated = await authService.updateProfile(req.user.id, { name, email, phone_number, avatar_url });
+		return apiResponse.success(res, updated, 'Profile updated successfully.');
+	} catch (error) {
+		return handleError(res, error);
+	}
+});
+
+module.exports = { login, me, changePassword, updateProfile };

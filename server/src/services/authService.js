@@ -25,6 +25,8 @@ function publicUser(user) {
 		role_id: user.role_id,
 		driver_id: user.driver_id,
 		organization_id: user.organization_id,
+		organization_name: user.organization_name || null,
+		avatar_url: user.avatar_url || null,
 		must_change_password: user.must_change_password
 	};
 }
@@ -72,6 +74,12 @@ const authService = {
 			throw new AuthServiceError('Current password is incorrect.', 401);
 		}
 		await User.updatePassword(user.id, await hashPassword(newPassword));
+	},
+
+	updateProfile: async (userId, data) => {
+		const updated = await User.updateProfile(userId, data);
+		if (!updated) throw new AuthServiceError('User not found.', 404);
+		return publicUser(updated);
 	},
 
 	generateTemporaryPassword

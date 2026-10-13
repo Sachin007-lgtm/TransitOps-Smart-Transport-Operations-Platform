@@ -10,14 +10,27 @@ const app = express();
 // carrying JWTs, so reflecting any origin would let any site read
 // authenticated responses (the video checklist's "overly permissive CORS").
 // The dev origins cover the Vite dev servers; set CORS_ORIGIN in production.
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174,http://localhost:3000')
+const isProduction = process.env.NODE_ENV === 'production' || process.env.TRANSITOPS_ENV === 'production';
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174,http://localhost:3000,http://localhost:8081,http://localhost:19006,http://127.0.0.1:8081')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
+
+const isDevLocalOrigin = (origin) => {
+  if (isProduction) return false;
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('172.');
+  } catch {
+    return false;
+  }
+};
+
 app.use(cors({
   origin(origin, callback) {
     // Allow non-browser tools (curl, mobile app, same-origin) with no Origin.
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    if (!origin || allowedOrigins.includes(origin) || isDevLocalOrigin(origin)) return callback(null, true);
     return callback(null, false);
   },
   credentials: false

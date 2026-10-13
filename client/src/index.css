@@ -436,6 +436,9 @@ tbody tr:hover { background-color: var(--bg-app); }
   height: 64px; background-color: var(--bg-card); border-bottom: 1px solid var(--border-color);
   display: flex; align-items: center; justify-content: space-between; padding: 0 2rem;
   box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  position: relative;
+  z-index: 100;
 }
 .content-area { flex: 1; padding: 2rem; overflow-y: auto; overflow-x: hidden; }
+.relative { position: relative; }
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info } from 'lucide-react';
+import { Info, FileText } from 'lucide-react';
 import DriverActionMenu from './DriverActionMenu';
 import {
   isLicenseExpired,
@@ -57,8 +57,7 @@ export default function DriverTable({
                   return (
                     <tr
                       key={d.id || idx}
-                      className="table-row-animate cursor-pointer hover:bg-[#fcfcfc]"
-                      onClick={() => onEdit(d)}
+                      className="table-row-animate hover:bg-[#fcfcfc]"
                       style={{
                         animationDelay: `${idx * 40}ms`,
                         borderLeft: `4px solid ${getLeftBorderColor(d.status)}`
@@ -181,12 +180,38 @@ export default function DriverTable({
 
                       {/* Actions Column */}
                       <td style={{ textAlign: 'right', paddingRight: '1.5rem' }}>
-                        <DriverActionMenu
-                          driver={d}
-                          onEdit={onEdit}
-                          onResetPassword={onResetPassword}
-                          onDelete={onDelete}
-                        />
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{
+                              padding: '5px 12px',
+                              fontSize: '0.78rem',
+                              fontWeight: 600,
+                              borderRadius: '8px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              color: '#475569',
+                              borderColor: '#e2e8f0',
+                              cursor: 'pointer'
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit(d);
+                            }}
+                            title="View Driver Documents & Profile"
+                          >
+                            <FileText size={13} className="text-muted" />
+                            <span>Documents</span>
+                          </button>
+                          <DriverActionMenu
+                            driver={d}
+                            onEdit={onEdit}
+                            onResetPassword={onResetPassword}
+                            onDelete={onDelete}
+                          />
+                        </div>
                       </td>
                     </tr>
                   );

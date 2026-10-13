@@ -3,6 +3,8 @@ const { query } = require('../config/db');
 const publicUserColumns = `
 	u.id, u.name, u.email, u.phone_number, u.role_id,
 	r.name AS role, u.organization_id, u.driver_id,
+	u.avatar_url,
+	o.name AS organization_name,
 	u.must_change_password, u.is_active, u.created_at, u.updated_at
 `;
 
@@ -10,9 +12,10 @@ const User = {
 	findByLogin: async (identifier) => {
 		const trimmed = String(identifier || '').trim();
 		const result = await query(`
-			SELECT u.*, r.name AS role
+			SELECT u.*, r.name AS role, o.name AS organization_name
 			FROM users u
 			JOIN roles r ON r.id = u.role_id
+			LEFT JOIN organizations o ON o.id = u.organization_id
 			WHERE u.phone_number = $1 OR LOWER(u.email) = LOWER($1)
 			LIMIT 1
 		`, [trimmed]);
@@ -24,9 +27,46 @@ const User = {
 			SELECT ${publicUserColumns}
 			FROM users u
 			JOIN roles r ON r.id = u.role_id
+			LEFT JOIN organizations o ON o.id = u.organization_id
 			WHERE u.id = $1
 		`, [id]);
 		return result.rows[0];
+	},
+
+	updateProfile: async (id, { name, email, phone_number, avatar_url }) => {
+		const sets = [];
+		const values = [];
+		let idx = 1;
+
+		if (name !== undefined) {
+			sets.push(`name = $${idx++}`);
+			values.push(name.trim());
+		}
+		if (email !== undefined) {
+			sets.push(`email = $${idx++}`);
+			values.push(email ? email.trim().toLowerCase() : null);
+		}
+		if (phone_number !== undefined) {
+			sets.push(`phone_number = $${idx++}`);
+			values.push(phone_number ? phone_number.trim() : null);
+		}
+		if (avatar_url !== undefined) {
+			sets.push(`avatar_url = $${idx++}`);
+			values.push(avatar_url);
+		}
+
+		if (sets.length === 0) return await User.findById(id);
+
+		sets.push(`updated_at = CURRENT_TIMESTAMP`);
+		values.push(id);
+
+		await query(`
+			UPDATE users
+			SET ${sets.join(', ')}
+			WHERE id = $${idx}
+		`, values);
+
+		return await User.findById(id);
 	},
 
 	findByIdWithPassword: async (id) => {

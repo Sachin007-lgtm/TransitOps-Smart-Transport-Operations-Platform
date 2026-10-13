@@ -17,6 +17,18 @@
 -- (migration 017's charges table), so the payable ledger and the customer
 -- statement tie out by construction instead of by spreadsheet.
 
+-- Drop legacy un-namespaced table if it exists without the tenant column
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables WHERE table_name = 'expenses'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses' AND column_name = 'organization_id'
+  ) THEN
+    DROP TABLE expenses CASCADE;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS expenses (
   id UUID PRIMARY KEY DEFAULT uuidv7(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,

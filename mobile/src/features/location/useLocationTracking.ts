@@ -178,7 +178,7 @@ export function useLocationTracking({
           setGpsQuality('good');
 
           const previous = lastSentCoordinatesRef.current;
-          const heartbeatDue = Date.now() - lastSendTimestampRef.current >= 30000;
+          const heartbeatDue = Date.now() - lastSendTimestampRef.current >= 15000;
           if (previous && !heartbeatDue && distanceInMeters(previous, coords) < 5) return;
           if (isSendingRef.current) return;
 
@@ -221,6 +221,14 @@ export function useLocationTracking({
           }
         };
 
+        // Immediately send initial position fix upon tracking start
+        void getCurrentPosition().then(async (coords) => {
+          if (coords && !isCancelled) {
+            setLastLocation(coords);
+            await sendForegroundLocation(coords);
+          }
+        }).catch(() => undefined);
+
         const sub = await watchLocationUpdates(
           async (coords) => {
             if (isCancelled) return;
@@ -236,7 +244,7 @@ export function useLocationTracking({
             if (!isCancelled) setLastLocation(coords);
             await sendForegroundLocation(coords);
           }
-        }, 30000);
+        }, 15000);
         heartbeatIntervalRef.current = heartbeatInterval;
 
         if (isCancelled) {

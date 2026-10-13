@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronDown, Copy, Edit3, Info } from 'lucide-react';
+import { Plus, Search, ChevronDown, Copy, Edit3, Info, FileText } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
@@ -479,16 +479,17 @@ export default function Vehicles() {
                 <th style={{ textAlign: 'center' }}>Trips Completed</th>
                 <th>Distance Covered</th>
                 <th>Status</th>
+                <th style={{ textAlign: 'right', paddingRight: '1.5rem' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="text-center py-12 text-muted">Loading fleet registry...</td>
+                  <td colSpan="7" className="text-center py-12 text-muted">Loading fleet registry...</td>
                 </tr>
               ) : filteredVehicles.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center py-12 text-muted">
+                  <td colSpan="7" className="text-center py-12 text-muted">
                     {vehicles.length === 0 
                       ? 'No vehicles registered in your fleet yet. Click "+ Add vehicle" above to register your first vehicle.' 
                       : 'No vehicles match these filters.'}
@@ -498,8 +499,7 @@ export default function Vehicles() {
                 filteredVehicles.map((v, idx) => (
                   <tr 
                     key={v.id} 
-                    className="table-row-animate cursor-pointer hover:bg-[#fcfcfc]" 
-                    onClick={() => navigate(`/vehicles/${v.id}`)}
+                    className="table-row-animate hover:bg-[#fcfcfc]" 
                     style={{ 
                       animationDelay: `${idx * 70}ms`,
                       borderLeft: `4px solid ${getLeftBorderColor(v.status)}`,
@@ -507,8 +507,16 @@ export default function Vehicles() {
                     }}
                   >
                     {/* Number Plate */}
-                    <td className="mono font-medium group relative" style={{ cursor: 'pointer' }}>
-                      <div className="flex items-center gap-2" onClick={() => copyToClipboard(v.number_plate)} title="Click to copy">
+                    <td className="mono font-medium group relative">
+                      <div 
+                        className="flex items-center gap-2" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyToClipboard(v.number_plate);
+                        }} 
+                        title="Click to copy"
+                        style={{ cursor: 'pointer', display: 'inline-flex' }}
+                      >
                         {v.number_plate}
                         <Copy size={14} className="text-muted opacity-0 hover:opacity-100 transition-opacity" style={{ opacity: 0.5 }} />
                       </div>
@@ -540,7 +548,10 @@ export default function Vehicles() {
                             type="button"
                             className="btn btn-outline"
                             style={{ padding: '2px 6px', fontSize: '0.7rem', height: 'auto', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            onClick={() => openDistanceModal(v)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDistanceModal(v);
+                            }}
                             title="Manually update distance"
                           >
                             <Edit3 size={11} /> Update
@@ -577,6 +588,7 @@ export default function Vehicles() {
                             }}
                             value={isOnTrip ? 'On trip' : (v.status === 'In shop' || v.status === 'In Shop' ? 'Maintenance' : v.status)}
                             disabled={isOnTrip}
+                            onClick={(e) => e.stopPropagation()}
                             title={
                               isOnTrip 
                                 ? 'Vehicle is currently On Trip — managed automatically by trip dispatch' 
@@ -590,6 +602,34 @@ export default function Vehicles() {
                           </select>
                         );
                       })()}
+                    </td>
+
+                    {/* Dedicated Actions Column with Documents Button */}
+                    <td style={{ textAlign: 'right', paddingRight: '1.5rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        style={{
+                          padding: '5px 12px',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          borderRadius: '8px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          color: '#475569',
+                          borderColor: '#e2e8f0',
+                          cursor: 'pointer'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/vehicles/${v.id}`);
+                        }}
+                        title="View Vehicle Documents & Profile"
+                      >
+                        <FileText size={13} className="text-muted" />
+                        <span>Documents</span>
+                      </button>
                     </td>
                   </tr>
                 ))

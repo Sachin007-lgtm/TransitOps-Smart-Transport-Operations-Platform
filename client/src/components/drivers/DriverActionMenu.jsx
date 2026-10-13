@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { MoreVertical, Edit2, KeyRound, Trash2 } from 'lucide-react';
+import { MoreVertical, Edit2, KeyRound, Trash2, FileText } from 'lucide-react';
 
 export default function DriverActionMenu({ driver, onEdit, onResetPassword, onDelete }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -102,8 +102,8 @@ export default function DriverActionMenu({ driver, onEdit, onResetPassword, onDe
               onEdit(driver);
             }}
           >
-            <Edit2 size={14} className="text-muted" />
-            <span>Edit Profile</span>
+            <FileText size={14} className="text-muted" />
+            <span>Documents & Profile</span>
           </button>
 
           <button 
