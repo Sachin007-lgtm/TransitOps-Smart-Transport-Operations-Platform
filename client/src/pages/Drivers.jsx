@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { apiRequest } from '../utils/api';
 import DriverToolbar from '../components/drivers/DriverToolbar';
 import DriverTable from '../components/drivers/DriverTable';
@@ -146,23 +147,18 @@ export default function Drivers() {
     }
   };
 
+  const confirm = useConfirm();
+
   // Delete driver handler (with development-phase exception maintained)
   const handleDeleteDriver = async (driver) => {
-    /* -------------------------------------------------------------
-     * [PRODUCTION CONSTRAINT - TEMPORARILY COMMENTED FOR DEVELOPMENT PHASE]
-     * In production, drivers on active trips or with history cannot be deleted.
-     *
-     * if (driver.status === 'On Trip') {
-     *   window.dispatchEvent(
-     *     new CustomEvent('app-toast', { detail: `Cannot delete ${driver.name} while On Trip.`, type: 'error' })
-     *   );
-     *   return;
-     * }
-     * ------------------------------------------------------------- */
+    const ok = await confirm({
+      title: 'Delete Driver',
+      message: `Are you sure you want to delete ${driver.name}? This will remove them from the roster and revoke their mobile app login credentials.`,
+      confirmText: 'Delete Driver',
+      variant: 'danger'
+    });
 
-    if (!window.confirm(`Are you sure you want to delete ${driver.name}?`)) {
-      return;
-    }
+    if (!ok) return;
 
     try {
       await apiRequest('DELETE', `/drivers/${driver.id}`);
@@ -180,6 +176,15 @@ export default function Drivers() {
 
   // Reset driver password handler
   const handleResetDriverPassword = async (driver) => {
+    const ok = await confirm({
+      title: 'Reset Driver App Password',
+      message: `Are you sure you want to reset the password for ${driver.name}? Their current mobile session will be terminated immediately and a one-time temporary password will be generated for them.`,
+      confirmText: 'Reset Password',
+      variant: 'warning'
+    });
+
+    if (!ok) return;
+
     try {
       const response = await apiRequest('POST', `/drivers/${driver.id}/reset-password`);
       const temporaryPassword = response.data?.temporary_password;

@@ -8,6 +8,7 @@ import Drivers from './pages/Drivers';
 import DriverProfile from './pages/DriverProfile';
 import LoginPage from './pages/auth/LoginPage';
 import { AuthProvider } from './contexts/AuthContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import { ProtectedRoute, PublicOnlyRoute, PlatformAdminRoute, TenantManagerRoute } from './components/auth/ProtectedRoute';
 import { GlobalSearchProvider } from './contexts/GlobalSearchContext';
 import PlatformAdmin from './pages/PlatformAdmin';
@@ -114,44 +115,46 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <GlobalSearchProvider>
-          <GlobalToast />
-          <Routes>
-            <Route 
-              path="/login" 
-              element={
-                <PublicOnlyRoute>
-                  <LoginPage />
-                </PublicOnlyRoute>
-              } 
-            />
-            {/* Platform Superadmin Route */}
-            <Route element={<PlatformAdminRoute />}>
-              <Route path="/admin" element={<AppLayout />}>
-                <Route index element={<PlatformAdmin />} />
+          <ConfirmProvider>
+            <GlobalToast />
+            <Routes>
+              <Route 
+                path="/login" 
+                element={
+                  <PublicOnlyRoute>
+                    <LoginPage />
+                  </PublicOnlyRoute>
+                } 
+              />
+              {/* Platform Superadmin Route */}
+              <Route element={<PlatformAdminRoute />}>
+                <Route path="/admin" element={<AppLayout />}>
+                  <Route index element={<PlatformAdmin />} />
+                </Route>
               </Route>
-            </Route>
 
-            {/* Tenant Fleet Manager Routes */}
-            <Route element={<TenantManagerRoute />}>
-              <Route path="/" element={<AppLayout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="vehicles" element={<Vehicles />} />
-                <Route path="vehicles/:id" element={<VehicleProfile />} />
-                <Route path="drivers" element={<Drivers />} />
-                <Route path="drivers/:id" element={<DriverProfile />} />
-                <Route path="trips" element={<TripDispatcher />} />
-                <Route path="trip-history" element={<TripHistory />} />
-                <Route path="live-map" element={<Navigate to="/trips" replace />} />
-                <Route path="billing" element={<Billing />} />
-                <Route path="maintenance" element={<Maintenance />} />
-                <Route path="fuel" element={<FuelExpenses />} />
-                <Route path="analytics" element={<Navigate to="/" replace />} />
-                <Route path="settings" element={<Settings />} />
+              {/* Tenant Fleet Manager Routes */}
+              <Route element={<TenantManagerRoute />}>
+                <Route path="/" element={<AppLayout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="vehicles" element={<Vehicles />} />
+                  <Route path="vehicles/:id" element={<VehicleProfile />} />
+                  <Route path="drivers" element={<Drivers />} />
+                  <Route path="drivers/:id" element={<DriverProfile />} />
+                  <Route path="trips" element={<TripDispatcher />} />
+                  <Route path="trip-history" element={<TripHistory />} />
+                  <Route path="live-map" element={<Navigate to="/trips" replace />} />
+                  <Route path="billing" element={<Billing />} />
+                  <Route path="maintenance" element={<Maintenance />} />
+                  <Route path="fuel" element={<FuelExpenses />} />
+                  <Route path="analytics" element={<Navigate to="/" replace />} />
+                  <Route path="settings" element={<Settings />} />
+                </Route>
               </Route>
-            </Route>
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ConfirmProvider>
         </GlobalSearchProvider>
       </AuthProvider>
     </ErrorBoundary>

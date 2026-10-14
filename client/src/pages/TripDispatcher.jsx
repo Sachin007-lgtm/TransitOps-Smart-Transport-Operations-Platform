@@ -13,6 +13,7 @@ import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
 import { tripCode } from '../utils/tripCode';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { apiRequest } from '../utils/api';
 import './TripDispatcher.css';
 
@@ -365,6 +366,7 @@ function tripProgressPct(trip, location, coords) {
 // ─── Main Component ───────────────────────────────────────────────────────
 export default function TripDispatcher() {
   const { globalSearch } = useGlobalSearch();
+  const confirm = useConfirm();
 
   // ── Server data ──
   const [trips,    setTrips]    = useState([]);
@@ -1225,6 +1227,16 @@ export default function TripDispatcher() {
   };
 
   const handleAdvanceStatus = async (trip, nextStatus) => {
+    if (nextStatus === 'Dispatched') {
+      const ok = await confirm({
+        title: `Dispatch Trip #${trip.id}`,
+        message: `Dispatch vehicle ${trip.vehicle?.registration_number || trip.vehicle_id} with driver ${trip.driver?.name || trip.driver_id}? This marks the trip as actively in transit.`,
+        confirmText: 'Dispatch Trip',
+        variant: 'info'
+      });
+      if (!ok) return;
+    }
+
     try {
       await apiRequest('PATCH', `/trips/${trip.id}/status`, { status: nextStatus });
       showToast(`Trip #${trip.id} status updated to ${nextStatus}`);
@@ -1235,12 +1247,20 @@ export default function TripDispatcher() {
   };
 
   const handleMilestoneOverride = async (trip, action) => {
-    const reason = window.prompt(`Why is this trip being marked ${action} without the driver on site? The reason is saved in the trip log.`);
-    if (reason === null) return;
-    if (reason.trim().length < 5) {
-      showToast('Enter a reason of at least 5 characters.');
-      return;
-    }
+    const reason = await confirm({
+      title: `Override Milestone: Mark as ${action}`,
+      message: `Why is Trip #${trip.id} being marked as "${action}" without driver on-site verification? An audit explanation of at least 5 characters is required and saved in the permanent trip record.`,
+      confirmText: 'Confirm Override',
+      variant: 'warning',
+      inputPrompt: {
+        label: 'Audit Reason (minimum 5 characters)',
+        placeholder: 'e.g., Driver phone battery drained; verified by receiving manager on site...',
+        required: true,
+        minLength: 5
+      }
+    });
+    if (!reason) return;
+
     try {
       await apiRequest('PATCH', `/trips/${trip.id}/loading`, { action, override_reason: reason.trim() });
       showToast(`Trip #${trip.id} marked ${action}.`);

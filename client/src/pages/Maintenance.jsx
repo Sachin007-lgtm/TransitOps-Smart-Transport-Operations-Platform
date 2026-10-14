@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Check, Info, Download, Upload, RefreshCw } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { apiDownloadFile, apiRequest, apiUploadFile } from '../utils/api';
 import './Maintenance.css';
 
@@ -16,6 +17,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function Maintenance() {
   const { globalSearch } = useGlobalSearch();
+  const confirm = useConfirm();
   const [vehicles, setVehicles] = useState([]);
   const [serviceRecords, setServiceRecords] = useState([]);
   const [driverReports, setDriverReports] = useState([]);
@@ -90,6 +92,14 @@ export default function Maintenance() {
 
   // The driver must request fixing first; the server rejects approval otherwise.
   const handleApproveReport = async (report) => {
+    const ok = await confirm({
+      title: 'Approve Repair Ticket',
+      message: `Approve repair ticket #${report.id} for vehicle ${report.vehicle_registration}? The driver will be authorized to start the repair work.`,
+      confirmText: 'Approve Ticket',
+      variant: 'info'
+    });
+    if (!ok) return;
+
     try {
       const response = await apiRequest('PATCH', `/maintenance/driver-reports/${report.id}`, {
         status: 'Acknowledged'
@@ -202,6 +212,14 @@ export default function Maintenance() {
   // Complete an open service record: its cost is already in the ledger
   // (logged at save time); completing just releases the vehicle.
   const handleCompleteService = async (record) => {
+    const ok = await confirm({
+      title: 'Release Vehicle to Fleet',
+      message: `Mark maintenance completed for vehicle ${record.vehicle_registration}? Its status will change from "In Shop" back to "Available" for dispatching.`,
+      confirmText: 'Release Vehicle',
+      variant: 'warning'
+    });
+    if (!ok) return;
+
     try {
       await apiRequest('PATCH', `/vehicles/${record.vehicle_id}/status`, { status: 'Available' });
       setFlashType('out');

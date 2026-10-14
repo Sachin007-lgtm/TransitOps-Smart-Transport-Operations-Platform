@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { apiRequest, apiOpenDocument } from '../utils/api';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import './Billing.css';
 
 const PAYMENT_MODES = ['Cash', 'UPI', 'NEFT', 'IMPS', 'RTGS', 'Cheque', 'Bank Transfer', 'Other'];
@@ -63,6 +64,7 @@ function StatusChip({ status }) {
 
 export default function Billing() {
   const { globalSearch } = useGlobalSearch();
+  const confirm = useConfirm();
 
   const [companies, setCompanies] = useState([]);
   const [bills, setBills] = useState([]);
@@ -209,7 +211,14 @@ export default function Billing() {
   };
 
   const handleDeleteCharge = async (charge) => {
-    if (!window.confirm(`Remove "${charge.description}" from the open statement?`)) return;
+    const ok = await confirm({
+      title: 'Remove Charge',
+      message: `Are you sure you want to remove "${charge.description}" (${money(charge.amount)}) from the open statement?`,
+      confirmText: 'Remove Charge',
+      variant: 'danger'
+    });
+    if (!ok) return;
+
     setBusy(true);
     try {
       await apiRequest('DELETE', `/billing/charges/${charge.id}`);
@@ -236,6 +245,16 @@ export default function Billing() {
       showToast('Nothing selected to issue.');
       return;
     }
+
+    const companyName = selectedCompany?.name || 'this customer';
+    const totalLines = selectedTripIds.length + selectedChargeIds.length;
+    const ok = await confirm({
+      title: `Issue Statement (${totalLines} items)`,
+      message: `Generate official numbered invoice for ${companyName}? This closes out the current pending items into a finalized bill.`,
+      confirmText: 'Generate Bill',
+      variant: 'info'
+    });
+    if (!ok) return;
 
     setBusy(true);
     try {
@@ -291,16 +310,21 @@ export default function Billing() {
   };
 
   const handleVoid = async (bill) => {
-    // The number is kept (a GST series must not have unexplained gaps), so the
-    // reason is captured as part of the audit trail.
-    const reason = window.prompt(
-      `Void ${bill.bill_no}?\n\nIts trips and charges go back to the open statement, and the number stays on record as VOID.\n\nReason (optional):`,
-      ''
-    );
+    const reason = await confirm({
+      title: `Void Bill ${bill.bill_no}`,
+      message: 'Its trips and charges return to the open statement, and the invoice number permanently stays on record as VOID for audit compliance.',
+      confirmText: 'Void Bill',
+      variant: 'danger',
+      inputPrompt: {
+        label: 'Audit Reason (optional)',
+        placeholder: 'Reason for voiding (e.g. rate correction, customer dispute)...',
+        required: false
+      }
+    });
     if (reason === null) return;
     setBusy(true);
     try {
-      await apiRequest('DELETE', `/billing/bills/${bill.id}`, { reason: reason.trim() || null });
+      await apiRequest('DELETE', `/billing/bills/${bill.id}`, { reason: reason ? reason.trim() || null : null });
       showToast(`${bill.bill_no} voided — kept on record as VOID.`);
       setOpenBill(null);
       await refreshAll();
