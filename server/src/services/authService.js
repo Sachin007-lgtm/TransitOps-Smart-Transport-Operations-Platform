@@ -45,7 +45,7 @@ function signToken(user) {
 }
 
 const authService = {
-	login: async (identifier, password) => {
+	login: async (identifier, password, clientType) => {
 		const rawIdentifier = String(identifier || '').trim();
 		if (!rawIdentifier || !password) {
 			throw new AuthServiceError('Email or phone number and password are required.', 400);
@@ -55,6 +55,16 @@ const authService = {
 		const user = await User.findByLogin(loginIdentifier);
 		if (!user || user.is_active === false || !(await comparePassword(password, user.password_hash))) {
 			throw new AuthServiceError('Invalid credentials.', 401);
+		}
+
+		if (clientType) {
+			const normalizedClient = String(clientType).toLowerCase().trim();
+			if (normalizedClient === 'web' && user.role === 'Driver') {
+				throw new AuthServiceError('Driver accounts are not authorized to access the web dashboard. Please sign in using the TransitOps Driver mobile app.', 403);
+			}
+			if (normalizedClient === 'mobile' && user.role !== 'Driver') {
+				throw new AuthServiceError('Manager and Admin accounts cannot sign in to the driver mobile app. Please use the TransitOps Web Dashboard.', 403);
+			}
 		}
 
 		return { token: signToken(user), user: publicUser(user) };

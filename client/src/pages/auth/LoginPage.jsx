@@ -87,10 +87,12 @@ export default function LoginPage() {
     try {
       const authUser = await login(trimmed, password);
       let destination = location.state?.from?.pathname;
-      if (!destination || destination === '/login' || (authUser?.role === 'Platform Admin' && destination === '/')) {
-        destination = authUser?.role === 'Platform Admin' ? '/admin' : '/';
-      } else if (authUser?.role !== 'Platform Admin' && destination.startsWith('/admin')) {
-        destination = '/';
+      if (authUser?.role === 'Platform Admin') {
+        destination = '/admin';
+      } else if (authUser?.role === 'Owner/Manager') {
+        destination = (!destination || destination === '/login' || destination.startsWith('/admin')) ? '/' : destination;
+      } else {
+        destination = '/login';
       }
       navigate(destination, { replace: true });
     } catch (err) {

@@ -485,4 +485,88 @@ describe('TransitOps Authentication Module Hardening & Contract Tests', () => {
     const restoreHash = await hashPassword('password123');
     await query("UPDATE users SET password_hash = $1 WHERE id = $2", [restoreHash, testUserAId]);
   });
+
+  // ==================== MULTI-CLIENT ADMISSION TESTS ====================
+  test('25. Driver login with client="web" is rejected with HTTP 403', async () => {
+    const res = await fetch(`${authBaseUrl}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone_number: '+919888877771',
+        password: 'password123',
+        client: 'web'
+      })
+    });
+    const json = await res.json();
+    assert.equal(res.status, 403);
+    assert.equal(json.success, false);
+    assert.match(json.message, /Driver accounts are not authorized to access the web dashboard/i);
+  });
+
+  test('26. Manager login with client="web" succeeds with HTTP 200', async () => {
+    const res = await fetch(`${authBaseUrl}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'authmgr_a@test.com',
+        password: 'password123',
+        client: 'web'
+      })
+    });
+    const json = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(json.success, true);
+    assert.ok(json.data.token);
+  });
+
+  test('27. Manager login with client="mobile" is rejected with HTTP 403', async () => {
+    const res = await fetch(`${authBaseUrl}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'authmgr_a@test.com',
+        password: 'password123',
+        client: 'mobile'
+      })
+    });
+    const json = await res.json();
+    assert.equal(res.status, 403);
+    assert.equal(json.success, false);
+    assert.match(json.message, /Manager and Admin accounts cannot sign in to the driver mobile app/i);
+  });
+
+  test('28. Driver login with client="mobile" succeeds with HTTP 200', async () => {
+    const res = await fetch(`${authBaseUrl}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone_number: '+919888877771',
+        password: 'password123',
+        client: 'mobile'
+      })
+    });
+    const json = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(json.success, true);
+    assert.ok(json.data.token);
+  });
+
+  test('29. Driver login with X-Client-Type: web header is rejected with HTTP 403', async () => {
+    const res = await fetch(`${authBaseUrl}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Type': 'web'
+      },
+      body: JSON.stringify({
+        phone_number: '+919888877771',
+        password: 'password123'
+      })
+    });
+    const json = await res.json();
+    assert.equal(res.status, 403);
+    assert.equal(json.success, false);
+    assert.match(json.message, /Driver accounts are not authorized to access the web dashboard/i);
+  });
 });
+

@@ -70,7 +70,7 @@ export function PlatformAdminRoute() {
 }
 
 export function TenantManagerRoute() {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -84,18 +84,32 @@ export function TenantManagerRoute() {
     return <Navigate to="/admin" replace />;
   }
 
-  return <Outlet />;
+  if (user?.role === 'Owner/Manager') {
+    return <Outlet />;
+  }
+
+  // Any unauthorized role (e.g., Driver) must not access the tenant manager portal
+  logout();
+  return <Navigate to="/login" replace />;
 }
 
 export function PublicOnlyRoute({ children }) {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
   }
 
   if (isAuthenticated) {
-    return <Navigate to={user?.role === 'Platform Admin' ? '/admin' : '/'} replace />;
+    if (user?.role === 'Platform Admin') {
+      return <Navigate to="/admin" replace />;
+    }
+    if (user?.role === 'Owner/Manager') {
+      return <Navigate to="/" replace />;
+    }
+    // If an unauthorized role was stored, clear it and allow login view
+    logout();
+    return children;
   }
 
   return children;

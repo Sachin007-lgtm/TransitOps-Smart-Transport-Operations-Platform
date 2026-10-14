@@ -37,7 +37,7 @@ type CurrentUserResponse = {
 export function login(phoneNumber: string, password: string): Promise<LoginResponse> {
   return apiRequest<LoginResponse>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ phone_number: phoneNumber, password }),
+    body: JSON.stringify({ phone_number: phoneNumber, password, client: 'mobile' }),
   });
 }
 

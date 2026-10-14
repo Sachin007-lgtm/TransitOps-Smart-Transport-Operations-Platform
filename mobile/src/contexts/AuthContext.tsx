@@ -18,6 +18,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const TOKEN_KEY = 'transitops.auth.token';
 const USER_KEY = 'transitops.auth.user';
+const ALLOWED_MOBILE_ROLES = ['Driver'];
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -38,15 +39,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
           try {
             const currentUser = await getCurrentUser(storedToken);
-            setToken(storedToken);
-            setUser(currentUser);
-            await setItem(USER_KEY, JSON.stringify(currentUser));
-          } catch (error) {
-            if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+            if (!ALLOWED_MOBILE_ROLES.includes(currentUser.role)) {
               await clearStoredSession();
             } else {
               setToken(storedToken);
+              setUser(currentUser);
+              await setItem(USER_KEY, JSON.stringify(currentUser));
+            }
+          } catch (error) {
+            if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+              await clearStoredSession();
+            } else if (cachedUser && ALLOWED_MOBILE_ROLES.includes(cachedUser.role)) {
+              setToken(storedToken);
               setUser(cachedUser);
+            } else {
+              await clearStoredSession();
             }
           }
         }
@@ -68,13 +75,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     try {
       const response = await login(phoneNumber, password);
-      setUser(response.data.user);
+      const authUser = response.data.user;
+      if (!ALLOWED_MOBILE_ROLES.includes(authUser.role)) {
+        throw new Error('Manager and Admin accounts cannot sign in to the driver mobile app. Please use the TransitOps Web Dashboard.');
+      }
+      setUser(authUser);
       setToken(response.data.token);
       await Promise.all([
         setItem(TOKEN_KEY, response.data.token),
-        setItem(USER_KEY, JSON.stringify(response.data.user)),
+        setItem(USER_KEY, JSON.stringify(authUser)),
       ]);
-      return response.data.user;
+      return authUser;
     } catch (error) {
       setUser(null);
       setToken(null);

@@ -10,9 +10,10 @@ function handleError(res, error) {
 
 const login = asyncWrapper(async (req, res) => {
 	try {
-		const { phone_number, email, identifier, password } = req.body || {};
+		const { phone_number, email, identifier, password, client, client_type } = req.body || {};
+		const clientType = client || client_type || req.headers['x-client-type'];
 		const loginTarget = identifier || email || phone_number;
-		const result = await authService.login(loginTarget, password);
+		const result = await authService.login(loginTarget, password, clientType);
 		return apiResponse.success(res, result, 'Login successful.');
 	} catch (error) {
 		return handleError(res, error);

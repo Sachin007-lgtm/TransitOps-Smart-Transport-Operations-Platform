@@ -3,9 +3,18 @@ import { apiRequest, getStoredToken, getStoredUser, storeAuthSession, clearStore
 
 const AuthContext = createContext(null);
 
+const ALLOWED_WEB_ROLES = ['Platform Admin', 'Owner/Manager'];
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => getStoredToken());
-  const [user, setUser] = useState(() => getStoredUser());
+  const [token, setToken] = useState(() => {
+    const t = getStoredToken();
+    const u = getStoredUser();
+    return (t && u && ALLOWED_WEB_ROLES.includes(u.role)) ? t : null;
+  });
+  const [user, setUser] = useState(() => {
+    const u = getStoredUser();
+    return (u && ALLOWED_WEB_ROLES.includes(u.role)) ? u : null;
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   // Restore session from server on mount
@@ -28,9 +37,15 @@ export function AuthProvider({ children }) {
         const response = await apiRequest('GET', '/auth/me', null, existingToken);
         if (isMounted && response?.data) {
           const freshUser = response.data;
-          setToken(existingToken);
-          setUser(freshUser);
-          storeAuthSession(existingToken, freshUser);
+          if (!ALLOWED_WEB_ROLES.includes(freshUser?.role)) {
+            clearStoredAuth();
+            setToken(null);
+            setUser(null);
+          } else {
+            setToken(existingToken);
+            setUser(freshUser);
+            storeAuthSession(existingToken, freshUser);
+          }
         }
       } catch (error) {
         if (isMounted) {
@@ -74,10 +89,17 @@ export function AuthProvider({ children }) {
       const response = await apiRequest('POST', '/auth/login', {
         identifier: trimmed,
         email: trimmed,
-        password
+        password,
+        client: 'web'
       });
 
       const { token: authToken, user: authUser } = response.data;
+      if (!ALLOWED_WEB_ROLES.includes(authUser?.role)) {
+        clearStoredAuth();
+        setToken(null);
+        setUser(null);
+        throw new Error('Driver accounts are not authorized to access the web dashboard. Please sign in using the TransitOps Driver mobile app.');
+      }
       storeAuthSession(authToken, authUser);
       setToken(authToken);
       setUser(authUser);
