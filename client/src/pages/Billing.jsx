@@ -10,21 +10,19 @@ import {
   IndianRupee,
   Receipt,
   Check,
-  Edit2
+  Edit2,
+  ChevronRight
 } from 'lucide-react';
 import { apiRequest, apiOpenDocument } from '../utils/api';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import PageToolbar from '../components/common/PageToolbar';
+import StatStrip from '../components/common/StatStrip';
+import SideDrawer from '../components/common/SideDrawer';
 import './Billing.css';
 
 const PAYMENT_MODES = ['Cash', 'UPI', 'NEFT', 'IMPS', 'RTGS', 'Cheque', 'Bank Transfer', 'Other'];
-
-// Charge types that can ride on a statement. The API enforces the same list.
 const CHARGE_KINDS = ['TOLL', 'LOADING', 'UNLOADING', 'DETENTION', 'DRIVER_ALLOWANCE', 'MISC'];
-
-// Trips a bill is composed from. Completed is the rule: a fare is only owed
-// once the work is done. The wider list behind the override tick exists for
-// the cases the owner knows are finished but has not closed in the app yet.
 const DEFAULT_STATUSES = ['Completed'];
 const INCLUDE_IN_PROGRESS_STATUSES = ['Completed', 'Dispatched', 'Assigned', 'Planned'];
 
@@ -33,8 +31,6 @@ function money(value) {
   return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Dates arrive as plain 'YYYY-MM-DD' from the billing API; formatting them
-// directly avoids the off-by-one that comes from parsing them as UTC.
 function fmtDate(value) {
   if (!value) return '—';
   const plain = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -50,8 +46,6 @@ function showToast(message) {
 }
 
 function StatusChip({ status }) {
-  // Void is a state of the document, not a payment situation — it gets its own
-  // neutral chip so it never reads as "still owed".
   if (status === 'Void') return <span className="pill pill-gray">VOID</span>;
   const cls =
     status === 'Paid'
@@ -72,16 +66,22 @@ export default function Billing() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // Selected company + the pool of trips a bill would be composed from.
+  // Filters
+  const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Unpaid' | 'Partial' | 'Paid' | 'Void'
   const [companyId, setCompanyId] = useState(null);
+
+  // Drawers
+  const [isStatementDrawerOpen, setIsStatementDrawerOpen] = useState(false);
+  const [showCompanyForm, setShowCompanyForm] = useState(false);
+  const [openBill, setOpenBill] = useState(null);
+
+  // Statement Preview state
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [includeInProgress, setIncludeInProgress] = useState(false);
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
   const [note, setNote] = useState('');
-  // The charge form doubles as the editor: editingChargeId set means the same
-  // fields are updating an existing (still unbilled) charge.
   const [chargeForm, setChargeForm] = useState({
     id: null,
     kind: 'TOLL',
@@ -90,12 +90,10 @@ export default function Billing() {
     charge_date: today()
   });
 
-  // Bill detail drawer.
-  const [openBill, setOpenBill] = useState(null);
+  // Bill payment form state
   const [payment, setPayment] = useState({ amount: '', mode: 'Cash', payment_date: today(), note: '' });
 
-  // Register a new customer.
-  const [showCompanyForm, setShowCompanyForm] = useState(false);
+  // Register company form state
   const [companyForm, setCompanyForm] = useState({
     name: '',
     gstin: '',
@@ -105,104 +103,110 @@ export default function Billing() {
     opening_balance: ''
   });
 
-  const statuses = includeInProgress ? INCLUDE_IN_PROGRESS_STATUSES : DEFAULT_STATUSES;
-
   const loadCompanies = useCallback(async () => {
-    const res = await apiRequest('GET', '/billing/companies');
-    setCompanies(res.data || []);
+    try {
+      const res = await apiRequest('GET', '/billing/companies');
+      setCompanies(res.data || []);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Could not load companies.');
+    }
   }, []);
 
   const loadBills = useCallback(async () => {
-    const res = await apiRequest('GET', '/billing/bills');
-    setBills(res.data || []);
+    try {
+      const res = await apiRequest('GET', '/billing/bills');
+      setBills(res.data || []);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Could not load bills.');
+    }
   }, []);
 
-  const loadPreview = useCallback(async (id, statusList) => {
-    if (!id) {
+  const refreshAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([loadCompanies(), loadBills()]);
+    setLoading(false);
+  }, [loadCompanies, loadBills]);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
+
+  const statuses = includeInProgress ? INCLUDE_IN_PROGRESS_STATUSES : DEFAULT_STATUSES;
+
+  const loadPreview = useCallback(async (cId, inc) => {
+    if (!cId) {
       setPreview(null);
+      setSelectedTripIds([]);
+      setSelectedChargeIds([]);
       return;
     }
     setPreviewLoading(true);
     try {
-      const res = await apiRequest(
-        'GET',
-        `/billing/companies/${id}/unbilled?statuses=${statusList.join(',')}`
-      );
+      const qs = (inc ? INCLUDE_IN_PROGRESS_STATUSES : DEFAULT_STATUSES).join(',');
+      const res = await apiRequest('GET', `/billing/companies/${cId}/statement?statuses=${encodeURIComponent(qs)}`);
       setPreview(res.data);
-      // Default to billing everything that is ready; the owner can untick rows.
       setSelectedTripIds((res.data.billable || []).map((t) => t.id));
       setSelectedChargeIds((res.data.charges?.billable || []).map((c) => c.id));
+      setError(null);
     } catch (err) {
-      setError(err.message);
-      setPreview(null);
+      setError(err.message || 'Could not load statement preview.');
     } finally {
       setPreviewLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        await Promise.all([loadCompanies(), loadBills()]);
-        setError(null);
-      } catch (err) {
-        setError(err.message || 'Failed to load billing data.');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [loadCompanies, loadBills]);
-
-  useEffect(() => {
-    loadPreview(companyId, statuses);
-    // `statuses` is derived from includeInProgress; keeping it out of the
-    // dependency list would leave stale trip lists after the toggle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (companyId) {
+      loadPreview(companyId, includeInProgress);
+    } else {
+      setPreview(null);
+    }
   }, [companyId, includeInProgress, loadPreview]);
 
-  const refreshAll = async () => {
-    await Promise.all([loadCompanies(), loadBills()]);
-    if (companyId) await loadPreview(companyId, statuses);
-  };
+  const selectedCompany = companies.find((c) => c.id === companyId);
 
-  const toggleTrip = (id) => {
-    setSelectedTripIds((current) =>
-      current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+  const toggleTrip = (tId) => {
+    setSelectedTripIds((prev) =>
+      prev.includes(tId) ? prev.filter((id) => id !== tId) : [...prev, tId]
     );
   };
 
-  const toggleCharge = (id) => {
-    setSelectedChargeIds((current) =>
-      current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+  const toggleCharge = (cId) => {
+    setSelectedChargeIds((prev) =>
+      prev.includes(cId) ? prev.filter((id) => id !== cId) : [...prev, cId]
     );
   };
 
-  const resetChargeForm = () =>
+  const resetChargeForm = () => {
     setChargeForm({ id: null, kind: 'TOLL', description: '', amount: '', charge_date: today() });
+  };
 
-  // Add a charge to the open statement, or save the one being edited.
   const handleSaveCharge = async (e) => {
     e.preventDefault();
     if (!companyId || !chargeForm.description.trim() || !chargeForm.amount) return;
-
     setBusy(true);
     try {
-      const body = {
-        description: chargeForm.description.trim(),
-        amount: parseFloat(chargeForm.amount),
-        kind: chargeForm.kind,
-        charge_date: chargeForm.charge_date || undefined
-      };
       if (chargeForm.id) {
-        await apiRequest('PATCH', `/billing/charges/${chargeForm.id}`, body);
+        await apiRequest('PATCH', `/billing/charges/${chargeForm.id}`, {
+          kind: chargeForm.kind,
+          description: chargeForm.description.trim(),
+          amount: parseFloat(chargeForm.amount),
+          charge_date: chargeForm.charge_date || undefined
+        });
         showToast('Charge updated.');
       } else {
-        await apiRequest('POST', `/billing/companies/${companyId}/charges`, body);
-        showToast('Charge added to the open statement.');
+        await apiRequest('POST', `/billing/companies/${companyId}/charges`, {
+          kind: chargeForm.kind,
+          description: chargeForm.description.trim(),
+          amount: parseFloat(chargeForm.amount),
+          charge_date: chargeForm.charge_date || undefined
+        });
+        showToast('Charge added to statement.');
       }
       resetChargeForm();
-      await loadPreview(companyId, statuses);
+      await loadPreview(companyId, includeInProgress);
     } catch (err) {
       showToast(`Error: ${err.message}`);
     } finally {
@@ -213,7 +217,7 @@ export default function Billing() {
   const handleDeleteCharge = async (charge) => {
     const ok = await confirm({
       title: 'Remove Charge',
-      message: `Are you sure you want to remove "${charge.description}" (${money(charge.amount)}) from the open statement?`,
+      message: `Remove "${charge.description}" (${money(charge.amount)}) from the statement?`,
       confirmText: 'Remove Charge',
       variant: 'danger'
     });
@@ -224,7 +228,7 @@ export default function Billing() {
       await apiRequest('DELETE', `/billing/charges/${charge.id}`);
       showToast('Charge removed.');
       if (chargeForm.id === charge.id) resetChargeForm();
-      await loadPreview(companyId, statuses);
+      await loadPreview(companyId, includeInProgress);
     } catch (err) {
       showToast(`Error: ${err.message}`);
     } finally {
@@ -232,11 +236,6 @@ export default function Billing() {
     }
   };
 
-  /**
-   * Issue the open statement: one action that turns everything pending into a
-   * numbered document. Nothing here can raise a half-statement by accident —
-   * everything pending is included unless the owner unticked a line.
-   */
   const handleIssueStatement = async () => {
     if (!companyId) return;
     const trips = preview?.billable || [];
@@ -268,6 +267,7 @@ export default function Billing() {
       });
       showToast(`Statement ${res.data.bill_no} issued.`);
       setNote('');
+      setIsStatementDrawerOpen(false);
       await refreshAll();
       setOpenBill(res.data);
     } catch (err) {
@@ -368,11 +368,31 @@ export default function Billing() {
     }
   };
 
-  const query = globalSearch.toLowerCase();
+  // Calculations & filtering
+  const query = (globalSearch || '').toLowerCase();
   const visibleCompanies = companies.filter((c) => c.name.toLowerCase().includes(query));
-  const visibleBills = bills.filter(
-    (b) => b.bill_no.toLowerCase().includes(query) || (b.company_name || '').toLowerCase().includes(query)
-  );
+
+  const filteredBills = bills.filter((b) => {
+    if (companyId && b.company_id !== companyId) return false;
+    if (statusFilter !== 'All') {
+      if (statusFilter === 'Unpaid' && b.status !== 'Unpaid') return false;
+      if (statusFilter === 'Partial' && b.status !== 'Partially Paid') return false;
+      if (statusFilter === 'Paid' && b.status !== 'Paid') return false;
+      if (statusFilter === 'Void' && b.status !== 'Void') return false;
+    }
+    if (query) {
+      return b.bill_no.toLowerCase().includes(query) || (b.company_name || '').toLowerCase().includes(query);
+    }
+    return true;
+  });
+
+  const totalOutstanding = filteredBills
+    .filter((b) => b.status !== 'Void')
+    .reduce((sum, b) => sum + parseFloat(b.remaining_balance || 0), 0);
+
+  const totalUnbilledTrips = companies.reduce((sum, c) => sum + Number(c.unbilled_trip_count || 0), 0);
+  const totalUnbilledAmount = companies.reduce((sum, c) => sum + parseFloat(c.unbilled_amount || 0), 0);
+  const allCompaniesOutstanding = companies.reduce((sum, c) => sum + parseFloat(c.outstanding_balance || 0), 0);
 
   const pool = preview || { billable: [], waiting: [], unpriced: [], totals: {}, projected: {} };
   const ledger = preview?.ledger || {
@@ -389,99 +409,324 @@ export default function Billing() {
   const selectedChargeTotal = pendingCharges
     .filter((c) => selectedChargeIds.includes(c.id))
     .reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
-  // Newest bill for the selected customer (the list arrives newest first) —
-  // shown in the "all caught up" state so the owner can jump to what is owed.
-  const latestBill = companyId ? bills.find((b) => b.company_id === companyId) : null;
+
+  // Check if active selected customer has unbilled items
+  const hasUnbilled = selectedCompany && (Number(selectedCompany.unbilled_trip_count) > 0 || (pool.billable && pool.billable.length > 0));
 
   return (
-    <div className="billing-page">
-      <header className="page-header-row">
-        <div>
-          <h1 className="text-2xl heading">Billing</h1>
-          <p className="page-subtitle">
-            Each customer has one open statement: it always shows their unbilled trips and charges, and
-            issuing it turns them into a numbered document.
-          </p>
+    <div className="billing-page fade-in">
+      {/* 1. Single-Row Page Toolbar */}
+      <PageToolbar
+        title="Billing"
+        tooltip="Customer accounts, unbilled trips and issued statements."
+        actions={
+          <>
+            <button
+              className="btn btn-outline"
+              onClick={refreshAll}
+              disabled={loading || busy}
+              title="Refresh bills"
+              style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+            >
+              <RefreshCw size={14} /> Refresh
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCompanyForm(true)}
+              style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}
+            >
+              <Plus size={14} /> Add company
+            </button>
+          </>
+        }
+      >
+        {/* Customer Filter Dropdown */}
+        <select
+          className="select"
+          style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', minWidth: '170px' }}
+          value={companyId || ''}
+          onChange={(e) => setCompanyId(e.target.value || null)}
+        >
+          <option value="">All Customers ({companies.length})</option>
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} {Number(c.unbilled_trip_count) > 0 ? `(${c.unbilled_trip_count} unbilled)` : ''}
+            </option>
+          ))}
+        </select>
+
+        {/* Status Filter Chips */}
+        <div className="filter-chips-row">
+          {['All', 'Unpaid', 'Partial', 'Paid', 'Void'].map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`filter-chip ${statusFilter === s ? 'active' : ''}`}
+              onClick={() => setStatusFilter(s)}
+            >
+              {s === 'All' ? 'All Status' : s}
+            </button>
+          ))}
         </div>
-        <div className="header-actions">
-          <button className="btn btn-outline" onClick={refreshAll} disabled={loading || busy}>
-            <RefreshCw size={15} /> Refresh
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowCompanyForm((v) => !v)}>
-            <Plus size={15} /> Add company
-          </button>
-        </div>
-      </header>
+      </PageToolbar>
+
+      {/* 2. Compact StatStrip */}
+      <StatStrip
+        items={[
+          { label: 'Total Outstanding', value: money(allCompaniesOutstanding), color: allCompaniesOutstanding > 0 ? 'var(--red)' : undefined },
+          { label: 'Customers', value: companies.length },
+          { label: 'Unbilled Trips', value: `${totalUnbilledTrips} (${money(totalUnbilledAmount)})`, isDimmed: totalUnbilledTrips === 0 },
+          { label: 'Statements', value: bills.length }
+        ]}
+      />
 
       {error && (
-        <div className="billing-error">
+        <div className="billing-error" style={{ marginBottom: '0.5rem' }}>
           <AlertTriangle size={15} /> {error}
         </div>
       )}
 
-      {showCompanyForm && (
-        <form className="card company-form" onSubmit={handleCreateCompany}>
-          <h2 className="heading text-lg">Register a customer</h2>
-          <div className="form-row-2">
-            <div className="field-wrap">
-              <label className="field-label">Company name *</label>
-              <input
-                className="input"
-                value={companyForm.name}
-                onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
-                placeholder="e.g. Sharma Logistics"
-                required
-              />
+      {/* 3. Main Split: Customers Left Rail + Dense Bills Table Area */}
+      <div className="billing-layout-container">
+        {/* Left Rail: Customers */}
+        <aside className="billing-rail">
+          <div className="billing-rail-head">
+            <span>Customers ({companies.length})</span>
+            {companyId && (
+              <button
+                type="button"
+                className="link-btn"
+                style={{ fontSize: '0.7rem' }}
+                onClick={() => setCompanyId(null)}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div className="billing-rail-list">
+            <button
+              type="button"
+              className={`rail-item ${!companyId ? 'active' : ''}`}
+              onClick={() => setCompanyId(null)}
+            >
+              <div className="rail-item-name">All Customers</div>
+              <div className="rail-item-sub">
+                <span>{companies.length} accounts</span>
+                <span className={allCompaniesOutstanding > 0 ? 'rail-due' : ''}>
+                  {money(allCompaniesOutstanding)}
+                </span>
+              </div>
+            </button>
+
+            {visibleCompanies.map((c) => {
+              const owes = Number(c.outstanding_balance) || 0;
+              const unbilled = Number(c.unbilled_trip_count) || 0;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`rail-item ${companyId === c.id ? 'active' : ''}`}
+                  onClick={() => setCompanyId(c.id)}
+                  title={`${c.name} · ${unbilled} unbilled trips · Owes ${money(owes)}`}
+                >
+                  <div className="rail-item-name">{c.name}</div>
+                  <div className="rail-item-sub">
+                    <span>{unbilled > 0 ? `${unbilled} unbilled` : '0 unbilled'}</span>
+                    <span className={owes > 0 ? 'rail-due' : ''}>
+                      {money(owes)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Right Main Area */}
+        <main className="billing-main-area">
+          {/* Conditional Slim Unbilled Trips Strip */}
+          {hasUnbilled && (
+            <div className="unbilled-strip">
+              <div className="unbilled-strip-left">
+                <Receipt size={16} />
+                <span>
+                  <b>{selectedCompany.name}</b> has {selectedCompany.unbilled_trip_count || pool.billable.length} unbilled trips ({money(selectedCompany.unbilled_amount || pool.totals?.billable_amount)}) ready for invoicing.
+                </span>
+              </div>
+              <div className="unbilled-strip-actions">
+                <button
+                  type="button"
+                  className="unbilled-strip-btn"
+                  onClick={() => setIsStatementDrawerOpen(true)}
+                >
+                  <FileText size={14} /> Review & Issue Statement <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
-            <div className="field-wrap">
-              <label className="field-label">GSTIN</label>
-              <input
-                className="input"
-                value={companyForm.gstin}
-                onChange={(e) => setCompanyForm({ ...companyForm, gstin: e.target.value })}
-                placeholder="27AAACR5055K1Z5"
-              />
+          )}
+
+          {/* Bills Table: Starts at y≈170 */}
+          <div className="dense-table-wrapper">
+            <div className="dense-table-scroll">
+              <table className="dense-table">
+                <thead>
+                  <tr>
+                    <th>Bill No</th>
+                    <th>Customer</th>
+                    <th>Date</th>
+                    <th className="num">Previous</th>
+                    <th className="num">Fares</th>
+                    <th className="num">Advance</th>
+                    <th className="num">Outstanding</th>
+                    <th>Status</th>
+                    <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading && (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--sub)' }}>
+                        Loading statements…
+                      </td>
+                    </tr>
+                  )}
+                  {!loading && filteredBills.length === 0 && (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--sub)' }}>
+                        No statements matching current filters.
+                      </td>
+                    </tr>
+                  )}
+                  {!loading &&
+                    filteredBills.map((b) => (
+                      <tr key={b.id} className={b.status === 'Void' ? 'row-void' : ''}>
+                        <td className="mono" style={{ fontWeight: 600 }}>{b.bill_no}</td>
+                        <td>{b.company_name}</td>
+                        <td>{fmtDate(b.bill_date)}</td>
+                        <td className="num">{money(b.previous_balance)}</td>
+                        <td className="num">{money(b.subtotal)}</td>
+                        <td className="num">{money(b.total_advance)}</td>
+                        <td className="num" style={{ fontWeight: 700, color: Number(b.remaining_balance) > 0 ? 'var(--red)' : undefined }}>
+                          {money(b.remaining_balance)}
+                        </td>
+                        <td>
+                          <StatusChip status={b.status} />
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', gap: '0.2rem' }}>
+                            <button
+                              type="button"
+                              className="row-menu-btn"
+                              title="View statement details"
+                              onClick={() => handleOpenBill(b.id)}
+                            >
+                              <Receipt size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="row-menu-btn"
+                              title="Download PDF statement"
+                              onClick={() => handleDownload(b)}
+                            >
+                              <Download size={14} />
+                            </button>
+                            {b.status !== 'Void' && (
+                              <button
+                                type="button"
+                                className="row-menu-btn"
+                                style={{ color: 'var(--red)' }}
+                                title="Void statement"
+                                onClick={() => handleVoid(b)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'right' }}>
+                      Filtered Outstanding Total:
+                    </td>
+                    <td className="num" style={{ color: totalOutstanding > 0 ? 'var(--red)' : undefined }}>
+                      {money(totalOutstanding)}
+                    </td>
+                    <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </div>
-          <div className="form-row-2">
-            <div className="field-wrap">
-              <label className="field-label">Contact person</label>
-              <input
-                className="input"
-                value={companyForm.contact_person}
-                onChange={(e) => setCompanyForm({ ...companyForm, contact_person: e.target.value })}
-              />
-            </div>
-            <div className="field-wrap">
-              <label className="field-label">Phone</label>
-              <input
-                className="input"
-                value={companyForm.phone}
-                onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })}
-              />
-            </div>
+        </main>
+      </div>
+
+      {/* 4. SideDrawer: Register Customer */}
+      <SideDrawer
+        isOpen={showCompanyForm}
+        onClose={() => setShowCompanyForm(false)}
+        title="Register Customer"
+        subtitle="Add a client company to generate trips and invoices"
+      >
+        <form onSubmit={handleCreateCompany} id="company-form">
+          <div className="input-group mb-4">
+            <label>Company name *</label>
+            <input
+              className="input w-full"
+              value={companyForm.name}
+              onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
+              placeholder="e.g. Sharma Logistics"
+              required
+            />
           </div>
-          <div className="form-row-2">
-            <div className="field-wrap">
-              <label className="field-label">Address</label>
-              <input
-                className="input"
-                value={companyForm.address}
-                onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
-              />
-            </div>
-            <div className="field-wrap">
-              <label className="field-label">Opening balance (₹ owed before using TransitOps)</label>
-              <input
-                type="number"
-                className="input"
-                value={companyForm.opening_balance}
-                onChange={(e) => setCompanyForm({ ...companyForm, opening_balance: e.target.value })}
-                placeholder="0"
-              />
-            </div>
+          <div className="input-group mb-4">
+            <label>GSTIN</label>
+            <input
+              className="input w-full"
+              value={companyForm.gstin}
+              onChange={(e) => setCompanyForm({ ...companyForm, gstin: e.target.value })}
+              placeholder="27AAACR5055K1Z5"
+            />
           </div>
-          <div className="form-actions">
+          <div className="input-group mb-4">
+            <label>Contact person</label>
+            <input
+              className="input w-full"
+              value={companyForm.contact_person}
+              onChange={(e) => setCompanyForm({ ...companyForm, contact_person: e.target.value })}
+            />
+          </div>
+          <div className="input-group mb-4">
+            <label>Phone</label>
+            <input
+              className="input w-full"
+              value={companyForm.phone}
+              onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })}
+            />
+          </div>
+          <div className="input-group mb-4">
+            <label>Address</label>
+            <input
+              className="input w-full"
+              value={companyForm.address}
+              onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
+            />
+          </div>
+          <div className="input-group mb-4">
+            <label>Opening balance (₹ owed before TransitOps)</label>
+            <input
+              type="number"
+              className="input w-full"
+              value={companyForm.opening_balance}
+              onChange={(e) => setCompanyForm({ ...companyForm, opening_balance: e.target.value })}
+              placeholder="0"
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.5rem' }}>
             <button type="button" className="btn btn-outline" onClick={() => setShowCompanyForm(false)}>
               Cancel
             </button>
@@ -490,177 +735,110 @@ export default function Billing() {
             </button>
           </div>
         </form>
-      )}
+      </SideDrawer>
 
-      <div className="billing-grid">
-        {/* Customers */}
-        <section className="card companies-panel">
-          <h2 className="panel-title">
-            <IndianRupee size={15} /> Customers
-          </h2>
-          {loading && <p className="muted-note">Loading…</p>}
-          {!loading && visibleCompanies.length === 0 && (
-            <p className="muted-note">
-              No customers yet. They are created automatically when a trip names one, or add one above.
-            </p>
-          )}
-          <ul className="company-list">
-            {visibleCompanies.map((c) => (
-              <li key={c.id}>
-                <button
-                  className={`company-item ${companyId === c.id ? 'active' : ''}`}
-                  onClick={() => setCompanyId(c.id)}
-                >
-                  <span className="company-name">{c.name}</span>
-                  <span className="company-line">
-                    <span>{Number(c.unbilled_trip_count)} unbilled · {money(c.unbilled_amount)}</span>
-                    <span className={Number(c.outstanding_balance) > 0 ? 'due' : ''}>
-                      Owes {money(c.outstanding_balance)}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {/* 5. SideDrawer: Statement Builder (Unbilled Trips & Charges) */}
+      <SideDrawer
+        isOpen={isStatementDrawerOpen}
+        onClose={() => setIsStatementDrawerOpen(false)}
+        title={`Issue Statement · ${preview?.company?.name || selectedCompany?.name || ''}`}
+        subtitle="Review unbilled trips, ledger statement and add manual charges"
+        width="540px"
+      >
+        {previewLoading && <p className="muted-note">Loading statement preview…</p>}
 
-        {/* Bill builder */}
-        <section className="card builder-panel">
-          {!companyId && (
-            <p className="muted-note">Select a customer to see the trips waiting to be billed.</p>
-          )}
+        {!previewLoading && preview && (
+          <div>
+            {/* Ledger breakdown */}
+            <div className="ledger-block mb-4">
+              <div className="ledger-row">
+                <span>Previous balance (issued, not yet settled)</span>
+                <span className="num">{money(ledger.previous_balance)}</span>
+              </div>
+              <div className="ledger-row">
+                <span>Fares this period ({pool.billable.length} trips)</span>
+                <span className="num">{money(ledger.fares)}</span>
+              </div>
+              <div className="ledger-row">
+                <span>Other charges ({pendingCharges.length})</span>
+                <span className="num">{money(ledger.charges)}</span>
+              </div>
+              <div className="ledger-row">
+                <span>Less: advances received</span>
+                <span className="num">− {money(ledger.advances)}</span>
+              </div>
+              <div className="ledger-row closing">
+                <span>Closing balance</span>
+                <span className="num">{money(ledger.closing_balance)}</span>
+              </div>
+            </div>
 
-          {companyId && preview && (
-            <>
-              <div className="builder-head">
-                <h2 className="panel-title">
-                  <Receipt size={15} /> {preview.company?.name}
-                </h2>
-                {/* Only offered when it could actually add something: a
-                    customer whose trips are all billed has nothing to
-                    generate, so the control is not shown at all. */}
-                {(pool.waiting.length > 0 || includeInProgress) && (
-                  <label className="toggle-inline">
-                    <input
-                      type="checkbox"
-                      checked={includeInProgress}
-                      onChange={(e) => setIncludeInProgress(e.target.checked)}
-                    />
-                    Also bill trips that are not completed yet (Planned, Assigned, Dispatched)
-                  </label>
-                )}
+            {/* Billable Trips list */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="heading text-sm">Billable Trips ({pool.billable.length})</h4>
+                <label className="toggle-inline" style={{ fontSize: '0.75rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={includeInProgress}
+                    onChange={(e) => setIncludeInProgress(e.target.checked)}
+                  />
+                  Include in-progress
+                </label>
               </div>
 
-              {/* The statement ledger, exactly as the paper statement reads
-                  it: previous balance -> this period -> closing balance. */}
-              <div className="ledger-block">
-                <div className="ledger-row">
-                  <span>Previous balance (issued, not yet settled)</span>
-                  <span className="num">{money(ledger.previous_balance)}</span>
-                </div>
-                <div className="ledger-row">
-                  <span>Fares this period ({pool.billable.length} trip{pool.billable.length === 1 ? '' : 's'})</span>
-                  <span className="num">{money(ledger.fares)}</span>
-                </div>
-                <div className="ledger-row">
-                  <span>Other charges ({pendingCharges.length})</span>
-                  <span className="num">{money(ledger.charges)}</span>
-                </div>
-                <div className="ledger-row">
-                  <span>Less: advances received</span>
-                  <span className="num">− {money(ledger.advances)}</span>
-                </div>
-                <div className="ledger-row closing">
-                  <span>Closing balance</span>
-                  <span className="num">{money(ledger.closing_balance)}</span>
-                </div>
-              </div>
-
-              {previewLoading && <p className="muted-note">Loading trips…</p>}
-
-              {pool.billable.length === 0 && !previewLoading && (pool.waiting.length > 0 || pool.unpriced.length > 0) && (
-                <p className="muted-note">
-                  {pool.waiting.length > 0 &&
-                    `${pool.waiting.length} trip(s) are not finished yet, so their fares are not billable. `}
-                  {pool.unpriced.length > 0 &&
-                    `${pool.unpriced.length} trip(s) have no fare recorded yet.`}
-                </p>
-              )}
-
-              {pool.billable.length > 0 && (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '34px' }} />
-                      <th>Date</th>
-                      <th>Route</th>
-                      <th>Vehicle</th>
-                      <th className="num">Fare</th>
-                      <th className="num">Advance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pool.billable.map((t) => (
-                      <tr key={t.id} className={selectedTripIds.includes(t.id) ? '' : 'row-muted'}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedTripIds.includes(t.id)}
-                            onChange={() => toggleTrip(t.id)}
-                          />
-                        </td>
-                        <td>{fmtDate(t.trip_date)}</td>
-                        <td>
-                          {t.origin} → {t.destination}
-                        </td>
-                        <td>{t.vehicle_registration || '—'}</td>
-                        <td className="num">{money(t.revenue)}</td>
-                        <td className="num">{money(t.advance_received)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {pool.waiting.length > 0 && (
-                <div className="waiting-note">
-                  <AlertTriangle size={14} />
-                  <div>
-                    <b>{pool.waiting.length} trip(s) not billable yet</b> ({money(pool.totals.waiting_amount)})
-                    <ul>
-                      {pool.waiting.slice(0, 5).map((t) => (
-                        <li key={t.id}>
-                          #{t.id} · {fmtDate(t.trip_date)} · {t.origin} → {t.destination} · {t.status}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {/* (No-fare trips are reported in the note above.) */}
-
-              {/* Other expenses that ride on the statement: tolls, loading,
-                  detention, driver allowance. They live on the open statement
-                  until it is issued, and are frozen inside it afterwards. */}
-              <div className="charges-block">
-                <h3 className="sub-heading">Other charges</h3>
-
-                {pendingCharges.length > 0 ? (
-                  <table className="data-table">
+              {pool.billable.length === 0 ? (
+                <p className="muted-note">No billable completed trips.</p>
+              ) : (
+                <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '6px' }}>
+                  <table className="dense-table">
                     <thead>
                       <tr>
-                        <th style={{ width: '34px' }} />
+                        <th style={{ width: '30px' }} />
                         <th>Date</th>
-                        <th>Description</th>
+                        <th>Route</th>
+                        <th className="num">Fare</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pool.billable.map((t) => (
+                        <tr key={t.id} className={selectedTripIds.includes(t.id) ? '' : 'row-muted'}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedTripIds.includes(t.id)}
+                              onChange={() => toggleTrip(t.id)}
+                            />
+                          </td>
+                          <td>{fmtDate(t.trip_date)}</td>
+                          <td>{t.origin} → {t.destination}</td>
+                          <td className="num">{money(t.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Other Charges */}
+            <div className="mb-4">
+              <h4 className="heading text-sm mb-2">Other Charges ({pendingCharges.length})</h4>
+              {pendingCharges.length > 0 && (
+                <div style={{ maxHeight: '140px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '6px', marginBottom: '0.75rem' }}>
+                  <table className="dense-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '30px' }} />
+                        <th>Desc</th>
                         <th>Type</th>
                         <th className="num">Amount</th>
-                        <th style={{ width: '70px' }} />
+                        <th style={{ width: '40px' }} />
                       </tr>
                     </thead>
                     <tbody>
                       {pendingCharges.map((c) => (
-                        <tr key={c.id} className={selectedChargeIds.includes(c.id) ? '' : 'row-muted'}>
+                        <tr key={c.id}>
                           <td>
                             <input
                               type="checkbox"
@@ -668,217 +846,99 @@ export default function Billing() {
                               onChange={() => toggleCharge(c.id)}
                             />
                           </td>
-                          <td>{fmtDate(c.charge_date)}</td>
                           <td>{c.description}</td>
-                          <td>{String(c.kind || 'MISC').replace(/_/g, ' ').toLowerCase()}</td>
+                          <td>{String(c.kind || 'MISC').replace(/_/g, ' ')}</td>
                           <td className="num">{money(c.amount)}</td>
-                          <td className="row-actions">
+                          <td>
                             <button
-                              className="icon-btn"
-                              title="Edit this charge"
-                              onClick={() =>
-                                setChargeForm({
-                                  id: c.id,
-                                  kind: c.kind || 'MISC',
-                                  description: c.description,
-                                  amount: c.amount,
-                                  charge_date: c.charge_date || today()
-                                })
-                              }
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
+                              type="button"
                               className="icon-btn billing-icon-danger"
-                              title="Remove from the open statement"
                               onClick={() => handleDeleteCharge(c)}
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={13} />
                             </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                ) : (
-                  <p className="muted-note">No charges on this statement yet.</p>
-                )}
-
-                <form className="charge-form" onSubmit={handleSaveCharge}>
-                  <div className="form-row-4">
-                    <div className="field-wrap">
-                      <label className="field-label">Date</label>
-                      <input
-                        type="date"
-                        className="input"
-                        value={chargeForm.charge_date}
-                        onChange={(e) => setChargeForm({ ...chargeForm, charge_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="field-wrap">
-                      <label className="field-label">Type</label>
-                      <select
-                        className="input"
-                        value={chargeForm.kind}
-                        onChange={(e) => setChargeForm({ ...chargeForm, kind: e.target.value })}
-                      >
-                        {CHARGE_KINDS.map((k) => (
-                          <option key={k} value={k}>
-                            {k.replace(/_/g, ' ').toLowerCase()}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field-wrap">
-                      <label className="field-label">Description</label>
-                      <input
-                        className="input"
-                        value={chargeForm.description}
-                        onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
-                        placeholder="e.g. Toll — Manesar to Ahmedabad"
-                      />
-                    </div>
-                    <div className="field-wrap">
-                      <label className="field-label">Amount (₹)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="input"
-                        value={chargeForm.amount}
-                        onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                  <div className="charge-form-actions">
-                    {chargeForm.id && (
-                      <button type="button" className="btn btn-outline" onClick={resetChargeForm}>
-                        Cancel edit
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={busy || !chargeForm.description.trim() || !chargeForm.amount}
-                    >
-                      <Plus size={14} /> {chargeForm.id ? 'Save charge' : 'Add charge'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              {pool.billable.length + pendingCharges.length > 0 ? (
-                <div className="builder-footer">
-                  <input
-                    className="input"
-                    placeholder="Note on this statement (optional)"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                  />
-                  <div className="generate-summary">
-                    <span>
-                      {selectedTripIds.length} of {pool.billable.length} trips ·{' '}
-                      {selectedChargeIds.length} of {pendingCharges.length} charges ·{' '}
-                      {money(selectedFares)} fares + {money(selectedChargeTotal)} charges selected
-                    </span>
-                    <button
-                      className="btn btn-primary"
-                      onClick={handleIssueStatement}
-                      disabled={busy || selectedTripIds.length + selectedChargeIds.length === 0}
-                    >
-                      <FileText size={15} /> Issue statement
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* Everything this customer owes is already on an issued
-                   document, so there is deliberately nothing to issue: a
-                   statement with no new lines would only repeat what they owe. */
-                <div className="builder-caughtup">
-                  <Check size={16} />
-                  <div>
-                    <b>All caught up.</b> Every billable trip and charge for this customer is already on an
-                    issued statement.
-                    {latestBill && (
-                      <>
-                        {' '}
-                        Latest:{' '}
-                        <button className="link-btn" onClick={() => handleOpenBill(latestBill.id)}>
-                          {latestBill.bill_no} · {money(latestBill.remaining_balance)} outstanding
-                        </button>
-                      </>
-                    )}
-                  </div>
                 </div>
               )}
-            </>
-          )}
 
-          {companyId && !preview && previewLoading && <p className="muted-note">Loading…</p>}
-        </section>
-      </div>
-
-      {/* Bills */}
-      <section className="card bills-panel">
-        <h2 className="panel-title">
-          <FileText size={15} /> Bills
-        </h2>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Bill no</th>
-              <th>Customer</th>
-              <th>Date</th>
-              <th className="num">Previous</th>
-              <th className="num">Fares</th>
-              <th className="num">Advance</th>
-              <th className="num">Outstanding</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {visibleBills.map((b) => (
-              <tr key={b.id} className={b.status === 'Void' ? 'row-void' : ''}>
-                <td className="mono">{b.bill_no}</td>
-                <td>{b.company_name}</td>
-                <td>{fmtDate(b.bill_date)}</td>
-                <td className="num">{money(b.previous_balance)}</td>
-                <td className="num">{money(b.subtotal)}</td>
-                <td className="num">{money(b.total_advance)}</td>
-                <td className="num strong">{money(b.remaining_balance)}</td>
-                <td>
-                  <StatusChip status={b.status} />
-                </td>
-                <td className="row-actions">
-                  <button className="icon-btn" title="Open" onClick={() => handleOpenBill(b.id)}>
-                    <Receipt size={15} />
+              {/* Add charge mini form */}
+              <form onSubmit={handleSaveCharge} style={{ background: 'var(--bg)', padding: '0.65rem', borderRadius: '6px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <input
+                    type="date"
+                    className="input"
+                    style={{ fontSize: '0.78rem' }}
+                    value={chargeForm.charge_date}
+                    onChange={(e) => setChargeForm({ ...chargeForm, charge_date: e.target.value })}
+                  />
+                  <select
+                    className="select"
+                    style={{ fontSize: '0.78rem' }}
+                    value={chargeForm.kind}
+                    onChange={(e) => setChargeForm({ ...chargeForm, kind: e.target.value })}
+                  >
+                    {CHARGE_KINDS.map((k) => (
+                      <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '0.5rem' }}>
+                  <input
+                    className="input"
+                    style={{ fontSize: '0.78rem' }}
+                    placeholder="Description (e.g. Toll)"
+                    value={chargeForm.description}
+                    onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ fontSize: '0.78rem' }}
+                    placeholder="₹ 0.00"
+                    value={chargeForm.amount}
+                    onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+                  />
+                  <button type="submit" className="btn btn-outline" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
+                    <Plus size={13} /> Add
                   </button>
-                  <button className="icon-btn" title="Download bill" onClick={() => handleDownload(b)}>
-                    <Download size={15} />
-                  </button>
-                  {/* A voided statement keeps its number and lines but is no
-                      longer actionable — no second void, nothing to pay. */}
-                  {b.status !== 'Void' && (
-                    <button className="icon-btn billing-icon-danger" title="Void bill" onClick={() => handleVoid(b)}>
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {!loading && visibleBills.length === 0 && (
-              <tr>
-                <td colSpan={9} className="muted-note">
-                  No statements issued yet. Select a customer above and issue their first one.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
+                </div>
+              </form>
+            </div>
 
-      {/* Bill detail */}
+            {/* Note & Action */}
+            <div className="input-group mb-4">
+              <label>Statement Note (optional)</label>
+              <input
+                className="input w-full"
+                placeholder="e.g. Due within 15 days"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid var(--line)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--sub)' }}>
+                {selectedTripIds.length} trips · {selectedChargeIds.length} charges selected
+              </span>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleIssueStatement}
+                disabled={busy || selectedTripIds.length + selectedChargeIds.length === 0}
+              >
+                <FileText size={15} /> Issue Statement
+              </button>
+            </div>
+          </div>
+        )}
+      </SideDrawer>
+
+      {/* 6. SideDrawer: Bill Detail & Payments (existing feature maintained) */}
       {openBill && (
         <div className="drawer-overlay" onClick={() => setOpenBill(null)}>
           <div className="drawer-content bill-drawer" onClick={(e) => e.stopPropagation()}>
@@ -899,139 +959,56 @@ export default function Billing() {
             <div className="drawer-body">
               {openBill.status === 'Void' && (
                 <div className="void-banner-drawer">
-                  <b>VOID.</b> This statement was cancelled
-                  {openBill.voided_at ? ` on ${fmtDate(String(openBill.voided_at).slice(0, 10))}` : ''}
-                  {openBill.void_reason ? ` — ${openBill.void_reason}` : ''}. Its trips and charges are back on the
-                  open statement, and the number stays on record.
+                  <b>VOID:</b> This statement was voided. Kept on record for audit compliance.
                 </div>
               )}
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Particulars</th>
-                    <th>Vehicle</th>
-                    <th className="num">Amount</th>
-                    <th className="num">Advance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {openBill.items.map((it) => (
-                    <tr key={it.id}>
-                      <td>{fmtDate(it.trip_date)}</td>
-                      <td>{it.particulars}</td>
-                      <td>{it.vehicle_registration || '—'}</td>
-                      <td className="num">{money(it.amount)}</td>
-                      <td className="num">{money(it.advance)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
 
-              {(openBill.charges || []).length > 0 && (
-                <>
-                  <h4 className="sub-heading">Other charges</h4>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Description</th>
-                        <th>Type</th>
-                        <th className="num">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {openBill.charges.map((c) => (
-                        <tr key={c.id}>
-                          <td>{fmtDate(c.charge_date)}</td>
-                          <td>{c.description}</td>
-                          <td>{String(c.kind || 'MISC').replace(/_/g, ' ').toLowerCase()}</td>
-                          <td className="num">{money(c.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </>
-              )}
-
-              <div className="totals-block">
-                <div className="totals-row">
+              {/* Balances */}
+              <div className="ledger-block">
+                <div className="ledger-row">
                   <span>Previous balance</span>
-                  <span>{money(openBill.previous_balance)}</span>
+                  <span className="num">{money(openBill.previous_balance)}</span>
                 </div>
-                <div className="totals-row">
-                  <span>Fares this period</span>
-                  <span>{money(openBill.subtotal)}</span>
+                <div className="ledger-row">
+                  <span>Fares</span>
+                  <span className="num">{money(openBill.subtotal)}</span>
                 </div>
-                {parseFloat(openBill.charges_total || 0) !== 0 && (
-                  <div className="totals-row">
-                    <span>Other charges</span>
-                    <span>{money(openBill.charges_total)}</span>
-                  </div>
-                )}
-                <div className="totals-row">
-                  <span>Less: advances received</span>
-                  <span>− {money(openBill.total_advance)}</span>
+                <div className="ledger-row">
+                  <span>Charges</span>
+                  <span className="num">{money(openBill.charges_total)}</span>
                 </div>
-                <div className="totals-row due">
-                  <span>Closing balance</span>
-                  <span>{money(openBill.balance_due)}</span>
+                <div className="ledger-row">
+                  <span>Less: advances</span>
+                  <span className="num">− {money(openBill.total_advance)}</span>
                 </div>
-                <div className="totals-row">
-                  <span>Paid</span>
-                  <span>{money(openBill.amount_paid)}</span>
+                <div className="ledger-row closing">
+                  <span>Total statement balance</span>
+                  <span className="num">{money(openBill.total_amount)}</span>
                 </div>
-                <div className="totals-row outstanding">
-                  <span>Outstanding</span>
-                  <span>{money(openBill.remaining_balance)}</span>
+                <div className="ledger-row">
+                  <span>Payments received</span>
+                  <span className="num">− {money(openBill.paid_amount)}</span>
+                </div>
+                <div className="ledger-row closing">
+                  <span>Outstanding now</span>
+                  <span className="num">{money(openBill.remaining_balance)}</span>
                 </div>
               </div>
 
-              <p className="words-note">{openBill.remaining_balance_in_words}</p>
-
-              {openBill.payments.length > 0 && (
-                <>
-                  <h4 className="sub-heading">Payments received</h4>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Mode</th>
-                        <th>Note</th>
-                        <th className="num">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {openBill.payments.map((p) => (
-                        <tr key={p.id}>
-                          <td>{fmtDate(p.payment_date)}</td>
-                          <td>{p.mode}</td>
-                          <td>{p.note || '—'}</td>
-                          <td className="num">{money(p.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </>
-              )}
-
-              {openBill.status === 'Void' ? (
-                <p className="settled-note">
-                  <AlertTriangle size={15} /> Nothing to pay on a voided statement.
-                </p>
-              ) : openBill.remaining_balance > 0 ? (
-                <form className="payment-form" onSubmit={handlePayment}>
-                  <h4 className="sub-heading">Record a payment</h4>
-                  <div className="form-row-3">
+              {/* Record Payment Form */}
+              {openBill.status !== 'Paid' && openBill.status !== 'Void' && (
+                <form className="payment-form" onSubmit={handlePayment} style={{ marginTop: '1.25rem' }}>
+                  <h4 className="heading text-sm mb-2">Record a payment</h4>
+                  <div className="form-row-2">
                     <div className="field-wrap">
-                      <label className="field-label">Amount (₹)</label>
+                      <label className="field-label">Amount (₹) *</label>
                       <input
                         type="number"
                         step="0.01"
                         className="input"
                         value={payment.amount}
                         onChange={(e) => setPayment({ ...payment, amount: e.target.value })}
-                        placeholder={String(openBill.remaining_balance)}
+                        placeholder={openBill.remaining_balance}
                         required
                       />
                     </div>
@@ -1043,14 +1020,14 @@ export default function Billing() {
                         onChange={(e) => setPayment({ ...payment, mode: e.target.value })}
                       >
                         {PAYMENT_MODES.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
+                          <option key={m} value={m}>{m}</option>
                         ))}
                       </select>
                     </div>
+                  </div>
+                  <div className="form-row-2">
                     <div className="field-wrap">
-                      <label className="field-label">Date</label>
+                      <label className="field-label">Payment date</label>
                       <input
                         type="date"
                         className="input"
@@ -1058,31 +1035,23 @@ export default function Billing() {
                         onChange={(e) => setPayment({ ...payment, payment_date: e.target.value })}
                       />
                     </div>
+                    <div className="field-wrap">
+                      <label className="field-label">Note / reference</label>
+                      <input
+                        className="input"
+                        value={payment.note}
+                        onChange={(e) => setPayment({ ...payment, note: e.target.value })}
+                        placeholder="e.g. UTR / Cheque #"
+                      />
+                    </div>
                   </div>
-                  <button type="submit" className="btn btn-primary" disabled={busy || !payment.amount}>
-                    <Check size={15} /> Record payment
-                  </button>
+                  <div className="form-actions">
+                    <button type="submit" className="btn btn-primary" disabled={busy || !payment.amount}>
+                      Record payment
+                    </button>
+                  </div>
                 </form>
-              ) : (
-                <p className="settled-note">
-                  <Check size={15} /> This bill is settled in full.
-                </p>
               )}
-            </div>
-
-            <div className="drawer-footer">
-              {openBill.status !== 'Void' && (
-                <button
-                  className="btn btn-outline billing-btn-danger"
-                  onClick={() => handleVoid(openBill)}
-                  disabled={busy}
-                >
-                  <Trash2 size={15} /> Void bill
-                </button>
-              )}
-              <button className="btn btn-primary" onClick={() => handleDownload(openBill)}>
-                <Download size={15} /> Download bill
-              </button>
             </div>
           </div>
         </div>

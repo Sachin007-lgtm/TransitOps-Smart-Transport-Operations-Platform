@@ -1,22 +1,77 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, RefreshCw } from 'lucide-react';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, FileText, Download, RefreshCw, User, Phone, CreditCard, Clock, Activity, MapPin, Calendar } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import './VehicleProfile.css'; // Re-use identical profile styling
 import { validateIndianLicenseNumber, formatIndianLicenseNumber, formatDateForInput, INDIAN_LICENSE_CATEGORIES } from '../components/drivers/driverConstants';
+import { getAvatarColor } from '../components/drivers/driverConstants';
 
 const REQUIRED_DOCS = [
   { type: 'License', iconColor: '#1F9254' }
 ];
 
+function LicenseCountdown({ expiryDate }) {
+  if (!expiryDate) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(expiryDate);
+  const diffDays = Math.ceil((exp - today) / (24*60*60*1000));
+  
+  if (diffDays < 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: '#FBE4E2', borderRadius: '10px', border: '1px solid #fca5a5' }}>
+        <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+        <div>
+          <div style={{ fontWeight: 700, color: '#C4453D', fontSize: '0.9rem' }}>License Expired</div>
+          <div style={{ fontSize: '0.75rem', color: '#9a3d35' }}>Expired {Math.abs(diffDays)} days ago — renewal required</div>
+        </div>
+      </div>
+    );
+  }
+  if (diffDays <= 30) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: '#FEF3C7', borderRadius: '10px', border: '1px solid #fcd34d' }}>
+        <span style={{ fontSize: '1.5rem' }}>⏳</span>
+        <div>
+          <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.9rem' }}>License Expiring Soon</div>
+          <div style={{ fontSize: '0.75rem', color: '#78350f' }}>{diffDays} day{diffDays !== 1 ? 's' : ''} remaining — start renewal process</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: '#DFF5E6', borderRadius: '10px', border: '1px solid #86efac' }}>
+      <span style={{ fontSize: '1.5rem' }}>✅</span>
+      <div>
+        <div style={{ fontWeight: 700, color: '#1F9254', fontSize: '0.9rem' }}>License Valid</div>
+        <div style={{ fontSize: '0.75rem', color: '#166534' }}>{diffDays} days remaining until expiry</div>
+      </div>
+    </div>
+  );
+}
+
+function InfoCard({ icon: Icon, label, value, mono = false }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.9rem 1rem', background: '#fafaf9', borderRadius: '10px', border: '1px solid #f0ede8' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--sub)', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        {Icon && <Icon size={12} />} {label}
+      </div>
+      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', fontFamily: mono ? 'var(--font-mono)' : 'inherit' }}>
+        {value || '—'}
+      </div>
+    </div>
+  );
+}
+
 export default function DriverProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [driver, setDriver] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('documents');
+  // Read initial tab from navigation state (avatar → overview, Documents btn → documents)
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'overview');
 
   // Form states for Upload Document
   const [uploadingDoc, setUploadingDoc] = useState(null);
@@ -167,6 +222,17 @@ export default function DriverProfile() {
   const progressPercent = (uploadedCount / REQUIRED_DOCS.length) * 100;
   const isOnTrip = driver.status === 'On Trip' || driver.status === 'On trip';
 
+  // License expiry info
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = driver.license_expiry_date ? new Date(driver.license_expiry_date) : null;
+  const daysLeft = exp ? Math.ceil((exp - today) / (24*60*60*1000)) : null;
+
+  // Avatar color
+  const avatarBg = getAvatarColor ? getAvatarColor(driver.name) : '#3F1A32';
+
+  // Completed trips
+  const completedTrips = trips.filter(t => t.status === 'Completed').length;
+
   return (
     <div className="vp-container">
       <div className="vp-back-link">
@@ -182,37 +248,188 @@ export default function DriverProfile() {
           <span className={`vp-status-pill ${driver.status === 'Available' ? 'available' : 'other'}`}>
             {driver.status || 'Available'}
           </span>
+          {/* License expiry countdown badge */}
+          {(() => {
+            if (!driver.license_expiry_date) return null;
+            if (daysLeft < 0) return (
+              <span className="vp-status-pill" style={{ background: '#FBE4E2', color: '#C4453D' }}>
+                License Expired
+              </span>
+            );
+            if (daysLeft <= 30) return (
+              <span className="vp-status-pill" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                License expires in {daysLeft}d
+              </span>
+            );
+            return (
+              <span className="vp-status-pill" style={{ background: '#DFF5E6', color: '#1F9254', fontSize: '0.65rem' }}>
+                DL valid · {daysLeft}d left
+              </span>
+            );
+          })()}
         </div>
         <div className="vp-subtitle">
-          {driver.phone} · {driver.license_number ? `DL: ${driver.license_number}` : 'No DL Provided'} · {driver.trips_completed || 0} Trips
+          {driver.contact_number || driver.phone || 'No contact'} · {driver.license_number ? `DL: ${driver.license_number}` : 'No DL Provided'} · {driver.trips_count ?? driver.trips_completed ?? 0} Trips
         </div>
       </div>
 
       <div className="vp-tabs">
         <button 
+          className={`vp-tab ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button 
           className={`vp-tab ${activeTab === 'details' ? 'active' : ''}`}
           onClick={() => setActiveTab('details')}
         >
-          Details
+          Edit Details
         </button>
         <button 
           className={`vp-tab ${activeTab === 'documents' ? 'active' : ''}`}
           onClick={() => setActiveTab('documents')}
         >
-          Documents and compliance
+          Documents & Compliance
         </button>
         <button 
           className={`vp-tab ${activeTab === 'trips' ? 'active' : ''}`}
           onClick={() => setActiveTab('trips')}
         >
-          Trip history
+          Trip History
         </button>
       </div>
 
       <div className="vp-content">
+        {/* ── OVERVIEW TAB (read-only, rich view) ── */}
+        {activeTab === 'overview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {/* Driver Identity Card */}
+            <div className="vp-card" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+              {/* Avatar */}
+              <div style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '50%',
+                background: avatarBg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '2rem',
+                fontWeight: 700,
+                color: 'white',
+                flexShrink: 0,
+                boxShadow: `0 4px 20px ${avatarBg}55`
+              }}>
+                {driver.name ? driver.name.substring(0, 2).toUpperCase() : 'DR'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.35rem' }}>{driver.name}</div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span className={`vp-status-pill ${driver.status === 'Available' ? 'available' : 'other'}`}>{driver.status || 'Available'}</span>
+                  {driver.license_category && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#EEF2FF', color: '#4F46E5' }}>
+                      {driver.license_category}
+                    </span>
+                  )}
+                  {driver.must_change_password ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#FEF3C7', color: '#92400E' }}>
+                      Pending 1st Login
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#DCFCE7', color: '#166534' }}>
+                      App Active
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Stats */}
+              <div style={{ display: 'flex', gap: '1.5rem', flexShrink: 0 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{driver.trips_count ?? driver.trips_completed ?? 0}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Total Trips</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{completedTrips}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Completed</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: uploadedCount === REQUIRED_DOCS.length ? '#1F9254' : '#C4453D', lineHeight: 1 }}>{uploadedCount}/{REQUIRED_DOCS.length}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Docs</div>
+                </div>
+              </div>
+            </div>
+
+            {/* License Expiry Alert */}
+            <LicenseCountdown expiryDate={driver.license_expiry_date} />
+
+            {/* Details Grid */}
+            <div className="vp-card">
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '1rem' }}>Driver Information</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                <InfoCard icon={Phone} label="Contact" value={driver.contact_number || driver.phone} mono />
+                <InfoCard icon={CreditCard} label="License No." value={driver.license_number} mono />
+                <InfoCard icon={Activity} label="License Category" value={driver.license_category} />
+                <InfoCard icon={Calendar} label="License Expiry" value={driver.license_expiry_date ? new Date(driver.license_expiry_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
+                <InfoCard icon={Clock} label="Time Left" value={daysLeft !== null ? (daysLeft < 0 ? 'Expired' : `${daysLeft} days`) : '—'} />
+                <InfoCard icon={User} label="Status" value={driver.status || 'Available'} />
+              </div>
+            </div>
+
+            {/* Recent Trips Preview */}
+            {trips.length > 0 && (
+              <div className="vp-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Recent Trips</h3>
+                  <button
+                    onClick={() => setActiveTab('trips')}
+                    style={{ fontSize: '0.78rem', fontWeight: 600, color: '#3F1A32', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    View all
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {trips.slice(0, 4).map(t => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', borderRadius: '8px', background: '#fafaf9', border: '1px solid #f0ede8' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem' }}>
+                        <MapPin size={12} style={{ color: 'var(--sub)' }} />
+                        <span style={{ color: 'var(--text)', fontWeight: 500 }}>{t.origin_name || t.origin}</span>
+                        <span style={{ color: 'var(--sub)' }}>→</span>
+                        <span style={{ color: 'var(--text)', fontWeight: 500 }}>{t.destination_name || t.destination}</span>
+                      </div>
+                      <span className={`vp-status-pill ${t.status === 'Completed' ? 'available' : 'other'}`} style={{ fontSize: '0.65rem' }}>
+                        {t.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setActiveTab('details')}
+                style={{ fontSize: '0.84rem' }}
+              >
+                Edit Driver Details
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => setActiveTab('documents')}
+                style={{ fontSize: '0.84rem' }}
+              >
+                Manage Documents
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── EDIT DETAILS TAB ── */}
         {activeTab === 'details' && (
           <div className="vp-card">
-            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text)' }}>Driver Details</h3>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text)' }}>Edit Driver Details</h3>
             <form onSubmit={handleSaveDetails} className="grid grid-cols-2 gap-4 max-w-2xl">
               <div className="input-group col-span-2">
                 <label>Full name <span style={{ color: '#ef4444' }}>*</span></label>
@@ -299,6 +516,7 @@ export default function DriverProfile() {
           </div>
         )}
 
+        {/* ── DOCUMENTS TAB ── */}
         {activeTab === 'documents' && (
           <div className="vp-card">
             <div className="vp-progress-header">
@@ -479,6 +697,7 @@ export default function DriverProfile() {
           </div>
         )}
 
+        {/* ── TRIP HISTORY TAB ── */}
         {activeTab === 'trips' && (
           <div className="vp-card">
             <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text)' }}>Trip History</h3>
@@ -512,12 +731,6 @@ export default function DriverProfile() {
                 </table>
               </div>
             )}
-          </div>
-        )}
-
-        {activeTab !== 'details' && activeTab !== 'documents' && activeTab !== 'trips' && (
-          <div className="vp-card vp-empty-state">
-            <p>This section is under construction.</p>
           </div>
         )}
       </div>

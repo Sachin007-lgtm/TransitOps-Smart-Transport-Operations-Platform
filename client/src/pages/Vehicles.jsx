@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronDown, Copy, Edit3, Info, FileText } from 'lucide-react';
+import { Plus, Search, ChevronDown, Copy, Edit3, Info, FileText, RefreshCw } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { apiRequest } from '../utils/api';
 import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
+import PageToolbar from '../components/common/PageToolbar';
+import StatStrip from '../components/common/StatStrip';
+import SideDrawer from '../components/common/SideDrawer';
+import '../components/common/common.css';
 
 const DEFAULT_TYPES = ['Truck', 'Van', 'Mini'];
 const DEFAULT_SIZES = ['Small (8ft)', 'Medium (14ft)', 'Heavy (24ft)', 'Extra Heavy (32ft)'];
@@ -373,113 +377,145 @@ export default function Vehicles() {
     }
   };
 
+  // Stat strip calculations
+  const availableCount = vehicles.filter(v => v.status === 'Available').length;
+  const onTripCount = vehicles.filter(v => v.status === 'On trip' || v.status === 'On Trip').length;
+  const inShopCount = vehicles.filter(v => v.status === 'Maintenance' || v.status === 'In shop' || v.status === 'In Shop').length;
+  const totalDistance = vehicles.reduce((sum, v) => sum + (Number(v.distance_covered) || 0), 0);
+
+  const statItems = [
+    { label: 'Total Fleet', value: vehicles.length },
+    { label: 'Available', value: availableCount },
+    { label: 'On Trip', value: onTripCount },
+    { label: 'In Shop', value: inShopCount },
+    { label: 'Total Distance', value: `${totalDistance.toLocaleString()} km` }
+  ];
+
   return (
     <div className="fade-in">
-      {/* Header Row */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl heading">Vehicle registry</h1>
-        {error && <span className="text-xs text-status-red">{error}</span>}
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-4 mb-6" style={{ position: 'relative', zIndex: 10, flexWrap: 'wrap' }}>
-        
-        {/* Search */}
-        <div style={{ position: 'relative', width: '240px' }}>
-          <Search size={16} className="text-muted" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }} />
-          <input 
-            type="text" 
-            placeholder="Search number plate..." 
-            className="input" 
-            style={{ width: '100%', paddingLeft: '2.5rem' }}
-            value={globalSearch || ''}
-            onChange={(e) => setGlobalSearch && setGlobalSearch(e.target.value)}
-          />
-        </div>
-
-        {/* Type Filter Dropdown */}
-        <div style={{ position: 'relative', width: '160px' }} ref={typeRef}>
-          <div 
-            className="input flex items-center justify-between" 
-            style={{ cursor: 'pointer' }}
-            onClick={() => setIsTypeOpen(!isTypeOpen)}
-          >
-            <span>{typeFilter}</span>
-            <ChevronDown size={16} className="text-muted" style={{ transform: isTypeOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
-          </div>
-          {isTypeOpen && (
-            <div className="custom-dropdown-menu">
-              {dynamicTypes.map(t => (
-                <div key={t} className="custom-dropdown-item" onClick={() => { setTypeFilter(t); setIsTypeOpen(false); }}>
-                  {t}
-                </div>
-              ))}
+      {/* Single-Row Toolbar */}
+      <PageToolbar
+        title="Fleet Registry"
+        tooltip="Live vehicle inventory, duty status, and odometer telemetry. Vehicles on trip are locked automatically."
+        filters={
+          <>
+            {/* Search */}
+            <div style={{ position: 'relative', width: '210px' }}>
+              <Search size={14} className="text-muted" style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)' }} />
+              <input 
+                type="text" 
+                placeholder="Search number plate..." 
+                className="input" 
+                style={{ width: '100%', paddingLeft: '2.2rem', height: '34px', fontSize: '0.82rem' }}
+                value={globalSearch || ''}
+                onChange={(e) => setGlobalSearch && setGlobalSearch(e.target.value)}
+              />
             </div>
-          )}
-        </div>
 
-        {/* Size Filter Dropdown */}
-        <div style={{ position: 'relative', width: '170px' }} ref={sizeRef}>
-          <div 
-            className="input flex items-center justify-between" 
-            style={{ cursor: 'pointer' }}
-            onClick={() => setIsSizeOpen(!isSizeOpen)}
-          >
-            <span>{sizeFilter}</span>
-            <ChevronDown size={16} className="text-muted" style={{ transform: isSizeOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
-          </div>
-          {isSizeOpen && (
-            <div className="custom-dropdown-menu">
-              {dynamicSizes.map(s => (
-                <div key={s} className="custom-dropdown-item" onClick={() => { setSizeFilter(s); setIsSizeOpen(false); }}>
-                  {s}
+            {/* Type Filter */}
+            <div style={{ position: 'relative', width: '130px' }} ref={typeRef}>
+              <div 
+                className="input flex items-center justify-between" 
+                style={{ cursor: 'pointer', height: '34px', fontSize: '0.82rem', padding: '0 0.65rem' }}
+                onClick={() => setIsTypeOpen(!isTypeOpen)}
+              >
+                <span className="truncate">{typeFilter}</span>
+                <ChevronDown size={14} className="text-muted" style={{ transform: isTypeOpen ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0 }} />
+              </div>
+              {isTypeOpen && (
+                <div className="custom-dropdown-menu">
+                  {dynamicTypes.map(t => (
+                    <div key={t} className="custom-dropdown-item" onClick={() => { setTypeFilter(t); setIsTypeOpen(false); }}>
+                      {t}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Status Filter Dropdown */}
-        <div style={{ position: 'relative', width: '170px' }} ref={statusRef}>
-          <div 
-            className="input flex items-center justify-between" 
-            style={{ cursor: 'pointer' }}
-            onClick={() => setIsStatusOpen(!isStatusOpen)}
-          >
-            <span>{statusFilter}</span>
-            <ChevronDown size={16} className="text-muted" style={{ transform: isStatusOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
-          </div>
-          {isStatusOpen && (
-            <div className="custom-dropdown-menu">
-              {VEHICLE_STATUSES.map(s => (
-                <div key={s} className="custom-dropdown-item" onClick={() => { setStatusFilter(s); setIsStatusOpen(false); }}>
-                  {s}
+            {/* Size Filter */}
+            <div style={{ position: 'relative', width: '140px' }} ref={sizeRef}>
+              <div 
+                className="input flex items-center justify-between" 
+                style={{ cursor: 'pointer', height: '34px', fontSize: '0.82rem', padding: '0 0.65rem' }}
+                onClick={() => setIsSizeOpen(!isSizeOpen)}
+              >
+                <span className="truncate">{sizeFilter}</span>
+                <ChevronDown size={14} className="text-muted" style={{ transform: isSizeOpen ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0 }} />
+              </div>
+              {isSizeOpen && (
+                <div className="custom-dropdown-menu">
+                  {dynamicSizes.map(s => (
+                    <div key={s} className="custom-dropdown-item" onClick={() => { setSizeFilter(s); setIsSizeOpen(false); }}>
+                      {s}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="flex-1"></div>
+            {/* Status Filter */}
+            <div style={{ position: 'relative', width: '130px' }} ref={statusRef}>
+              <div 
+                className="input flex items-center justify-between" 
+                style={{ cursor: 'pointer', height: '34px', fontSize: '0.82rem', padding: '0 0.65rem' }}
+                onClick={() => setIsStatusOpen(!isStatusOpen)}
+              >
+                <span className="truncate">{statusFilter}</span>
+                <ChevronDown size={14} className="text-muted" style={{ transform: isStatusOpen ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0 }} />
+              </div>
+              {isStatusOpen && (
+                <div className="custom-dropdown-menu">
+                  {VEHICLE_STATUSES.map(s => (
+                    <div key={s} className="custom-dropdown-item" onClick={() => { setStatusFilter(s); setIsStatusOpen(false); }}>
+                      {s}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        }
+        actions={
+          <>
+            <button 
+              type="button" 
+              className="btn btn-outline" 
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.85rem' }} 
+              onClick={loadVehicles} 
+              title="Refresh fleet"
+            >
+              <RefreshCw size={14} className={loading ? 'spin-icon' : ''} />
+              <span>Refresh</span>
+            </button>
+            <button 
+              type="button" 
+              className="btn btn-plum-glow" 
+              style={{ height: '34px', fontSize: '0.82rem' }} 
+              onClick={() => setIsModalOpen(true)}
+            >
+              <Plus size={15} /> Add vehicle
+            </button>
+          </>
+        }
+      />
 
-        <button className="btn btn-plum-glow" onClick={() => setIsModalOpen(true)}>
-          <Plus size={16} /> Add vehicle
-        </button>
-      </div>
+      {/* Slim 40px Stat Strip */}
+      <StatStrip items={statItems} />
 
-      {/* Table Area */}
+      {/* Dense Table Area */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
-          <table>
-            <thead style={{ backgroundColor: '#fafafa' }}>
-              <tr>
-                <th>Number Plate</th>
-                <th>Type</th>
-                <th>Size</th>
-                <th style={{ textAlign: 'center' }}>Trips Completed</th>
-                <th>Distance Covered</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right', paddingRight: '1.5rem' }}>Actions</th>
+        <div className="table-container" style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 5, backgroundColor: '#fafafa' }}>
+              <tr style={{ height: '38px' }}>
+                <th style={{ padding: '0.5rem 1rem' }}>Number Plate</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Type</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Size</th>
+                <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem' }}>Trips Completed</th>
+                <th style={{ textAlign: 'right', padding: '0.5rem 1rem' }}>Distance Covered</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
+                <th style={{ textAlign: 'right', padding: '0.5rem 1.5rem' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -506,19 +542,50 @@ export default function Vehicles() {
                       opacity: v.status === 'Maintenance' ? 0.8 : 1
                     }}
                   >
-                    {/* Number Plate */}
+                    {/* Number Plate — click icon or name to open profile */}
                     <td className="mono font-medium group relative">
-                      <div 
-                        className="flex items-center gap-2" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          copyToClipboard(v.number_plate);
-                        }} 
-                        title="Click to copy"
-                        style={{ cursor: 'pointer', display: 'inline-flex' }}
-                      >
-                        {v.number_plate}
-                        <Copy size={14} className="text-muted opacity-0 hover:opacity-100 transition-opacity" style={{ opacity: 0.5 }} />
+                      <div className="flex items-center gap-2">
+                        {/* Clickable vehicle icon/logo */}
+                        <div
+                          onClick={(e) => { e.stopPropagation(); navigate(`/vehicles/${v.id}`); }}
+                          title="View vehicle details"
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: v.status === 'Available' ? '#DFF5E6' : v.status === 'On trip' || v.status === 'On Trip' ? '#DBEAFE' : '#FFEDD5',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            transition: 'transform 0.15s, box-shadow 0.15s',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={v.status === 'Available' ? '#1F9254' : v.status === 'On trip' || v.status === 'On Trip' ? '#2563eb' : '#ea580c'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                          </svg>
+                        </div>
+                        <span
+                          style={{ cursor: 'pointer', color: 'var(--plum-1, #3F1A32)', fontWeight: 600, transition: 'text-decoration 0.1s' }}
+                          title="View vehicle profile"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/vehicles/${v.id}`); }}
+                          onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; }}
+                          onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; }}
+                        >
+                          {v.number_plate}
+                        </span>
+                        <Copy
+                          size={13}
+                          className="text-muted"
+                          style={{ opacity: 0.4, cursor: 'pointer', flexShrink: 0 }}
+                          title="Copy plate"
+                          onClick={(e) => { e.stopPropagation(); copyToClipboard(v.number_plate); }}
+                          onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+                          onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; }}
+                        />
                       </div>
                     </td>
 
@@ -532,47 +599,42 @@ export default function Vehicles() {
                       </span>
                     </td>
 
-                    {/* Trips Completed (Dynamic count, no manual button) */}
-                    <td className="mono font-medium" style={{ fontSize: '0.95rem', textAlign: 'center' }}>
+                    {/* Trips Completed */}
+                    <td className="mono font-medium" style={{ fontSize: '0.88rem', textAlign: 'center', padding: '0.4rem 0.75rem' }}>
                       {v.trips_completed ?? 0}
                     </td>
 
-                    {/* Distance Covered with Last Updated block */}
-                    <td className="mono">
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <div className="flex items-center gap-2">
-                          <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>
-                            {Number(v.distance_covered || 0).toLocaleString()} km
-                          </span>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            style={{ padding: '2px 6px', fontSize: '0.7rem', height: 'auto', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openDistanceModal(v);
-                            }}
-                            title="Manually update distance"
-                          >
-                            <Edit3 size={11} /> Update
-                          </button>
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: '#888' }}>
-                          Last updated: <span style={{ fontWeight: 500 }}>{v.last_updated || 'Recently'}</span>
-                        </div>
+                    {/* Distance Covered */}
+                    <td className="mono" style={{ textAlign: 'right', padding: '0.4rem 1rem' }}>
+                      <div className="flex items-center justify-end gap-2">
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                          {Number(v.distance_covered || 0).toLocaleString()} km
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ padding: '2px 6px', fontSize: '0.68rem', height: '22px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDistanceModal(v);
+                          }}
+                          title="Update odometer distance"
+                        >
+                          <Edit3 size={10} /> Update
+                        </button>
                       </div>
                     </td>
 
                     {/* Status Dropdown inside the table */}
-                    <td>
+                    <td style={{ padding: '0.4rem 0.75rem' }}>
                       {(() => {
                         const isOnTrip = v.status === 'On trip' || v.status === 'On Trip';
                         return (
                           <select 
                             className="select" 
                             style={{ 
-                              padding: '4px 10px', 
-                              fontSize: '0.78rem', 
+                              padding: '2px 8px', 
+                              fontSize: '0.74rem', 
                               fontWeight: 600, 
                               borderRadius: '20px',
                               cursor: isOnTrip ? 'not-allowed' : 'pointer',
@@ -605,18 +667,18 @@ export default function Vehicles() {
                     </td>
 
                     {/* Dedicated Actions Column with Documents Button */}
-                    <td style={{ textAlign: 'right', paddingRight: '1.5rem' }}>
+                    <td style={{ textAlign: 'right', padding: '0.4rem 1.5rem' }}>
                       <button
                         type="button"
                         className="btn btn-outline"
                         style={{
-                          padding: '5px 12px',
-                          fontSize: '0.78rem',
+                          padding: '3px 10px',
+                          fontSize: '0.74rem',
                           fontWeight: 600,
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '6px',
+                          gap: '5px',
                           color: '#475569',
                           borderColor: '#e2e8f0',
                           cursor: 'pointer'
@@ -627,7 +689,7 @@ export default function Vehicles() {
                         }}
                         title="View Vehicle Documents & Profile"
                       >
-                        <FileText size={13} className="text-muted" />
+                        <FileText size={12} className="text-muted" />
                         <span>Documents</span>
                       </button>
                     </td>
@@ -635,211 +697,207 @@ export default function Vehicles() {
                 ))
               )}
             </tbody>
+            {/* Sticky Table Footer Summary */}
+            {filteredVehicles.length > 0 && (
+              <tfoot style={{ position: 'sticky', bottom: 0, backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                <tr style={{ height: '36px' }}>
+                  <td colSpan="4" style={{ padding: '0.4rem 1rem', fontSize: '0.78rem', color: '#64748b' }}>
+                    Showing {filteredVehicles.length} of {vehicles.length} vehicles
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.4rem 1rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--plum-1, #3F1A32)' }}>
+                    Total: {filteredVehicles.reduce((s, v) => s + (Number(v.distance_covered) || 0), 0).toLocaleString()} km
+                  </td>
+                  <td colSpan="2"></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
 
-      {/* Rules */}
-      <div className="mt-4 flex items-center gap-6">
-        <div className="text-xs text-status-red font-medium flex items-center gap-1">
-          <Info size={14} /> Number plate must be unique
-        </div>
-        <div className="text-xs text-muted font-medium flex items-center gap-1">
-          <Info size={14} /> Vehicles marked On Trip 🔒 are dispatched and locked automatically
-        </div>
-        <div className="text-xs text-muted font-medium flex items-center gap-1">
-          <Info size={14} /> Custom types and sizes automatically appear in sort filters
-        </div>
-      </div>
-
-      {/* Add Vehicle Modal (NO status field here) */}
-      {isModalOpen && createPortal(
-        <div className="modal-overlay" onMouseDown={() => setIsModalOpen(false)}>
-          <div className="modal-content" onMouseDown={e => e.stopPropagation()}>
-            <h2 className="text-xl heading mb-6">Add Vehicle</h2>
-            
-            <form onSubmit={handleAddVehicle}>
-              {/* Number Plate */}
-              <div className="input-group">
-                <label>Number Plate</label>
-                <input 
-                  required 
-                  type="text" 
-                  className="input mono text-sm" 
-                  placeholder="e.g. MH-01-AB-1234" 
-                  value={newVehicle.numberPlate} 
-                  style={{ 
-                    textTransform: 'uppercase',
-                    borderColor: formErrors.numberPlate ? '#ef4444' : undefined 
-                  }}
-                  onChange={e => {
-                    const val = e.target.value.toUpperCase();
-                    setNewVehicle({...newVehicle, numberPlate: val});
-                    if (formErrors.numberPlate) {
-                      const err = validateIndianNumberPlate(val);
-                      if (!err) {
-                        setFormErrors(prev => ({ ...prev, numberPlate: '' }));
-                      }
-                    }
-                  }} 
-                />
-                <span className="text-muted text-xs mt-1">
-                  Format: SS-RR-XX-NNNN (e.g. MH-01-AB-1234)
-                </span>
-                {formErrors.numberPlate && (
-                  <span style={{ color: '#ef4444', fontSize: '0.78rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>
-                    ⚠️ {formErrors.numberPlate}
-                  </span>
-                )}
-              </div>
-
-              {/* Type with Predefined + Custom Option */}
-              <div className="input-group">
-                <label>Type</label>
-                <select 
-                  className="select w-full" 
-                  value={isCustomTypeSelected ? '__custom__' : newVehicle.type} 
-                  onChange={e => {
-                    if (e.target.value === '__custom__') {
-                      setIsCustomTypeSelected(true);
-                    } else {
-                      setIsCustomTypeSelected(false);
-                      setNewVehicle({...newVehicle, type: e.target.value});
-                    }
-                  }}
-                >
-                  {DEFAULT_TYPES.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                  {customTypes.map(ct => (
-                    <option key={ct} value={ct}>{ct}</option>
-                  ))}
-                  <option value="__custom__">+ Write custom type...</option>
-                </select>
-
-                {isCustomTypeSelected && (
-                  <input 
-                    required
-                    type="text" 
-                    className="input mt-2" 
-                    placeholder="Type custom vehicle type (e.g. Trailer, Pickup)..." 
-                    value={newVehicle.customType} 
-                    onChange={e => setNewVehicle({...newVehicle, customType: e.target.value})} 
-                  />
-                )}
-              </div>
-
-              {/* Size with Predefined + Custom Option (Same as Type) */}
-              <div className="input-group">
-                <label>Size</label>
-                <select 
-                  className="select w-full" 
-                  value={isCustomSizeSelected ? '__custom__' : newVehicle.size} 
-                  onChange={e => {
-                    if (e.target.value === '__custom__') {
-                      setIsCustomSizeSelected(true);
-                    } else {
-                      setIsCustomSizeSelected(false);
-                      setNewVehicle({...newVehicle, size: e.target.value});
-                    }
-                  }}
-                >
-                  {DEFAULT_SIZES.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                  {customSizes.map(cs => (
-                    <option key={cs} value={cs}>{cs}</option>
-                  ))}
-                  <option value="__custom__">+ Write custom size...</option>
-                </select>
-
-                {isCustomSizeSelected && (
-                  <input 
-                    required
-                    type="text" 
-                    className="input mt-2" 
-                    placeholder="Type custom vehicle size (e.g. 20 Ton, 16ft Container)..." 
-                    value={newVehicle.customSize} 
-                    onChange={e => setNewVehicle({...newVehicle, customSize: e.target.value})} 
-                  />
-                )}
-              </div>
-
-              {/* Distance Covered */}
-              <div className="input-group mb-6">
-                <label>Distance Covered (km)</label>
-                <input 
-                  required 
-                  type="text" 
-                  inputMode="decimal"
-                  className="input" 
-                  placeholder="e.g. 15000" 
-                  value={newVehicle.distanceCovered} 
-                  style={{ borderColor: formErrors.distanceCovered ? '#ef4444' : undefined }}
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                      setNewVehicle({...newVehicle, distanceCovered: val});
-                      if (formErrors.distanceCovered) {
-                        setFormErrors(prev => ({ ...prev, distanceCovered: '' }));
-                      }
-                    }
-                  }} 
-                />
-                {formErrors.distanceCovered && (
-                  <span style={{ color: '#ef4444', fontSize: '0.78rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>
-                    ⚠️ {formErrors.distanceCovered}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button type="button" className="btn btn-outline" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Vehicle</button>
-              </div>
-            </form>
+      {/* Side Drawer: Add Vehicle */}
+      <SideDrawer
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Register New Vehicle"
+        subtitle="Add a vehicle to your fleet registry with initial odometer reading."
+        width="460px"
+      >
+        <form onSubmit={handleAddVehicle}>
+          {/* Number Plate */}
+          <div className="input-group">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Number Plate</label>
+            <input 
+              required 
+              type="text" 
+              className="input mono text-sm" 
+              placeholder="e.g. MH-01-AB-1234" 
+              value={newVehicle.numberPlate} 
+              style={{ 
+                textTransform: 'uppercase',
+                borderColor: formErrors.numberPlate ? '#ef4444' : undefined 
+              }}
+              onChange={e => {
+                const val = e.target.value.toUpperCase();
+                setNewVehicle({...newVehicle, numberPlate: val});
+                if (formErrors.numberPlate) {
+                  const err = validateIndianNumberPlate(val);
+                  if (!err) {
+                    setFormErrors(prev => ({ ...prev, numberPlate: '' }));
+                  }
+                }
+              }} 
+            />
+            <span className="text-muted text-xs mt-1">
+              Standard Indian format: SS-RR-XX-NNNN (e.g. MH-01-AB-1234)
+            </span>
+            {formErrors.numberPlate && (
+              <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                ⚠️ {formErrors.numberPlate}
+              </span>
+            )}
           </div>
-        </div>,
-        document.body
-      )}
 
-      {/* Manual Distance Update Modal */}
-      {distanceModalVehicle && createPortal(
-        <div className="modal-overlay" onMouseDown={() => setDistanceModalVehicle(null)}>
-          <div className="modal-content" onMouseDown={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-            <h2 className="text-lg heading mb-3">Update Distance Covered</h2>
-            <p className="text-xs text-muted mb-4">
-              Vehicle: <strong>{distanceModalVehicle.number_plate}</strong> ({distanceModalVehicle.type})
-            </p>
+          {/* Type with Predefined + Custom Option */}
+          <div className="input-group mt-4">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Vehicle Type</label>
+            <select 
+              className="select w-full" 
+              value={isCustomTypeSelected ? '__custom__' : newVehicle.type} 
+              onChange={e => {
+                if (e.target.value === '__custom__') {
+                  setIsCustomTypeSelected(true);
+                } else {
+                  setIsCustomTypeSelected(false);
+                  setNewVehicle({...newVehicle, type: e.target.value});
+                }
+              }}
+            >
+              {DEFAULT_TYPES.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+              {customTypes.map(ct => (
+                <option key={ct} value={ct}>{ct}</option>
+              ))}
+              <option value="__custom__">+ Write custom type...</option>
+            </select>
 
-            <form onSubmit={handleSaveDistance}>
-              <div className="input-group mb-4">
-                <label>Current Distance (km)</label>
-                <input 
-                  required 
-                  type="text" 
-                  inputMode="decimal"
-                  className="input" 
-                  placeholder="Enter updated odometer reading in km" 
-                  value={newDistanceInput} 
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                      setNewDistanceInput(val);
-                    }
-                  }} 
-                />
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button type="button" className="btn btn-outline" onClick={() => setDistanceModalVehicle(null)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Update Reading</button>
-              </div>
-            </form>
+            {isCustomTypeSelected && (
+              <input 
+                required
+                type="text" 
+                className="input mt-2" 
+                placeholder="Type custom vehicle type (e.g. Trailer, Pickup)..." 
+                value={newVehicle.customType} 
+                onChange={e => setNewVehicle({...newVehicle, customType: e.target.value})} 
+              />
+            )}
           </div>
-        </div>,
-        document.body
-      )}
+
+          {/* Size with Predefined + Custom Option */}
+          <div className="input-group mt-4">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Vehicle Size / Capacity</label>
+            <select 
+              className="select w-full" 
+              value={isCustomSizeSelected ? '__custom__' : newVehicle.size} 
+              onChange={e => {
+                if (e.target.value === '__custom__') {
+                  setIsCustomSizeSelected(true);
+                } else {
+                  setIsCustomSizeSelected(false);
+                  setNewVehicle({...newVehicle, size: e.target.value});
+                }
+              }}
+            >
+              {DEFAULT_SIZES.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+              {customSizes.map(cs => (
+                <option key={cs} value={cs}>{cs}</option>
+              ))}
+              <option value="__custom__">+ Write custom size...</option>
+            </select>
+
+            {isCustomSizeSelected && (
+              <input 
+                required
+                type="text" 
+                className="input mt-2" 
+                placeholder="Type custom vehicle size (e.g. 20 Ton, 16ft Container)..." 
+                value={newVehicle.customSize} 
+                onChange={e => setNewVehicle({...newVehicle, customSize: e.target.value})} 
+              />
+            )}
+          </div>
+
+          {/* Distance Covered */}
+          <div className="input-group mt-4 mb-6">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Initial Distance Covered (km)</label>
+            <input 
+              required 
+              type="text" 
+              inputMode="decimal"
+              className="input" 
+              placeholder="e.g. 15000" 
+              value={newVehicle.distanceCovered} 
+              style={{ borderColor: formErrors.distanceCovered ? '#ef4444' : undefined }}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                  setNewVehicle({...newVehicle, distanceCovered: val});
+                  if (formErrors.distanceCovered) {
+                    setFormErrors(prev => ({ ...prev, distanceCovered: '' }));
+                  }
+                }
+              }} 
+            />
+            {formErrors.distanceCovered && (
+              <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                ⚠️ {formErrors.distanceCovered}
+              </span>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6 pt-4" style={{ borderTop: '1px solid #f1f5f9' }}>
+            <button type="button" className="btn btn-outline" onClick={() => setIsModalOpen(false)}>Cancel</button>
+            <button type="submit" className="btn btn-plum-glow">Save Vehicle</button>
+          </div>
+        </form>
+      </SideDrawer>
+
+      {/* Side Drawer: Update Distance */}
+      <SideDrawer
+        isOpen={Boolean(distanceModalVehicle)}
+        onClose={() => setDistanceModalVehicle(null)}
+        title="Update Distance Covered"
+        subtitle={distanceModalVehicle ? `Vehicle ${distanceModalVehicle.number_plate} (${distanceModalVehicle.type})` : ''}
+        width="400px"
+      >
+        <form onSubmit={handleSaveDistance}>
+          <div className="input-group mb-6">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Updated Odometer Reading (km)</label>
+            <input 
+              required 
+              type="text" 
+              inputMode="decimal"
+              className="input mono" 
+              placeholder="Enter updated odometer reading in km" 
+              value={newDistanceInput} 
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                  setNewDistanceInput(val);
+                }
+              }} 
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6 pt-4" style={{ borderTop: '1px solid #f1f5f9' }}>
+            <button type="button" className="btn btn-outline" onClick={() => setDistanceModalVehicle(null)}>Cancel</button>
+            <button type="submit" className="btn btn-plum-glow">Update Reading</button>
+          </div>
+        </form>
+      </SideDrawer>
 
       {/* Toasts */}
       <div className="toast-container">

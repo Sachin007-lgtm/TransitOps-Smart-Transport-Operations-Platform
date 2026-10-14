@@ -85,139 +85,187 @@ export default function Header() {
     setOpenPopover(null);
   };
 
-  const [notifications, setNotifications] = useState([
-    {
-      id: 'notif-default-1',
-      type: 'license',
-      title: 'License Expiry Warning',
-      message: "Driver Priya's commercial license expires in 3 days.",
-      time: 'Urgent',
-      unread: true,
-      link: '/drivers',
-      actionText: 'Review Driver'
-    },
-    {
-      id: 'notif-default-2',
-      type: 'lock',
-      title: 'Vehicle Locked from Dispatch',
-      message: 'MINI-03 is locked due to pending vehicle inspection.',
-      time: '2h ago',
-      unread: true,
-      link: '/vehicles',
-      actionText: 'Inspect Fleet'
-    },
-    {
-      id: 'notif-default-3',
-      type: 'maintenance',
-      title: 'Scheduled Maintenance Due',
-      message: 'VAN-05 has reached 19,700 km and requires service check.',
-      time: 'Today',
-      unread: true,
-      link: '/maintenance',
-      actionText: 'Open Service'
-    }
-  ]);
+  const [notifications, setNotifications] = useState([]);
   const [notifFilter, setNotifFilter] = useState('all'); // 'all' | 'alerts' | 'fleet'
 
-  // Fetch real fleet data to supplement operational alerts
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchOperationalAlerts() {
-      try {
-        const [driversRes, vehiclesRes] = await Promise.allSettled([
-          apiRequest('GET', '/drivers'),
-          apiRequest('GET', '/vehicles')
-        ]);
+  // Fetch real alerts from all data sources: driver license, vehicle docs, maintenance reports, vehicle status
+  const fetchAllAlerts = React.useCallback(async () => {
+    try {
+      const [driversRes, vehiclesRes, docAlertsRes, maintenanceRes] = await Promise.allSettled([
+        apiRequest('GET', '/drivers'),
+        apiRequest('GET', '/vehicles'),
+        apiRequest('GET', '/documents/alerts'),
+        apiRequest('GET', '/maintenance/driver-reports?view=active')
+      ]);
 
-        if (!isMounted) return;
+      const dynamicAlerts = [];
+      const now = new Date();
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
 
-        const dynamicAlerts = [];
-        if (driversRes.status === 'fulfilled' && Array.isArray(driversRes.value?.data)) {
-          const now = new Date();
-          const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-          driversRes.value.data.forEach(d => {
-            if (d.license_expiry_date) {
-              const exp = new Date(d.license_expiry_date);
-              const diff = exp - now;
-              if (diff < 0) {
-                dynamicAlerts.push({
-                  id: `driver-exp-${d.id}`,
-                  type: 'license',
-                  title: 'License Expired',
-                  message: `${d.name}'s commercial license has expired. Action required.`,
-                  time: 'Expired',
-                  unread: true,
-                  link: `/drivers/${d.id}`,
-                  actionText: 'View Documents'
-                });
-              } else if (diff < thirtyDays) {
-                const days = Math.max(1, Math.ceil(diff / (24 * 60 * 60 * 1000)));
-                dynamicAlerts.push({
-                  id: `driver-exp-${d.id}`,
-                  type: 'license',
-                  title: 'License Expiring Soon',
-                  message: `${d.name}'s license expires in ${days} days. Renewal required.`,
-                  time: `${days}d left`,
-                  unread: true,
-                  link: `/drivers/${d.id}`,
-                  actionText: 'View Documents'
-                });
-              }
-            }
-          });
-        }
-
-        if (vehiclesRes.status === 'fulfilled' && Array.isArray(vehiclesRes.value?.data)) {
-          vehiclesRes.value.data.forEach(v => {
-            const st = String(v.status || '').toLowerCase();
-            if (st === 'maintenance' || st === 'in shop') {
+      // --- Driver license expiry alerts ---
+      if (driversRes.status === 'fulfilled' && Array.isArray(driversRes.value?.data)) {
+        driversRes.value.data.forEach(d => {
+          if (d.license_expiry_date) {
+            const exp = new Date(d.license_expiry_date);
+            const diff = exp - now;
+            if (diff < 0) {
               dynamicAlerts.push({
-                id: `veh-maint-${v.id}`,
-                type: 'maintenance',
-                title: 'Vehicle in Maintenance',
-                message: `${v.number_plate} (${v.type || 'Fleet'}) is currently offline in service.`,
-                time: 'In Service',
+                id: `driver-exp-${d.id}`,
+                type: 'license',
+                title: 'License Expired',
+                message: `${d.name}'s commercial license has expired. Action required.`,
+                time: 'Expired',
                 unread: true,
-                link: `/vehicles/${v.id}`,
-                actionText: 'View Vehicle'
+                link: `/drivers/${d.id}`,
+                actionText: 'View Driver'
+              });
+            } else if (diff < thirtyDays) {
+              const days = Math.max(1, Math.ceil(diff / (24 * 60 * 60 * 1000)));
+              dynamicAlerts.push({
+                id: `driver-exp-${d.id}`,
+                type: 'license',
+                title: 'License Expiring Soon',
+                message: `${d.name}'s license expires in ${days} day${days !== 1 ? 's' : ''}. Renewal required.`,
+                time: `${days}d left`,
+                unread: true,
+                link: `/drivers/${d.id}`,
+                actionText: 'View Driver'
               });
             }
-          });
-        }
-
-        if (dynamicAlerts.length > 0) {
-          setNotifications(prev => {
-            const dynamicIds = new Set(dynamicAlerts.map(a => a.id));
-            const filteredPrev = prev.filter(p => !dynamicIds.has(p.id));
-            return [...dynamicAlerts, ...filteredPrev];
-          });
-        }
-      } catch (err) {
-        // quiet fallback
+          }
+        });
       }
-    }
 
-    fetchOperationalAlerts();
-    return () => { isMounted = false; };
+      // --- Vehicle status alerts ---
+      if (vehiclesRes.status === 'fulfilled' && Array.isArray(vehiclesRes.value?.data)) {
+        vehiclesRes.value.data.forEach(v => {
+          const st = String(v.status || '').toLowerCase();
+          if (st === 'in shop') {
+            dynamicAlerts.push({
+              id: `veh-shop-${v.id}`,
+              type: 'maintenance',
+              title: 'Vehicle In Maintenance',
+              message: `${v.registration_number || v.number_plate} (${v.type || 'Fleet'}) is currently offline in service.`,
+              time: 'In Service',
+              unread: true,
+              link: `/vehicles/${v.id}`,
+              actionText: 'View Vehicle'
+            });
+          }
+        });
+      }
+
+      // --- Document expiry alerts (from /documents/alerts endpoint) ---
+      if (docAlertsRes.status === 'fulfilled') {
+        const docData = docAlertsRes.value?.data || docAlertsRes.value || [];
+        const docs = Array.isArray(docData) ? docData : (docData.alerts || []);
+        docs.forEach(doc => {
+          const exp = new Date(doc.expiry_date);
+          const diff = exp - now;
+          const isExpired = diff < 0;
+          const days = isExpired ? 0 : Math.ceil(diff / (24 * 60 * 60 * 1000));
+          const entityLabel = doc.entity_type === 'DRIVER' ? 'Driver' : 'Vehicle';
+          const entityName = doc.entity_name || doc.entity_id?.slice(0, 8) || 'Unknown';
+          dynamicAlerts.push({
+            id: `doc-${doc.id || doc.entity_id + doc.document_type}`,
+            type: 'lock',
+            title: isExpired ? `${doc.document_type} Expired` : `${doc.document_type} Expiring Soon`,
+            message: isExpired
+              ? `${entityLabel} ${entityName}: ${doc.document_type} expired on ${new Date(doc.expiry_date).toLocaleDateString('en-IN')}.`
+              : `${entityLabel} ${entityName}: ${doc.document_type} expires in ${days} day${days !== 1 ? 's' : ''}.`,
+            time: isExpired ? 'Expired' : `${days}d left`,
+            unread: true,
+            link: doc.entity_type === 'DRIVER' ? `/drivers/${doc.entity_id}` : `/vehicles/${doc.entity_id}`,
+            actionText: 'View Documents'
+          });
+        });
+      }
+
+      // --- Driver maintenance report alerts ---
+      if (maintenanceRes.status === 'fulfilled') {
+        const reports = maintenanceRes.value?.data || [];
+        reports.forEach(r => {
+          if (r.status === 'Open' && r.approval_requested) {
+            dynamicAlerts.push({
+              id: `maint-approval-${r.id}`,
+              type: 'maintenance',
+              title: 'Maintenance Approval Needed',
+              message: `${r.driver_name} requested approval for repair on ${r.vehicle_registration}. Trip: ${r.origin} → ${r.destination}.`,
+              time: new Date(r.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+              unread: true,
+              link: '/maintenance',
+              actionText: 'Review & Approve'
+            });
+          } else if (r.status === 'Open' && !r.approval_requested) {
+            dynamicAlerts.push({
+              id: `maint-open-${r.id}`,
+              type: 'maintenance',
+              title: 'Driver Reported Issue',
+              message: `${r.driver_name} reported: "${r.description}" on ${r.vehicle_registration}.`,
+              time: new Date(r.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+              unread: true,
+              link: '/maintenance',
+              actionText: 'View Reports'
+            });
+          }
+        });
+      }
+
+      setNotifications(prev => {
+        // Preserve toast-generated notifications (id starts with 'toast-')
+        const toastNotifs = prev.filter(p => p.id.startsWith('toast-'));
+        // Preserve read state from previously shown notifications
+        const readIds = new Set(prev.filter(p => !p.unread).map(p => p.id));
+        const merged = dynamicAlerts.map(a => ({ ...a, unread: readIds.has(a.id) ? false : a.unread }));
+        return [...merged, ...toastNotifs];
+      });
+    } catch (err) {
+      // quiet fallback — keep whatever we had
+    }
   }, []);
 
-  // Listen to live system toasts to append real-time notifications
+  useEffect(() => {
+    fetchAllAlerts();
+    // Poll every 30 seconds for fresh alerts (was 60 — faster detection of doc/license expiry changes)
+    const timer = setInterval(fetchAllAlerts, 30000);
+    return () => clearInterval(timer);
+  }, [fetchAllAlerts]);
+
+  // Listen to live system toasts to append real-time notifications for important events
   useEffect(() => {
     const handleToast = (e) => {
-      const msg = typeof e.detail === 'string' ? e.detail : e.detail?.message || '';
+      const detail = e.detail;
+      const msg = typeof detail === 'string' ? detail : detail?.message || '';
       if (!msg) return;
-      const isErr = String(e.type || e.detail?.type || '').includes('error');
+
+      const isErr = String(detail?.type || detail?.toastType || '').includes('error') || (typeof detail === 'object' && detail?.type === 'error');
+      const isMaintenance = msg.toLowerCase().includes('mainten') || msg.toLowerCase().includes('repair') || msg.toLowerCase().includes('approval');
+      const isTrip = msg.toLowerCase().includes('trip') || msg.toLowerCase().includes('dispatch') || msg.toLowerCase().includes('completed');
+      const isCredential = msg.toLowerCase().includes('registered') || msg.toLowerCase().includes('credentials') || msg.toLowerCase().includes('password reset');
+      const isShop = msg.toLowerCase().includes('in shop') || msg.toLowerCase().includes('available');
+
+      // Only surface: errors, maintenance, trip events, credential events, vehicle shop events
+      if (!isErr && !isMaintenance && !isTrip && !isCredential && !isShop) return;
+
+      let notifType = 'dispatch';
+      let notifTitle = 'System Update';
+      if (isErr) { notifType = 'lock'; notifTitle = 'Operational Alert'; }
+      else if (isMaintenance) { notifType = 'maintenance'; notifTitle = 'Maintenance Update'; }
+      else if (isTrip) { notifType = 'dispatch'; notifTitle = 'Trip Event'; }
+      else if (isCredential) { notifType = 'dispatch'; notifTitle = 'Driver Access'; }
+      else if (isShop) { notifType = 'maintenance'; notifTitle = 'Vehicle Status'; }
+
       const newNotif = {
         id: `toast-${Date.now()}`,
-        type: isErr ? 'lock' : 'dispatch',
-        title: isErr ? 'Operational Alert' : 'System Update',
+        type: notifType,
+        title: notifTitle,
         message: msg,
         time: 'Just now',
         unread: true,
         link: location.pathname,
         actionText: 'View'
       };
-      setNotifications(prev => [newNotif, ...prev.slice(0, 19)]);
+      setNotifications(prev => [newNotif, ...prev.slice(0, 29)]);
     };
 
     window.addEventListener('app-toast', handleToast);
@@ -477,7 +525,8 @@ export default function Header() {
               .map(n => n[0])
               .join('')
               .slice(0, 2)
-              .toUpperCase() || 'TO';            return (
+              .toUpperCase() || 'TO';
+            return (
               <>
                 <button
                   type="button"

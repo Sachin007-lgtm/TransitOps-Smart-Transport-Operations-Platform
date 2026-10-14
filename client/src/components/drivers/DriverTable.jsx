@@ -13,26 +13,27 @@ export default function DriverTable({
   drivers,
   loading,
   onStatusChange,
+  onView,
   onEdit,
   onResetPassword,
   onDelete
 }) {
   return (
     <>
-      {/* Table Area (Matches Vehicles.jsx: card overflow:hidden, standard table-container) */}
+      {/* Table Area (Dense layout matching Fleet/Vehicles standard) */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
-          <table>
-            <thead style={{ backgroundColor: '#fafafa' }}>
-              <tr>
-                <th style={{ paddingLeft: '1.5rem' }}>Driver Name</th>
-                <th>License no.</th>
-                <th>Licence Expiry</th>
-                <th>Contact</th>
-                <th style={{ textAlign: 'center' }}>Trips Count</th>
-                <th style={{ textAlign: 'center' }}>App access</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right', paddingRight: '1.5rem' }}>Actions</th>
+        <div className="table-container" style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 5, backgroundColor: '#fafafa' }}>
+              <tr style={{ height: '38px' }}>
+                <th style={{ paddingLeft: '1.5rem', padding: '0.5rem 1.5rem' }}>Driver Name</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>License no.</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Licence Expiry</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Contact</th>
+                <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem' }}>Trips Count</th>
+                <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem' }}>App access</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
+                <th style={{ textAlign: 'right', paddingRight: '1.5rem', padding: '0.5rem 1.5rem' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -63,17 +64,36 @@ export default function DriverTable({
                         borderLeft: `4px solid ${getLeftBorderColor(d.status)}`
                       }}
                     >
-                      {/* Driver Name (Category subtitle completely removed) */}
+                      {/* Driver Name — avatar + name clickable → Overview; Documents btn → Documents tab */}
                       <td style={{ paddingLeft: '1.5rem' }}>
-                        <div className="flex items-center gap-3">
+                        <div
+                          className="flex items-center gap-3"
+                          style={{ cursor: 'pointer' }}
+                          onClick={(e) => { e.stopPropagation(); (onView || onEdit)(d); }}
+                          title="View driver overview"
+                        >
                           <div
                             className="driver-avatar"
-                            style={{ backgroundColor: getAvatarColor(d.name) }}
+                            style={{
+                              backgroundColor: getAvatarColor(d.name),
+                              cursor: 'pointer',
+                              transition: 'box-shadow 0.15s, transform 0.15s',
+                              boxShadow: '0 0 0 0 transparent'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(63,26,50,0.18)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 0 0 0 transparent'; e.currentTarget.style.transform = 'scale(1)'; }}
                           >
                             {d.name ? d.name.substring(0, 2).toUpperCase() : 'DR'}
                           </div>
                           <div>
-                            <span className="font-medium text-sm block">{d.name}</span>
+                            <span
+                              className="font-medium text-sm block"
+                              style={{ color: 'var(--plum-1, #3F1A32)', textDecoration: 'none', transition: 'text-decoration 0.1s' }}
+                              onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; }}
+                              onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; }}
+                            >
+                              {d.name}
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -202,8 +222,8 @@ export default function DriverTable({
                             }}
                             title="View Driver Documents & Profile"
                           >
-                            <FileText size={13} className="text-muted" />
-                            <span>Documents</span>
+                             <FileText size={13} className="text-muted" />
+                             <span>Documents</span>
                           </button>
                           <DriverActionMenu
                             driver={d}
@@ -218,6 +238,19 @@ export default function DriverTable({
                 })
               )}
             </tbody>
+            {drivers.length > 0 && (
+              <tfoot style={{ position: 'sticky', bottom: 0, backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                <tr style={{ height: '36px' }}>
+                  <td colSpan="4" style={{ padding: '0.4rem 1.5rem', fontSize: '0.78rem', color: '#64748b' }}>
+                    Showing {drivers.length} drivers
+                  </td>
+                  <td style={{ textAlign: 'center', padding: '0.4rem 0.75rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--plum-1, #3F1A32)' }}>
+                    {drivers.reduce((acc, d) => acc + (d.trips_count || d.trips_completed || 0), 0)} trips
+                  </td>
+                  <td colSpan="3"></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

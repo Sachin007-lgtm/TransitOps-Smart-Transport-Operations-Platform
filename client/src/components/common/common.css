@@ -1,0 +1,374 @@
+/* Shared Layout & Dense Table Styles */
+
+/* --- Stat Strip --- */
+.stat-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 1rem;
+  height: 40px;
+  min-height: 40px;
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.stat-strip::-webkit-scrollbar {
+  height: 3px;
+}
+.stat-strip::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+
+.stat-strip .stat-item {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text);
+  font-size: 0.8125rem;
+  line-height: 1;
+  transition: opacity 0.15s ease;
+}
+
+.stat-strip .stat-item.is-dimmed {
+  opacity: 0.45;
+}
+
+.stat-strip .stat-label {
+  color: var(--sub);
+  font-weight: 500;
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.stat-strip .stat-value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.84rem;
+  line-height: 1;
+  margin-bottom: 0;
+  color: var(--text);
+}
+
+.stat-item .stat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.stat-sep {
+  color: var(--line);
+  user-select: none;
+  font-weight: 300;
+}
+
+/* --- Page Toolbar --- */
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.page-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.page-toolbar-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.page-toolbar-info {
+  display: inline-flex;
+  align-items: center;
+  color: var(--sub);
+  cursor: help;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.page-toolbar-info:hover {
+  color: var(--plum-1);
+}
+
+.page-toolbar-info[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  background: #1e1b24;
+  color: #ffffff;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  white-space: normal;
+  width: 240px;
+  z-index: 1000;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.page-toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+.page-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* --- Side Drawer --- */
+.side-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 12, 20, 0.45);
+  backdrop-filter: blur(3px);
+  z-index: 1200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+
+.side-drawer-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.side-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--card);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  z-index: 1201;
+  max-width: 95vw;
+  transform: translateX(100%);
+  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.side-drawer.is-open {
+  transform: translateX(0);
+}
+
+.side-drawer-header {
+  padding: 1.15rem 1.4rem;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card);
+}
+
+.side-drawer-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.side-drawer-subtitle {
+  font-size: 0.78rem;
+  color: var(--sub);
+  margin-top: 0.2rem;
+}
+
+.side-drawer-close {
+  background: transparent;
+  border: none;
+  color: var(--sub);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.side-drawer-close:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.side-drawer-body {
+  padding: 1.25rem 1.4rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.side-drawer-footer {
+  padding: 0.85rem 1.4rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  background: var(--bg);
+}
+
+/* --- Dense Table Standard --- */
+.dense-table-wrapper {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.dense-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 210px);
+}
+
+.dense-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.dense-table th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #faf9fb;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sub);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dense-table th.num,
+.dense-table td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.dense-table td {
+  padding: 0.45rem 0.75rem;
+  height: 40px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.dense-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dense-table tbody tr:hover td {
+  background: #fbfafc;
+}
+
+.dense-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: #f7f6f9;
+  padding: 0.55rem 0.75rem;
+  font-weight: 700;
+  border-top: 2px solid var(--line);
+  font-size: 0.8125rem;
+}
+
+.dense-table tfoot td.num {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+/* --- Filter Chips Row --- */
+.filter-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 1px;
+}
+
+.filter-chip {
+  padding: 0.28rem 0.65rem;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--sub);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+
+.filter-chip:hover {
+  border-color: #d8d5df;
+  color: var(--text);
+}
+
+.filter-chip.active {
+  background: var(--plum-1);
+  border-color: var(--plum-1);
+  color: #ffffff;
+}
+
+/* Action Dropdown / Ellipsis Menu */
+.row-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--sub);
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.row-menu-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+}

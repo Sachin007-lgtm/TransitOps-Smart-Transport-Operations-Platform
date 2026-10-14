@@ -1,14 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Search, ChevronDown, Plus, RefreshCw } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { apiRequest } from '../utils/api';
-import DriverToolbar from '../components/drivers/DriverToolbar';
 import DriverTable from '../components/drivers/DriverTable';
 import AddDriverModal from '../components/drivers/AddDriverModal';
 import CredentialModal from '../components/drivers/CredentialModal';
-import { isLicenseExpired } from '../components/drivers/driverConstants';
+import PageToolbar from '../components/common/PageToolbar';
+import StatStrip from '../components/common/StatStrip';
+import '../components/common/common.css';
+import { isLicenseExpired, isLicenseExpiringSoon, DRIVER_STATUS_FILTERS } from '../components/drivers/driverConstants';
 import './Drivers.css';
+
+// n8n webhook: fires automatically whenever driver credentials are created or reset.
+// Set VITE_N8N_DRIVER_WEBHOOK in client/.env to your n8n webhook URL.
+// If the env var is not set, the webhook is silently skipped.
+async function sendCredentialsWebhook({ driverName, contactNumber, temporaryPassword }) {
+  const webhookUrl = import.meta.env.VITE_N8N_DRIVER_WEBHOOK;
+  if (!webhookUrl) return; // Not configured — skip silently
+  await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      driver_name: driverName,
+      contact_number: contactNumber,
+      temporary_password: temporaryPassword,
+      timestamp: new Date().toISOString()
+    })
+  });
+}
 
 export default function Drivers() {
   const navigate = useNavigate();
@@ -19,6 +40,8 @@ export default function Drivers() {
 
   // Status Filter in toolbar (Matching Vehicles.jsx standard)
   const [statusFilter, setStatusFilter] = useState('All');
+  const [isStatusOpen, setIsStatusOpen] = useState(false);
+  const statusRef = useRef(null);
 
   // Modal dialog states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -45,6 +68,14 @@ export default function Drivers() {
 
   useEffect(() => {
     loadDrivers();
+
+    const handleOutsideClick = (e) => {
+      if (statusRef.current && !statusRef.current.contains(e.target)) {
+        setIsStatusOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleOutsideClick);
+    return () => document.removeEventListener('pointerdown', handleOutsideClick);
   }, []);
 
   // Standard in-table status change handler (matching Vehicles page UX)
@@ -104,12 +135,16 @@ export default function Drivers() {
 
       setIsAddModalOpen(false);
 
-      if (res?.data?.temporary_password) {
-        setCredentialModal({
-          driverName: res.data.name || driverPayload.name,
-          contactNumber: res.data.contact_number || driverPayload.contact_number,
-          temporaryPassword: res.data.temporary_password
-        });
+      const creds = res?.data?.temporary_password ? {
+        driverName: res.data.name || driverPayload.name,
+        contactNumber: res.data.contact_number || driverPayload.contact_number,
+        temporaryPassword: res.data.temporary_password
+      } : null;
+
+      if (creds) {
+        setCredentialModal(creds);
+        // Fire n8n webhook for automated credential delivery (WhatsApp/SMS)
+        sendCredentialsWebhook(creds).catch(() => {/* silent — webhook is best-effort */});
       }
 
       window.dispatchEvent(
@@ -189,11 +224,14 @@ export default function Drivers() {
       const response = await apiRequest('POST', `/drivers/${driver.id}/reset-password`);
       const temporaryPassword = response.data?.temporary_password;
       if (temporaryPassword) {
-        setCredentialModal({
+        const creds = {
           driverName: driver.name,
           contactNumber: driver.contact_number,
-          temporaryPassword: temporaryPassword
-        });
+          temporaryPassword
+        };
+        setCredentialModal(creds);
+        // Fire n8n webhook for automated credential delivery
+        sendCredentialsWebhook(creds).catch(() => {/* silent — webhook is best-effort */});
       }
       await loadDrivers();
     } catch (err) {
@@ -225,34 +263,108 @@ export default function Drivers() {
     return matchesSearch && matchesStatus;
   });
 
+  // Stat strip calculations
+  const availableCount = drivers.filter(d => (d.status || '').toLowerCase() === 'available').length;
+  const onTripCount = drivers.filter(d => (d.status || '').toLowerCase() === 'on trip').length;
+  const offDutyCount = drivers.filter(d => (d.status || '').toLowerCase() === 'off duty').length;
+  const licenseAlertCount = drivers.filter(d => isLicenseExpired(d.license_expiry_date) || isLicenseExpiringSoon(d.license_expiry_date)).length;
+
+  const statItems = [
+    { label: 'Total Drivers', value: drivers.length },
+    { label: 'Available', value: availableCount },
+    { label: 'On Trip', value: onTripCount },
+    { label: 'Off Duty', value: offDutyCount },
+    { label: 'License Alerts', value: licenseAlertCount }
+  ];
+
   return (
     <div className="fade-in">
-      {/* Header Row */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl heading">Drivers Profile</h1>
-          <p className="text-sm text-muted mt-1">
-            Track licensing, live duty states, and credential provisioning.
-          </p>
-        </div>
-        {error && <span className="text-xs text-status-red">{error}</span>}
-      </div>
+      {/* Single-Row Toolbar */}
+      <PageToolbar
+        title="Drivers Roster"
+        tooltip="Track licensing compliance, live duty states, and credential provisioning"
+        filters={
+          <>
+            {/* Search */}
+            <div style={{ position: 'relative', width: '220px' }}>
+              <Search 
+                size={14} 
+                className="text-muted" 
+                style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)' }} 
+              />
+              <input 
+                type="text" 
+                placeholder="Search driver name, license..." 
+                className="input" 
+                style={{ width: '100%', paddingLeft: '2.2rem', height: '34px', fontSize: '0.82rem' }}
+                value={globalSearch || ''}
+                onChange={(e) => setGlobalSearch && setGlobalSearch(e.target.value)}
+              />
+            </div>
 
-      {/* Toolbar: Search, Status filter, Add Driver button */}
-      <DriverToolbar
-        globalSearch={globalSearch}
-        setGlobalSearch={setGlobalSearch}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        onOpenAddModal={() => setIsAddModalOpen(true)}
+            {/* Status Filter */}
+            <div style={{ position: 'relative', width: '140px' }} ref={statusRef}>
+              <div 
+                className="input flex items-center justify-between" 
+                style={{ cursor: 'pointer', height: '34px', fontSize: '0.82rem', padding: '0 0.65rem' }}
+                onClick={() => setIsStatusOpen(!isStatusOpen)}
+              >
+                <span className="truncate">{statusFilter}</span>
+                <ChevronDown size={14} className="text-muted" style={{ transform: isStatusOpen ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0 }} />
+              </div>
+              {isStatusOpen && (
+                <div className="custom-dropdown-menu">
+                  {DRIVER_STATUS_FILTERS.map(s => (
+                    <div 
+                      key={s} 
+                      className="custom-dropdown-item" 
+                      onClick={() => { 
+                        setStatusFilter(s); 
+                        setIsStatusOpen(false); 
+                      }}
+                    >
+                      {s}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        }
+        actions={
+          <>
+            <button 
+              type="button" 
+              className="btn btn-outline" 
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.85rem' }} 
+              onClick={loadDrivers} 
+              title="Refresh roster"
+            >
+              <RefreshCw size={14} className={loading ? 'spin-icon' : ''} />
+              <span>Refresh</span>
+            </button>
+            <button 
+              type="button" 
+              className="btn btn-plum-glow" 
+              style={{ height: '34px', fontSize: '0.82rem' }} 
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <Plus size={15} /> Add driver
+            </button>
+          </>
+        }
       />
+
+      {/* Slim 40px Stat Strip */}
+      <StatStrip items={statItems} />
 
       {/* Driver Roster Table */}
       <DriverTable
         drivers={filteredDrivers}
         loading={loading}
         onStatusChange={handleStatusChange}
-        onEdit={(driver) => navigate(`/drivers/${driver.id}`)}
+        onView={(driver) => navigate(`/drivers/${driver.id}`, { state: { tab: 'overview' } })}
+        onEdit={(driver) => navigate(`/drivers/${driver.id}`, { state: { tab: 'documents' } })}
         onResetPassword={handleResetDriverPassword}
         onDelete={handleDeleteDriver}
       />

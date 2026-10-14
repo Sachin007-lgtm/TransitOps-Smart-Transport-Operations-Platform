@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown, Info, MapPin, IndianRupee, CheckCircle2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, ChevronDown, Info, ArrowLeft, RefreshCw } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import { tripCode } from '../utils/tripCode';
+import PageToolbar from '../components/common/PageToolbar';
+import StatStrip from '../components/common/StatStrip';
+import '../components/common/common.css';
 
 // Billing-status filters: every trip here is already Completed, so the
 // question this page answers is "what have we finished and is it billed yet?"
@@ -19,6 +23,7 @@ const fmtMoney = (value) => {
 };
 
 export default function TripHistory() {
+  const navigate = useNavigate();
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,30 +34,24 @@ export default function TripHistory() {
   const statusRef = useRef(null);
   const [search, setSearch] = useState('');
 
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      setError('');
+      const res = await apiRequest('GET', '/trips');
+      // Completed trips only — this page is the record of finished work.
+      setTrips((res.data || []).filter(t => t.status === 'Completed'));
+    } catch (err) {
+      if (!silent) setError(err.message || 'Failed to load trip history.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let isMounted = true;
-    const load = async (silent = false) => {
-      if (!isMounted) return;
-      if (!silent) setLoading(true);
-      try {
-        setError('');
-        const res = await apiRequest('GET', '/trips');
-        if (!isMounted) return;
-        // Completed trips only — this page is the record of finished work.
-        setTrips((res.data || []).filter(t => t.status === 'Completed'));
-      } catch (err) {
-        // Silent background refreshes keep the last good data instead of
-        // flashing an error on a transient network hiccup.
-        if (isMounted && !silent) setError(err.message || 'Failed to load trip history.');
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
     load();
-    // Auto-refresh, same as the tracking list: trips completed elsewhere
-    // (the mobile app, another dispatcher) appear here without a reload.
     const interval = setInterval(() => load(true), 6000);
-    return () => { isMounted = false; clearInterval(interval); };
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -79,81 +78,115 @@ export default function TripHistory() {
     );
   });
 
+  // Stat strip calculations
+  const billedCount = trips.filter(t => t.billing_status === 'Billed').length;
+  const unbilledCount = trips.filter(t => t.billing_status === 'Unbilled').length;
+  const totalRevenue = trips.reduce((sum, t) => sum + (parseFloat(t.revenue || t.fare_amount || 0) || 0), 0);
+
+  const statItems = [
+    { label: 'Completed Trips', value: trips.length },
+    { label: 'Billed', value: billedCount },
+    { label: 'Unbilled', value: unbilledCount },
+    { label: 'Total Revenue', value: totalRevenue > 0 ? `₹${totalRevenue.toLocaleString('en-IN')}` : '₹0' }
+  ];
+
   return (
     <div className="fade-in">
-      {/* Header Row (Matches Vehicles/Drivers pages) */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl heading">Trip History</h1>
-          <p className="text-sm text-muted mt-1">
-            Completed trips with their customer, fare and billing state.
-          </p>
-        </div>
-        {error && <span className="text-xs text-status-red">{error}</span>}
-      </div>
-
-      {/* Toolbar: Search + Billing-status filter (Matches Vehicles.jsx) */}
-      <div className="flex items-center gap-4 mb-6" style={{ position: 'relative', zIndex: 10, flexWrap: 'wrap' }}>
-        {/* Search */}
-        <div style={{ position: 'relative', width: '240px' }}>
-          <Search size={16} className="text-muted" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Search trip, customer, route..."
-            className="input"
-            style={{ width: '100%', paddingLeft: '2.5rem' }}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        {/* Billing-status Filter Dropdown */}
-        <div style={{ position: 'relative', width: '160px' }} ref={statusRef}>
-          <div
-            className="input flex items-center justify-between"
-            style={{ cursor: 'pointer' }}
-            onClick={() => setIsStatusOpen(!isStatusOpen)}
-          >
-            <span>{statusFilter}</span>
-            <ChevronDown
-              size={16}
-              className="text-muted"
-              style={{ transform: isStatusOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }}
-            />
-          </div>
-          {isStatusOpen && (
-            <div className="custom-dropdown-menu">
-              {HISTORY_STATUS_FILTERS.map(s => (
-                <div
-                  key={s}
-                  className="custom-dropdown-item"
-                  onClick={() => {
-                    setStatusFilter(s);
-                    setIsStatusOpen(false);
-                  }}
-                >
-                  {s}
-                </div>
-              ))}
+      {/* Single-Row Toolbar */}
+      <PageToolbar
+        title="Trip History"
+        tooltip="Completed trips archive with customer, route, and billing audit trail"
+        filters={
+          <>
+            {/* Search */}
+            <div style={{ position: 'relative', width: '220px' }}>
+              <Search size={14} className="text-muted" style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="Search trip, customer, route..."
+                className="input"
+                style={{ width: '100%', paddingLeft: '2.2rem', height: '34px', fontSize: '0.82rem' }}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* History Table (Matches Vehicles.jsx: card overflow:hidden, standard table-container) */}
+            {/* Billing-status Filter Dropdown */}
+            <div style={{ position: 'relative', width: '140px' }} ref={statusRef}>
+              <div
+                className="input flex items-center justify-between"
+                style={{ cursor: 'pointer', height: '34px', fontSize: '0.82rem', padding: '0 0.65rem' }}
+                onClick={() => setIsStatusOpen(!isStatusOpen)}
+              >
+                <span className="truncate">{statusFilter}</span>
+                <ChevronDown
+                  size={14}
+                  className="text-muted"
+                  style={{ transform: isStatusOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }}
+                />
+              </div>
+              {isStatusOpen && (
+                <div className="custom-dropdown-menu">
+                  {HISTORY_STATUS_FILTERS.map(s => (
+                    <div
+                      key={s}
+                      className="custom-dropdown-item"
+                      onClick={() => {
+                        setStatusFilter(s);
+                        setIsStatusOpen(false);
+                      }}
+                    >
+                      {s}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.85rem' }}
+              onClick={() => navigate('/trips')}
+              title="Return to Live Dispatcher"
+            >
+              <ArrowLeft size={14} />
+              <span>Live Dispatcher</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.85rem' }}
+              onClick={() => load(false)}
+              title="Refresh trip history"
+            >
+              <RefreshCw size={14} className={loading ? 'spin-icon' : ''} />
+              <span>Refresh</span>
+            </button>
+          </>
+        }
+      />
+
+      {/* Slim 40px Stat Strip */}
+      <StatStrip items={statItems} />
+
+      {/* History Table (Dense layout) */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
-          <table>
-            <thead style={{ backgroundColor: '#fafafa' }}>
-              <tr>
-                <th style={{ paddingLeft: '1.5rem' }}>Trip</th>
-                <th>Customer</th>
-                <th>Route</th>
-                <th>Vehicle</th>
-                <th>Driver</th>
-                <th>Date</th>
-                <th style={{ textAlign: 'right', paddingRight: '1.5rem' }}>Fare</th>
-                <th style={{ textAlign: 'center' }}>Billing</th>
+        <div className="table-container" style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 5, backgroundColor: '#fafafa' }}>
+              <tr style={{ height: '38px' }}>
+                <th style={{ paddingLeft: '1.5rem', padding: '0.5rem 1.5rem' }}>Trip</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Customer</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Route</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Vehicle</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Driver</th>
+                <th style={{ padding: '0.5rem 0.75rem' }}>Date</th>
+                <th style={{ textAlign: 'right', paddingRight: '1.5rem', padding: '0.5rem 1.5rem' }}>Fare</th>
+                <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem' }}>Billing</th>
               </tr>
             </thead>
             <tbody>
@@ -220,6 +253,19 @@ export default function TripHistory() {
                 ))
               )}
             </tbody>
+            {filteredTrips.length > 0 && (
+              <tfoot style={{ position: 'sticky', bottom: 0, backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                <tr style={{ height: '36px' }}>
+                  <td colSpan="6" style={{ padding: '0.4rem 1.5rem', fontSize: '0.78rem', color: '#64748b' }}>
+                    Showing {filteredTrips.length} of {trips.length} completed trips
+                  </td>
+                  <td style={{ textAlign: 'right', paddingRight: '1.5rem', padding: '0.4rem 1.5rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--plum-1, #3F1A32)' }}>
+                    {fmtMoney(filteredTrips.reduce((sum, t) => sum + (parseFloat(t.revenue || t.fare_amount || 0) || 0), 0))}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

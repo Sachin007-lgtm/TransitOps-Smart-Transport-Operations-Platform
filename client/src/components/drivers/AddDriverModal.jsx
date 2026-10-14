@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import {
   validateIndianLicenseNumber,
   formatIndianLicenseNumber,
   isLicenseExpired,
   INDIAN_LICENSE_CATEGORIES
 } from './driverConstants';
+import SideDrawer from '../common/SideDrawer';
 
 export default function AddDriverModal({ isOpen, onClose, onSubmit, existingDrivers = [] }) {
   const [formData, setFormData] = useState({
@@ -69,126 +69,120 @@ export default function AddDriverModal({ isOpen, onClose, onSubmit, existingDriv
     });
   };
 
-  return createPortal(
-    <div
-      className="modal-overlay"
-      style={{ backgroundColor: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(5px)' }}
-      onMouseDown={onClose}
+  return (
+    <SideDrawer
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Register New Driver"
+      subtitle="Register a licensed driver into your organization's fleet roster."
+      width="460px"
     >
-      <div className="modal-content" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="mb-4">
-          <h2 className="heading text-xl">Add Driver</h2>
-          <p className="text-xs text-muted mt-1">Register a new driver into your organization's fleet roster.</p>
+      <form onSubmit={handleSubmit}>
+        <div className="flex flex-col gap-3">
+          {/* Full Name */}
+          <div className="input-group">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+              Full name <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="input w-full"
+              required
+              placeholder="Enter full name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
+
+          {/* License Number */}
+          <div className="input-group">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+              License number <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="input mono text-sm w-full"
+              required
+              placeholder="e.g. MH-02-2020-0001234"
+              value={formData.license}
+              onChange={(e) => setFormData({ ...formData, license: e.target.value.toUpperCase() })}
+            />
+            <span className="text-muted text-xs mt-1">
+              Format: SS-RR-YYYY-NNNNNNN (15 alphanumeric characters)
+            </span>
+          </div>
+
+          {/* License Category */}
+          <div className="input-group">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+              License category <span className="text-muted text-xs font-normal">(Optional, default: LMV-TR)</span>
+            </label>
+            <select
+              className="select w-full"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            >
+              {INDIAN_LICENSE_CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* License Expiry Date */}
+          <div className="input-group">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+              License expiry date <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="date"
+              className="input w-full"
+              required
+              value={formData.expiry}
+              onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
+            />
+          </div>
+
+          {/* Contact Number */}
+          <div className="input-group">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+              Contact number <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="input mono text-sm w-full"
+              required
+              placeholder="10-digit mobile number"
+              value={formData.contact}
+              onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
+            />
+          </div>
+
+          {/* Initial Status */}
+          <div className="input-group">
+            <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Initial status</label>
+            <select
+              className="select w-full"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+            >
+              <option value="Available">Available</option>
+              <option value="Off Duty">Off Duty</option>
+              <option value="Suspended">Suspended</option>
+            </select>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-3">
-            {/* Full Name */}
-            <div className="input-group">
-              <label>
-                Full name <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                className="input w-full"
-                required
-                placeholder="Enter full name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-
-            {/* License Number */}
-            <div className="input-group">
-              <label>
-                License number <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                className="input mono text-sm w-full"
-                required
-                placeholder="e.g. MH-02-2020-0001234"
-                value={formData.license}
-                onChange={(e) => setFormData({ ...formData, license: e.target.value.toUpperCase() })}
-              />
-              <span className="text-muted text-xs mt-1">
-                Format: SS-RR-YYYY-NNNNNNN (15 alphanumeric characters)
-              </span>
-            </div>
-
-            {/* License Category (Optional, defaults to LMV-TR) */}
-            <div className="input-group">
-              <label>
-                License category <span className="text-muted text-xs font-normal">(Optional, default: LMV-TR)</span>
-              </label>
-              <select
-                className="select w-full"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              >
-                {INDIAN_LICENSE_CATEGORIES.map((cat) => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* License Expiry Date */}
-            <div className="input-group">
-              <label>
-                License expiry date <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="date"
-                className="input w-full"
-                required
-                value={formData.expiry}
-                onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
-              />
-            </div>
-
-            {/* Contact Number */}
-            <div className="input-group">
-              <label>
-                Contact number <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                className="input mono text-sm w-full"
-                required
-                placeholder="10-digit mobile number"
-                value={formData.contact}
-                onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-              />
-            </div>
-
-            {/* Initial Status */}
-            <div className="input-group">
-              <label>Initial status</label>
-              <select
-                className="select w-full"
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              >
-                <option value="Available">Available</option>
-                <option value="Off Duty">Off Duty</option>
-                <option value="Suspended">Suspended</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="sticky bottom-0 bg-[var(--bg-card)] flex justify-end gap-3 mt-6 pt-4 pb-1 border-t border-[var(--border-color)] z-10">
-            <button type="button" className="btn btn-outline" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary">
-              Register driver
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body
+        <div className="flex justify-end gap-3 mt-6 pt-4" style={{ borderTop: '1px solid #f1f5f9' }}>
+          <button type="button" className="btn btn-outline" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-plum-glow">
+            Register Driver
+          </button>
+        </div>
+      </form>
+    </SideDrawer>
   );
 }

@@ -15,6 +15,9 @@ import { tripCode } from '../utils/tripCode';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { apiRequest } from '../utils/api';
+import PageToolbar from '../components/common/PageToolbar';
+import StatStrip from '../components/common/StatStrip';
+import '../components/common/common.css';
 import './TripDispatcher.css';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
@@ -1270,72 +1273,105 @@ export default function TripDispatcher() {
     }
   };
 
-  return (
-    <div className="trip-dispatcher-container fade-in">
+  // Stat strip calculations
+  const inTransitCount = trips.filter(t => t.status === 'Dispatched' || t.status === 'In Transit').length;
+  const pendingCount = trips.filter(t => t.status === 'Assigned' || t.status === 'Pending').length;
+  const plannedCount = trips.filter(t => t.status === 'Planned' || t.status === 'Draft').length;
+  const cancelledCount = trips.filter(t => t.status === 'Cancelled').length;
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          LEFT PANEL — TRACKING LIST
-          ══════════════════════════════════════════════════════════════════════ */}
-      <aside className="td-left-panel">
-        <div className="tl-header">
-          <div className="tl-toolbar">
-            <button className="tl-history-btn" onClick={() => navigate('/trip-history')} title="Open Trip History">
+  const statItems = [
+    { label: 'Active In Transit', value: inTransitCount },
+    { label: 'Pending Dispatch', value: pendingCount },
+    { label: 'Draft / Planned', value: plannedCount },
+    { label: 'Total Active', value: trips.length },
+    { label: 'Cancelled', value: cancelledCount }
+  ];
+
+  return (
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 82px)', overflow: 'hidden' }}>
+      {/* Top Single-Row Toolbar */}
+      <PageToolbar
+        title="Trips Dispatcher"
+        tooltip="Real-time dispatch control tower, live GPS tracking, and route telemetry"
+        filters={
+          <span className="tl-live-badge" style={{ margin: 0 }}>
+            <span className="pulse-dot" />
+            LIVE · {lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'syncing…'}
+          </span>
+        }
+        actions={
+          <>
+            <button 
+              className="tl-history-btn" 
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.85rem' }} 
+              onClick={() => navigate('/trip-history')} 
+              title="Open Trip History"
+            >
               <History size={14} />
               <span>Trip History</span>
               <ArrowRight size={13} className="tl-history-arrow" />
             </button>
-            <div className="tl-toolbar-right">
-              <button
-                className={`tl-sync-btn ${isRefreshing ? 'syncing' : ''}`}
-                onClick={() => loadData(true)}
-                disabled={isRefreshing}
-                title="Sync trips now"
-              >
-                <RefreshCw size={13} className={isRefreshing ? 'spin-icon' : ''} />
-                <span>{isRefreshing ? 'Syncing…' : 'Sync'}</span>
-              </button>
-              <button className="tl-new-btn" onClick={() => setDrawerOpen(true)} title="Create New Trip">
-                <Plus size={16} />
-                <span>New</span>
-              </button>
+            <button
+              className={`tl-sync-btn ${isRefreshing ? 'syncing' : ''}`}
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.85rem' }}
+              onClick={() => loadData(true)}
+              disabled={isRefreshing}
+              title="Sync trips now"
+            >
+              <RefreshCw size={13} className={isRefreshing ? 'spin-icon' : ''} />
+              <span>{isRefreshing ? 'Syncing…' : 'Sync'}</span>
+            </button>
+            <button 
+              className="btn btn-plum-glow" 
+              style={{ height: '34px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '5px' }} 
+              onClick={() => setDrawerOpen(true)} 
+              title="Create New Trip"
+            >
+              <Plus size={15} />
+              <span>New trip</span>
+            </button>
+          </>
+        }
+      />
+
+      {/* Slim 40px Stat Strip */}
+      <StatStrip items={statItems} />
+
+      <div className="trip-dispatcher-container" style={{ flex: 1, minHeight: 0, padding: 0 }}>
+
+        {/* ══════════════════════════════════════════════════════════════════════
+            LEFT PANEL — TRACKING LIST
+            ══════════════════════════════════════════════════════════════════════ */}
+        <aside className="td-left-panel">
+          <div className="tl-header" style={{ gap: '10px', paddingBottom: '10px' }}>
+            <div className="tl-search-wrap">
+              <Search size={14} className="tl-search-icon" />
+              <input
+                type="text"
+                className="tl-search-input"
+                placeholder="Search trip ID, origin, destination..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button className="tl-search-clear" onClick={() => setSearchQuery('')}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            <div className="tl-filter-tabs">
+              {STATUS_FILTERS.map(f => (
+                <button
+                  key={f}
+                  className={`tl-tab ${statusFilter === f ? 'active' : ''}`}
+                  onClick={() => setStatusFilter(f)}
+                >
+                  {f}
+                </button>
+              ))}
             </div>
           </div>
-          <div className="tl-title-row">
-            <h2 className="tl-title">Tracking list</h2>
-            <span className="tl-live-badge">
-              <span className="pulse-dot" />
-              LIVE · {lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'syncing…'}
-            </span>
-          </div>
-
-          <div className="tl-search-wrap">
-            <Search size={14} className="tl-search-icon" />
-            <input
-              type="text"
-              className="tl-search-input"
-              placeholder="Search trip ID, origin, destination..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button className="tl-search-clear" onClick={() => setSearchQuery('')}>
-                <X size={12} />
-              </button>
-            )}
-          </div>
-
-          <div className="tl-filter-tabs">
-            {STATUS_FILTERS.map(f => (
-              <button
-                key={f}
-                className={`tl-tab ${statusFilter === f ? 'active' : ''}`}
-                onClick={() => setStatusFilter(f)}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
 
         <div className="tl-cards-scroll">
           {isLoading ? (
@@ -1708,6 +1744,7 @@ export default function TripDispatcher() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -139,40 +139,160 @@
   color: var(--text-muted);
 }
 
-.stat-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 0.75rem;
-  margin: 1rem 0;
+/* --- Billing Left Rail & Layout --------------------------------------- */
+
+.billing-layout-container {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+  width: 100%;
 }
 
-.stat {
+.billing-rail {
+  width: 260px;
+  min-width: 260px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+}
+
+.billing-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.5rem 0.5rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--sub);
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.4rem;
+}
+
+.billing-rail-list {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid var(--border-color);
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+  padding-right: 2px;
+}
+
+.billing-rail-list::-webkit-scrollbar {
+  width: 4px;
+}
+.billing-rail-list::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+.rail-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: var(--bg-app);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.stat.highlight {
-  border-color: var(--accent-primary);
-  background: var(--amber-bg);
+.rail-item:hover {
+  background: var(--bg);
+  border-color: var(--line);
 }
 
-.stat-label {
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
+.rail-item.active {
+  background: #fdf5ec;
+  border-color: var(--amber);
 }
 
-.stat-value {
-  font-family: var(--font-mono);
-  font-size: 0.9375rem;
+.rail-item-name {
+  font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-item-sub {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--sub);
+}
+
+.rail-item-sub .rail-due {
+  color: var(--red);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.billing-main-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+/* Unbilled Trips Alert Strip */
+.unbilled-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  background: #fff8ee;
+  border: 1px solid #f6d8ae;
+  font-size: 0.8125rem;
+  box-shadow: 0 1px 3px rgba(224, 138, 30, 0.08);
+  animation: fadeIn 0.15s ease;
+}
+
+.unbilled-strip-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #8c5300;
+  font-weight: 500;
+}
+
+.unbilled-strip-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.unbilled-strip-btn {
+  background: var(--amber);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background 0.15s ease;
+}
+
+.unbilled-strip-btn:hover {
+  background: #c97514;
 }
 
 .waiting-note {

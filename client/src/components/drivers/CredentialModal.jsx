@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { KeyRound, AlertTriangle, Copy } from 'lucide-react';
+import { KeyRound, AlertTriangle, Copy, CheckCircle2, Zap } from 'lucide-react';
+
+const N8N_CONFIGURED = !!import.meta.env.VITE_N8N_DRIVER_WEBHOOK;
 
 export default function CredentialModal({ credential, onClose }) {
   const [copied, setCopied] = useState(false);
@@ -44,27 +46,46 @@ export default function CredentialModal({ credential, onClose }) {
             <KeyRound size={22} />
           </div>
           <div>
-            <h2 className="heading text-lg font-bold">Temporary Driver Password</h2>
-            <p className="text-xs text-muted">Single-use initial credential</p>
+            <h2 className="heading text-lg font-bold">Driver Login Credentials</h2>
+            <p className="text-xs text-muted">Single-use initial credential for mobile app</p>
           </div>
         </div>
 
-        <div
-          style={{
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.25)',
+        {/* n8n automated delivery badge */}
+        {N8N_CONFIGURED ? (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.09)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
             borderRadius: '10px',
-            padding: '0.75rem 1rem',
-            marginBottom: '1.25rem'
-          }}
-        >
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={16} style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }} />
-            <p style={{ fontSize: '0.8125rem', color: '#b91c1c', margin: 0, lineHeight: 1.4 }}>
-              This credential will only be shown <strong>once</strong>. Copy and share it securely with the driver now.
+            padding: '0.65rem 1rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            <Zap size={15} style={{ color: '#059669', flexShrink: 0 }} />
+            <p style={{ fontSize: '0.8rem', color: '#065f46', margin: 0, lineHeight: 1.4 }}>
+              <strong>Auto-sent via n8n</strong> — credentials are being delivered to {credential.contactNumber} automatically.
             </p>
           </div>
-        </div>
+        ) : (
+          <div
+            style={{
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: '10px',
+              padding: '0.75rem 1rem',
+              marginBottom: '1.25rem'
+            }}
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }} />
+              <p style={{ fontSize: '0.8125rem', color: '#b91c1c', margin: 0, lineHeight: 1.4 }}>
+                This credential will only be shown <strong>once</strong>. Copy and share it securely with the driver now.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
           <div>
@@ -74,7 +95,7 @@ export default function CredentialModal({ credential, onClose }) {
             </p>
           </div>
           <div>
-            <span className="text-xs text-muted">Mobile Login Identifier</span>
+            <span className="text-xs text-muted">Mobile Login Identifier (Phone Number)</span>
             <p className="mono font-semibold text-sm" style={{ margin: '2px 0 0' }}>
               {credential.contactNumber}
             </p>
@@ -94,7 +115,7 @@ export default function CredentialModal({ credential, onClose }) {
                 className="btn btn-outline flex items-center gap-1.5"
                 onClick={handleCopyPassword}
               >
-                <Copy size={14} />
+                {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                 {copied ? 'Copied!' : 'Copy'}
               </button>
             </div>
@@ -103,7 +124,7 @@ export default function CredentialModal({ credential, onClose }) {
 
         <div className="flex justify-end pt-3" style={{ borderTop: '1px solid var(--line)' }}>
           <button type="button" className="btn btn-primary w-full" onClick={onClose}>
-            I have securely shared this credential
+            {N8N_CONFIGURED ? 'Done' : 'I have securely shared this credential'}
           </button>
         </div>
       </div>

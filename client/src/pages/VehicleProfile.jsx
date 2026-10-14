@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileText, Download, RefreshCw, Truck, Gauge, Activity, MapPin, CheckCircle, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import './VehicleProfile.css';
 import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
+
+function VehicleInfoCard({ icon: Icon, label, value, mono = false }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.9rem 1rem', background: '#fafaf9', borderRadius: '10px', border: '1px solid #f0ede8' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--sub)', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        {Icon && <Icon size={12} />} {label}
+      </div>
+      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', fontFamily: mono ? 'var(--font-mono)' : 'inherit' }}>
+        {value || '—'}
+      </div>
+    </div>
+  );
+}
 
 const REQUIRED_DOCS = [
   { type: 'Insurance', iconColor: '#1F9254' },
@@ -20,7 +33,7 @@ export default function VehicleProfile() {
   const [documents, setDocuments] = useState([]);
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('documents');
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Form states for Upload Document
   const [uploadingDoc, setUploadingDoc] = useState(null);
@@ -152,6 +165,11 @@ export default function VehicleProfile() {
   const progressPercent = (uploadedCount / REQUIRED_DOCS.length) * 100;
   const isOnTrip = vehicle.status === 'On Trip' || vehicle.status === 'On trip';
 
+  // Vehicle status color
+  const statusColor = vehicle.status === 'Available' ? '#1F9254' : vehicle.status === 'On Trip' || vehicle.status === 'On trip' ? '#2563eb' : vehicle.status === 'In Shop' || vehicle.status === 'In shop' ? '#ea580c' : '#736D7D';
+  const statusBg = vehicle.status === 'Available' ? '#DFF5E6' : vehicle.status === 'On Trip' || vehicle.status === 'On trip' ? '#DBEAFE' : vehicle.status === 'In Shop' || vehicle.status === 'In shop' ? '#FFEDD5' : '#F0EEF3';
+  const completedTrips = trips.filter(t => t.status === 'Completed').length;
+
   return (
     <div className="vp-container">
       <div className="vp-back-link">
@@ -175,22 +193,28 @@ export default function VehicleProfile() {
 
       <div className="vp-tabs">
         <button 
+          className={`vp-tab ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button 
           className={`vp-tab ${activeTab === 'details' ? 'active' : ''}`}
           onClick={() => setActiveTab('details')}
         >
-          Details
+          Edit Details
         </button>
         <button 
           className={`vp-tab ${activeTab === 'documents' ? 'active' : ''}`}
           onClick={() => setActiveTab('documents')}
         >
-          Documents and compliance
+          Documents & Compliance
         </button>
         <button 
           className={`vp-tab ${activeTab === 'trips' ? 'active' : ''}`}
           onClick={() => setActiveTab('trips')}
         >
-          Trip history
+          Trip History
         </button>
         <button 
           className={`vp-tab ${activeTab === 'maintenance' ? 'active' : ''}`}
@@ -202,11 +226,166 @@ export default function VehicleProfile() {
           className={`vp-tab ${activeTab === 'fuel' ? 'active' : ''}`}
           onClick={() => setActiveTab('fuel')}
         >
-          Fuel and cost
+          Fuel & Cost
         </button>
       </div>
 
       <div className="vp-content">
+        {/* ── OVERVIEW TAB (read-only, rich view) ── */}
+        {activeTab === 'overview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {/* Vehicle Identity Card */}
+            <div className="vp-card" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+              {/* Vehicle icon */}
+              <div style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '16px',
+                background: statusBg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                border: `2px solid ${statusColor}33`
+              }}>
+                <Truck size={36} style={{ color: statusColor }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.35rem', fontFamily: 'var(--font-mono)' }}>
+                  {vehicle.number_plate || vehicle.registration_number}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span className={`vp-status-pill ${vehicle.status === 'Available' ? 'available' : 'other'}`}>{vehicle.status || 'Available'}</span>
+                  {vehicle.type && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#F0EEF3', color: '#736D7D' }}>
+                      {vehicle.type}
+                    </span>
+                  )}
+                  {vehicle.size && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#EEF2FF', color: '#4F46E5' }}>
+                      {vehicle.size}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Stats */}
+              <div style={{ display: 'flex', gap: '1.5rem', flexShrink: 0 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{vehicle.trips_completed ?? 0}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Trips Done</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{uploadedCount}/{REQUIRED_DOCS.length}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Docs</div>
+                </div>
+              </div>
+            </div>
+
+            {/* In Shop alert */}
+            {(vehicle.status === 'In Shop' || vehicle.status === 'In shop') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: '#FFEDD5', borderRadius: '10px', border: '1px solid #fed7aa' }}>
+                <AlertCircle size={20} style={{ color: '#ea580c', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#ea580c', fontSize: '0.9rem' }}>Vehicle In Maintenance</div>
+                  <div style={{ fontSize: '0.75rem', color: '#9a3412' }}>This vehicle is currently offline in service. Not available for dispatch.</div>
+                </div>
+              </div>
+            )}
+
+            {/* Doc compliance alert */}
+            {uploadedCount < REQUIRED_DOCS.length && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: '#FEF3C7', borderRadius: '10px', border: '1px solid #fcd34d' }}>
+                <AlertCircle size={20} style={{ color: '#92400E', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.9rem' }}>Compliance Incomplete</div>
+                  <div style={{ fontSize: '0.75rem', color: '#78350f' }}>{REQUIRED_DOCS.length - uploadedCount} document(s) missing — go to Documents tab to upload.</div>
+                </div>
+              </div>
+            )}
+
+            {/* Details Grid */}
+            <div className="vp-card">
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '1rem' }}>Vehicle Information</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                <VehicleInfoCard icon={Truck} label="Vehicle Type" value={vehicle.type} />
+                <VehicleInfoCard icon={Activity} label="Size / Category" value={vehicle.size || vehicle.sub_category} />
+                <VehicleInfoCard icon={Gauge} label="Distance Covered" value={vehicle.distance_covered ? `${Number(vehicle.distance_covered).toLocaleString('en-IN')} km` : '0 km'} mono />
+                <VehicleInfoCard icon={CheckCircle} label="Status" value={vehicle.status || 'Available'} />
+              </div>
+            </div>
+
+            {/* Document compliance */}
+            <div className="vp-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Document Compliance</h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--sub)', fontWeight: 500 }}>{uploadedCount} / {REQUIRED_DOCS.length}</span>
+              </div>
+              <div className="vp-progress-bar" style={{ marginBottom: '0.75rem' }}>
+                <div className="vp-progress-fill" style={{ width: `${progressPercent}%`, background: uploadedCount === REQUIRED_DOCS.length ? '#1F9254' : '#ea580c' }}></div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {combinedDocs.map(doc => {
+                  const ex = doc.existing;
+                  const status = !ex ? 'missing' : ex.status === 'Expired' ? 'expired' : 'valid';
+                  return (
+                    <span key={doc.type} className={`vp-pill ${status}`}>
+                      {doc.type} · {status.toUpperCase()}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Recent Trips Preview */}
+            {trips.length > 0 && (
+              <div className="vp-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Recent Trips</h3>
+                  <button
+                    onClick={() => setActiveTab('trips')}
+                    style={{ fontSize: '0.78rem', fontWeight: 600, color: '#3F1A32', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    View all
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {trips.slice(0, 4).map(t => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', borderRadius: '8px', background: '#fafaf9', border: '1px solid #f0ede8' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem' }}>
+                        <MapPin size={12} style={{ color: 'var(--sub)' }} />
+                        <span style={{ color: 'var(--text)', fontWeight: 500 }}>{t.origin_name || t.origin}</span>
+                        <span style={{ color: 'var(--sub)' }}>→</span>
+                        <span style={{ color: 'var(--text)', fontWeight: 500 }}>{t.destination_name || t.destination}</span>
+                      </div>
+                      <span className={`vp-status-pill ${t.status === 'Completed' ? 'available' : 'other'}`} style={{ fontSize: '0.65rem' }}>
+                        {t.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setActiveTab('details')}
+                style={{ fontSize: '0.84rem' }}
+              >
+                Edit Vehicle Details
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => setActiveTab('documents')}
+                style={{ fontSize: '0.84rem' }}
+              >
+                Manage Documents
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'details' && (
           <div className="vp-card">
             <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text)' }}>Vehicle Details</h3>
@@ -507,7 +686,7 @@ export default function VehicleProfile() {
           </div>
         )}
 
-        {activeTab !== 'details' && activeTab !== 'documents' && activeTab !== 'trips' && (
+        {activeTab !== 'overview' && activeTab !== 'details' && activeTab !== 'documents' && activeTab !== 'trips' && (
           <div className="vp-card vp-empty-state">
             <p>This section is under construction.</p>
           </div>
