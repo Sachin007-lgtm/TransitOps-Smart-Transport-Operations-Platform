@@ -697,20 +697,6 @@ export default function Vehicles() {
                 ))
               )}
             </tbody>
-            {/* Sticky Table Footer Summary */}
-            {filteredVehicles.length > 0 && (
-              <tfoot style={{ position: 'sticky', bottom: 0, backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-                <tr style={{ height: '36px' }}>
-                  <td colSpan="4" style={{ padding: '0.4rem 1rem', fontSize: '0.78rem', color: '#64748b' }}>
-                    Showing {filteredVehicles.length} of {vehicles.length} vehicles
-                  </td>
-                  <td style={{ textAlign: 'right', padding: '0.4rem 1rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--plum-1, #3F1A32)' }}>
-                    Total: {filteredVehicles.reduce((s, v) => s + (Number(v.distance_covered) || 0), 0).toLocaleString()} km
-                  </td>
-                  <td colSpan="2"></td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </div>

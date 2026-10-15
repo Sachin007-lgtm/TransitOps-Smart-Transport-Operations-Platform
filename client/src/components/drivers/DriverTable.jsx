@@ -238,32 +238,10 @@ export default function DriverTable({
                 })
               )}
             </tbody>
-            {drivers.length > 0 && (
-              <tfoot style={{ position: 'sticky', bottom: 0, backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-                <tr style={{ height: '36px' }}>
-                  <td colSpan="4" style={{ padding: '0.4rem 1.5rem', fontSize: '0.78rem', color: '#64748b' }}>
-                    Showing {drivers.length} drivers
-                  </td>
-                  <td style={{ textAlign: 'center', padding: '0.4rem 0.75rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--plum-1, #3F1A32)' }}>
-                    {drivers.reduce((acc, d) => acc + (d.trips_count || d.trips_completed || 0), 0)} trips
-                  </td>
-                  <td colSpan="3"></td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </div>
 
-      {/* Rules (Matching Vehicles page standard layout) */}
-      <div className="mt-4 flex items-center gap-6">
-        <div className="text-xs text-status-red font-medium flex items-center gap-1">
-          <Info size={14} /> License numbers must follow 15-character Indian format: SS-RR-YYYY-NNNNNNN
-        </div>
-        <div className="text-xs text-muted font-medium flex items-center gap-1">
-          <Info size={14} /> Drivers marked On Trip 🔒 are dispatched and locked automatically
-        </div>
-      </div>
     </>
   );
 }

@@ -242,37 +242,6 @@ export default function DriverProfile() {
         </Link>
       </div>
 
-      <div className="vp-header">
-        <div className="vp-header-main">
-          <h1>{driver.name}</h1>
-          <span className={`vp-status-pill ${driver.status === 'Available' ? 'available' : 'other'}`}>
-            {driver.status || 'Available'}
-          </span>
-          {/* License expiry countdown badge */}
-          {(() => {
-            if (!driver.license_expiry_date) return null;
-            if (daysLeft < 0) return (
-              <span className="vp-status-pill" style={{ background: '#FBE4E2', color: '#C4453D' }}>
-                License Expired
-              </span>
-            );
-            if (daysLeft <= 30) return (
-              <span className="vp-status-pill" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                License expires in {daysLeft}d
-              </span>
-            );
-            return (
-              <span className="vp-status-pill" style={{ background: '#DFF5E6', color: '#1F9254', fontSize: '0.65rem' }}>
-                DL valid · {daysLeft}d left
-              </span>
-            );
-          })()}
-        </div>
-        <div className="vp-subtitle">
-          {driver.contact_number || driver.phone || 'No contact'} · {driver.license_number ? `DL: ${driver.license_number}` : 'No DL Provided'} · {driver.trips_count ?? driver.trips_completed ?? 0} Trips
-        </div>
-      </div>
-
       <div className="vp-tabs">
         <button 
           className={`vp-tab ${activeTab === 'overview' ? 'active' : ''}`}

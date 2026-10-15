@@ -16,7 +16,6 @@ import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { apiRequest } from '../utils/api';
 import PageToolbar from '../components/common/PageToolbar';
-import StatStrip from '../components/common/StatStrip';
 import '../components/common/common.css';
 import './TripDispatcher.css';
 
@@ -388,6 +387,20 @@ export default function TripDispatcher() {
   // View split: completed trips leave the tracking list and live in Trip
   // History, so the tracking list only ever shows work in progress.
   const [selectedTripId, setSelectedTripId] = useState(null);
+  const [expandedTripIds, setExpandedTripIds] = useState(new Set());
+
+  const toggleTripExpanded = (id, e) => {
+    if (e) e.stopPropagation();
+    setExpandedTripIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
   const [selectedTripLocation, setSelectedTripLocation] = useState(null);
   const [selectedTripHistory, setSelectedTripHistory] = useState([]);
   const [activeLocations, setActiveLocations] = useState({});
@@ -1273,31 +1286,34 @@ export default function TripDispatcher() {
     }
   };
 
-  // Stat strip calculations
-  const inTransitCount = trips.filter(t => t.status === 'Dispatched' || t.status === 'In Transit').length;
-  const pendingCount = trips.filter(t => t.status === 'Assigned' || t.status === 'Pending').length;
-  const plannedCount = trips.filter(t => t.status === 'Planned' || t.status === 'Draft').length;
-  const cancelledCount = trips.filter(t => t.status === 'Cancelled').length;
-
-  const statItems = [
-    { label: 'Active In Transit', value: inTransitCount },
-    { label: 'Pending Dispatch', value: pendingCount },
-    { label: 'Draft / Planned', value: plannedCount },
-    { label: 'Total Active', value: trips.length },
-    { label: 'Cancelled', value: cancelledCount }
-  ];
-
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 82px)', overflow: 'hidden' }}>
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 128px)', maxHeight: 'calc(100vh - 128px)', overflow: 'hidden' }}>
       {/* Top Single-Row Toolbar */}
       <PageToolbar
         title="Trips Dispatcher"
         tooltip="Real-time dispatch control tower, live GPS tracking, and route telemetry"
         filters={
-          <span className="tl-live-badge" style={{ margin: 0 }}>
-            <span className="pulse-dot" />
-            LIVE · {lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'syncing…'}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="tl-live-badge" style={{ margin: 0 }}>
+              <span className="pulse-dot" />
+              LIVE · {lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'syncing…'}
+            </span>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '3px 10px',
+              borderRadius: '20px',
+              backgroundColor: '#f1f5f9',
+              border: '1px solid #e2e8f0',
+              fontSize: '0.76rem',
+              fontWeight: 600,
+              color: '#334155'
+            }}>
+              <Route size={12} style={{ color: 'var(--plum-1, #3F1A32)' }} />
+              {trips.length} Total Trips
+            </span>
+          </div>
         }
         actions={
           <>
@@ -1333,9 +1349,6 @@ export default function TripDispatcher() {
           </>
         }
       />
-
-      {/* Slim 40px Stat Strip */}
-      <StatStrip items={statItems} />
 
       <div className="trip-dispatcher-container" style={{ flex: 1, minHeight: 0, padding: 0 }}>
 
@@ -1387,6 +1400,7 @@ export default function TripDispatcher() {
           ) : (
             filteredTrips.map(t => {
               const isSelected = selectedTrip && selectedTrip.id === t.id;
+              const isExpanded = expandedTripIds.has(t.id);
 
               const progressPct = tripProgressPct(t, activeLocations[String(t.id)], tripCoords[`${t.origin}|${t.destination}`] || null);
               const barPct = progressPct ?? 0;
@@ -1394,122 +1408,179 @@ export default function TripDispatcher() {
               return (
                 <div
                   key={t.id}
-                  className={`tracking-card ${isSelected ? 'selected' : ''}`}
+                  className={`tracking-card ${isExpanded ? 'expanded' : 'compact'} ${isSelected ? 'selected' : ''}`}
                   onClick={() => setSelectedTripId(t.id)}
                 >
-                  <div className="tc-top-row">
-                    <div className="tc-id-wrap">
-                      <span className="tc-code">{tripCode(t.id)}</span>
-                      <span className="tc-hash">{t.external_party_name || t.planned_route}</span>
-                    </div>
-                    <div className="tc-top-right" onClick={e => e.stopPropagation()}>
-                      <StatusTag status={t.status} />
-                      <button className="tc-small-edit" onClick={() => setEditingTrip(t)} title="Edit Trip">
-                        <Edit2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Route Origin Circle Dot & Destination Map Pin */}
-                  <div className="tc-route-row">
-                    <div className="tc-loc">
-                      <div className="tc-loc-item">
-                        <span className="tc-origin-dot" />
-                        <span className="tc-loc-name" title={t.origin}>{t.origin}</span>
-                      </div>
-                    </div>
-                    <div className="tc-route-arrow">
-                      <ArrowRight size={14} />
-                    </div>
-                    <div className="tc-loc align-right">
-                      <div className="tc-loc-item">
-                        <MapPin size={13} className="tc-dest-icon" />
-                        <span className="tc-loc-name" title={t.destination}>{t.destination}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="tc-dates-row">
-                    <span className="tc-date-item"><em>Depart</em>{t.start_time ? new Date(t.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
-                    <span className="tc-date-item"><em>Arrive</em>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
-                  </div>
-
-                  {/* Billing line: who this trip is billed to, the fare, and
-                      whether it has already been put on a bill. */}
-                  {(t.external_party_name || parseFloat(t.revenue) > 0) && (
-                    <div className="tc-billing-row" title="Customer / fare / billing status">
-                      <span className="tc-billing-company">{t.external_party_name || <span className="tc-no-customer">No customer</span>}</span>
-                      <span className="tc-billing-fare">
-                        {parseFloat(t.revenue) > 0 ? `₹${Number(t.revenue).toLocaleString('en-IN')}` : '--'}
-                      </span>
-                      <span className={`tc-billing-tag ${t.billing_status === 'Billed' ? 'billed' : ''}`}>
-                        {t.billing_status === 'Billed' ? 'Billed' : 'Unbilled'}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Lifecycle actions. A trip only becomes billable once it
-                      is Completed, so the path to Completed has to be
-                      reachable from here — these were missing entirely and
-                      trips could never leave 'Assigned'. */}
-                  <div className="tc-actions-row" onClick={e => e.stopPropagation()}>
-                    {(t.status === 'Draft' || t.status === 'Planned') && (
-                      <button
-                        className="tc-act"
-                        onClick={() => setAssignModal({
-                          open: true,
-                          trip: t,
-                          vehicleId: t.vehicle_id || '',
-                          driverId: t.driver_id || ''
-                        })}
-                      >
-                        <Truck size={12} /> Assign vehicle &amp; driver
-                      </button>
-                    )}
-
-                    {t.status === 'Assigned' && (
-                      <button className="tc-act" onClick={() => handleAdvanceStatus(t, 'Dispatched')}>
-                        <Navigation size={12} /> Dispatch
-                      </button>
-                    )}
-
-                    {t.status === 'Dispatched' && (
-                      <>
-                        <div className="tc-checkpoint-status">
-                          <span>Loading <strong>{t.loaded_at ? 'Loaded' : 'Waiting to load'}</strong></span>
-                          {t.loaded_at ? (
-                            <span>Unloading <strong>{t.unloaded_at ? 'Unloaded' : 'Waiting to unload'}</strong></span>
-                          ) : null}
+                  {isExpanded ? (
+                    <>
+                      <div className="tc-top-row">
+                        <div className="tc-id-wrap">
+                          <span className="tc-code">{tripCode(t.id)}</span>
+                          <span className="tc-hash">{t.external_party_name || t.planned_route}</span>
                         </div>
-                        {!t.unloaded_at && (
+                        <div className="tc-top-right" onClick={e => e.stopPropagation()}>
+                          <StatusTag status={t.status} />
+                          <button className="tc-small-edit" onClick={() => setEditingTrip(t)} title="Edit Trip">
+                            <Edit2 size={13} />
+                          </button>
                           <button
-                            className="tc-act tc-act-override"
-                            onClick={() => handleMilestoneOverride(t, t.loaded_at ? 'unloaded' : 'loaded')}
-                            title="Record this without the driver on site. A reason is required and logged."
+                            className="tc-expand-btn"
+                            onClick={(e) => toggleTripExpanded(t.id, e)}
+                            title="Collapse card"
+                            aria-label="Collapse card"
                           >
-                            Override: mark {t.loaded_at ? 'unloaded' : 'loaded'}
+                            <ChevronUp size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Route Origin Circle Dot & Destination Map Pin */}
+                      <div className="tc-route-row">
+                        <div className="tc-loc">
+                          <div className="tc-loc-item">
+                            <span className="tc-origin-dot" />
+                            <span className="tc-loc-name" title={t.origin}>{t.origin}</span>
+                          </div>
+                        </div>
+                        <div className="tc-route-arrow">
+                          <ArrowRight size={14} />
+                        </div>
+                        <div className="tc-loc align-right">
+                          <div className="tc-loc-item">
+                            <MapPin size={13} className="tc-dest-icon" />
+                            <span className="tc-loc-name" title={t.destination}>{t.destination}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="tc-dates-row">
+                        <span className="tc-date-item"><em>Depart</em>{t.start_time ? new Date(t.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
+                        <span className="tc-date-item"><em>Arrive</em>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
+                      </div>
+
+                      {/* Billing line: who this trip is billed to, the fare, and
+                          whether it has already been put on a bill. */}
+                      {(t.external_party_name || parseFloat(t.revenue) > 0) && (
+                        <div className="tc-billing-row" title="Customer / fare / billing status">
+                          <span className="tc-billing-company">{t.external_party_name || <span className="tc-no-customer">No customer</span>}</span>
+                          <span className="tc-billing-fare">
+                            {parseFloat(t.revenue) > 0 ? `₹${Number(t.revenue).toLocaleString('en-IN')}` : '--'}
+                          </span>
+                          <span className={`tc-billing-tag ${t.billing_status === 'Billed' ? 'billed' : ''}`}>
+                            {t.billing_status === 'Billed' ? 'Billed' : 'Unbilled'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Lifecycle actions. A trip only becomes billable once it
+                          is Completed, so the path to Completed has to be
+                          reachable from here — these were missing entirely and
+                          trips could never leave 'Assigned'. */}
+                      <div className="tc-actions-row" onClick={e => e.stopPropagation()}>
+                        {(t.status === 'Draft' || t.status === 'Planned') && (
+                          <button
+                            className="tc-act"
+                            onClick={() => setAssignModal({
+                              open: true,
+                              trip: t,
+                              vehicleId: t.vehicle_id || '',
+                              driverId: t.driver_id || ''
+                            })}
+                          >
+                            <Truck size={12} /> Assign vehicle &amp; driver
                           </button>
                         )}
-                        {t.loaded_at && t.unloaded_at && (
-                          <span className="tc-checkpoint-awaiting">Awaiting driver to end trip in the mobile app</span>
-                        )}
-                      </>
-                    )}
-                  </div>
 
-                  <div className="tc-progress-wrap">
-                    <span className="tc-start-dot" />
-                    <div className="tc-progress-track">
-                      <div className="tc-progress-fill" style={{ width: `${barPct}%` }} />
-                      <div className="tc-truck-node" style={{ left: `${Math.min(barPct, 92)}%` }}>
-                        <Truck size={12} />
+                        {t.status === 'Assigned' && (
+                          <button className="tc-act" onClick={() => handleAdvanceStatus(t, 'Dispatched')}>
+                            <Navigation size={12} /> Dispatch
+                          </button>
+                        )}
+
+                        {t.status === 'Dispatched' && (
+                          <>
+                            <div className="tc-checkpoint-status">
+                              <span>Loading <strong>{t.loaded_at ? 'Loaded' : 'Waiting to load'}</strong></span>
+                              {t.loaded_at ? (
+                                <span>Unloading <strong>{t.unloaded_at ? 'Unloaded' : 'Waiting to unload'}</strong></span>
+                              ) : null}
+                            </div>
+                            {!t.unloaded_at && (
+                              <button
+                                className="tc-act tc-act-override"
+                                onClick={() => handleMilestoneOverride(t, t.loaded_at ? 'unloaded' : 'loaded')}
+                                title="Record this without the driver on site. A reason is required and logged."
+                              >
+                                Override: mark {t.loaded_at ? 'unloaded' : 'loaded'}
+                              </button>
+                            )}
+                            {t.loaded_at && t.unloaded_at && (
+                              <span className="tc-checkpoint-awaiting">Awaiting driver to end trip in the mobile app</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      <div className="tc-progress-wrap">
+                        <span className="tc-start-dot" />
+                        <div className="tc-progress-track">
+                          <div className="tc-progress-fill" style={{ width: `${barPct}%` }} />
+                          <div className="tc-truck-node" style={{ left: `${Math.min(barPct, 92)}%` }}>
+                            <Truck size={12} />
+                          </div>
+                        </div>
+                        <span className="tc-progress-pct" title="Share of the loaded run covered, from live GPS">
+                          {progressPct == null ? '--' : `${progressPct}%`}
+                        </span>
+                        <MapPin size={14} className="tc-pin-icon" />
+                      </div>
+                    </>
+                  ) : (
+                    /* ── COMPACT RECTANGULAR CARD ── */
+                    <div className="tc-compact-card">
+                      <div className="tc-compact-header">
+                        <div className="tc-compact-id-group">
+                          <span className="tc-code">{tripCode(t.id)}</span>
+                          <StatusTag status={t.status} />
+                        </div>
+                        <div className="tc-compact-actions" onClick={e => e.stopPropagation()}>
+                          <button
+                            className="tc-expand-btn"
+                            onClick={(e) => toggleTripExpanded(t.id, e)}
+                            title="Expand trip details"
+                            aria-label="Expand trip"
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="tc-compact-body">
+                        <div className="tc-compact-route" title={`${t.origin} → ${t.destination}`}>
+                          <span className="tc-origin-dot" style={{ width: '7px', height: '7px', flexShrink: 0 }} />
+                          <span className="tc-compact-loc">{t.origin}</span>
+                          <ArrowRight size={11} className="tc-compact-arrow" />
+                          <MapPin size={11} className="tc-dest-icon" />
+                          <span className="tc-compact-loc">{t.destination}</span>
+                        </div>
+                        <div className="tc-compact-sub">
+                          {t.external_party_name && (
+                            <span className="tc-compact-customer">{t.external_party_name}</span>
+                          )}
+                          {parseFloat(t.revenue) > 0 && (
+                            <span className="tc-compact-fare">
+                              {t.external_party_name ? ' · ' : ''}₹{Number(t.revenue).toLocaleString('en-IN')}
+                            </span>
+                          )}
+                          {t.billing_status && (
+                            <span className={`tc-billing-tag-mini ${t.billing_status === 'Billed' ? 'billed' : ''}`}>
+                              {t.billing_status}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <span className="tc-progress-pct" title="Share of the loaded run covered, from live GPS">
-                      {progressPct == null ? '--' : `${progressPct}%`}
-                    </span>
-                    <MapPin size={14} className="tc-pin-icon" />
-                  </div>
+                  )}
                 </div>
               );
             })

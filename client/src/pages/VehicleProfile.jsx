@@ -179,18 +179,6 @@ export default function VehicleProfile() {
         </Link>
       </div>
 
-      <div className="vp-header">
-        <div className="vp-header-main">
-          <h1>{vehicle.number_plate || vehicle.registration_number}</h1>
-          <span className={`vp-status-pill ${vehicle.status === 'Available' ? 'available' : 'other'}`}>
-            {vehicle.status || 'Available'}
-          </span>
-        </div>
-        <div className="vp-subtitle">
-          {vehicle.type || 'Van'} · {vehicle.size || 'Medium'} · {vehicle.distance_covered || 0} km
-        </div>
-      </div>
-
       <div className="vp-tabs">
         <button 
           className={`vp-tab ${activeTab === 'overview' ? 'active' : ''}`}
