@@ -6,34 +6,63 @@ const { authLimiter, apiLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
 
-// CORS: an allowlist, not `*`. The API answers with Authorization headers
-// carrying JWTs, so reflecting any origin would let any site read
-// authenticated responses (the video checklist's "overly permissive CORS").
-// The dev origins cover the Vite dev servers; set CORS_ORIGIN in production.
+// CORS: an allowlist covering configured origins, Vercel deployments, and dev servers.
 const isProduction = process.env.NODE_ENV === 'production' || process.env.TRANSITOPS_ENV === 'production';
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174,http://localhost:3000,http://localhost:8081,http://localhost:19006,http://127.0.0.1:8081')
+
+// Support CLIENT_URL, CORS_ORIGIN, and default local dev servers
+const configuredOrigins = [
+  process.env.CLIENT_URL,
+  process.env.CORS_ORIGIN,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'http://localhost:8081',
+  'http://localhost:19006',
+  'http://127.0.0.1:8081'
+]
+  .filter(Boolean)
+  .join(',');
+
+const allowedOrigins = configuredOrigins
   .split(',')
-  .map(o => o.trim())
+  .map(o => o.trim().replace(/\/+$/, ''))
   .filter(Boolean);
 
-const isDevLocalOrigin = (origin) => {
-  if (isProduction) return false;
+const isAllowedOrigin = (origin) => {
+  // Allow non-browser tools (curl, mobile app, health checks, same-origin) with no Origin header
+  if (!origin) return true;
+
+  const cleanOrigin = origin.trim().replace(/\/+$/, '');
+
+  // Exact match from allowed origins
+  if (allowedOrigins.includes(cleanOrigin)) return true;
+
   try {
-    const url = new URL(origin);
+    const url = new URL(cleanOrigin);
     const host = url.hostname;
-    return host === 'localhost' || host === '127.0.0.1' || host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('172.');
+
+    // Automatically allow any Vercel deployment (preview branches and production)
+    if (host.endsWith('.vercel.app')) return true;
+
+    // Allow local development servers
+    if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('172.')) {
+      return true;
+    }
   } catch {
     return false;
   }
+
+  return false;
 };
 
 app.use(cors({
   origin(origin, callback) {
-    // Allow non-browser tools (curl, mobile app, same-origin) with no Origin.
-    if (!origin || allowedOrigins.includes(origin) || isDevLocalOrigin(origin)) return callback(null, true);
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
     return callback(null, false);
   },
-  credentials: false
+  credentials: true
 }));
 
 // Baseline security headers on every response (helmet's core set, without
