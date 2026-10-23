@@ -212,7 +212,12 @@ const billingService = {
         total_advance: advances,
         balance_due: closing
       },
-      pending_count: pool.billable.length + charges.length
+      pending_count: pool.billable.length + charges.length,
+      // Credit-limit warning: present when the company has a configured limit
+      // and the projected closing balance already exceeds it.
+      credit_limit: company.credit_limit !== null ? parseFloat(company.credit_limit) : null,
+      credit_limit_breach:
+        company.credit_limit !== null && closing > parseFloat(company.credit_limit)
     };
   },
 
@@ -314,7 +319,7 @@ const billingService = {
    * is no way to issue half of the work by mistake. Everything pending is
    * included unless explicit ids narrow it down.
    */
-  issueStatement: async (orgId, { company_id, statuses, trip_ids, charge_ids, note, bill_date }) => {
+  issueStatement: async (orgId, { company_id, statuses, trip_ids, charge_ids, note, bill_date, due_date }) => {
     const allowed = normalizeStatuses(statuses);
 
     // Ownership first: a company belonging to another organization must read
@@ -356,7 +361,8 @@ const billingService = {
       trip_ids: Array.isArray(trip_ids) && trip_ids.length > 0 ? trip_ids.map(String) : null,
       charge_ids: Array.isArray(charge_ids) && charge_ids.length > 0 ? charge_ids.map(Number) : null,
       note: note || null,
-      bill_date: bill_date || null
+      bill_date: bill_date || null,
+      due_date: due_date || null
     });
   },
 
@@ -390,7 +396,13 @@ const billingService = {
     const bill = await Bill.findById(id, orgId);
     if (!bill) throw new BillingServiceError('Bill not found.', 404);
     return { bill, html: billHtml(bill) };
-  }
+  },
+
+  /**
+   * Receivables Ageing Report.
+   * Returns per-client outstanding bucketed into 0-15, 16-30, 31-60, 60+ days.
+   */
+  getAgeing: async (orgId) => Company.getAgeing(orgId)
 };
 
 module.exports = { billingService, BillingServiceError, DEFAULT_BILLABLE_STATUSES };

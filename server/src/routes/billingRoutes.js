@@ -20,7 +20,8 @@ const {
   generateBill,
   recordPayment,
   deleteBill,
-  getBillDownload
+  getBillDownload,
+  getCompaniesAgeing
 } = require('../controllers/billingController');
 const {
   validateCreateCompany,
@@ -46,6 +47,10 @@ const WRITE_ROLES = ['Fleet Manager', 'Financial Analyst'];
 router.route('/companies')
   .post(authorize(WRITE_ROLES), validateCreateCompany, createCompany)
   .get(authorize(READ_ROLES), getAllCompanies);
+
+// Receivables ageing report: outstanding per client in 0-15/16-30/31-60/60+ day buckets.
+router.route('/companies/ageing')
+  .get(authorize(READ_ROLES), getCompaniesAgeing);
 
 router.route('/companies/:id')
   .get(authorize(READ_ROLES), getCompanyById)

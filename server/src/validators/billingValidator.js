@@ -39,6 +39,7 @@ const createCompanySchema = {
   address: { required: false, type: 'string' },
   gstin: { required: false, type: 'string' },
   opening_balance: { required: false, type: 'number' },
+  credit_limit: { required: false, type: 'number' },
   status: { required: false, type: 'enum', enum: ['Active', 'Inactive'] }
 };
 
@@ -50,6 +51,7 @@ const updateCompanySchema = {
   address: { required: false, type: 'string' },
   gstin: { required: false, type: 'string' },
   opening_balance: { required: false, type: 'number' },
+  credit_limit: { required: false, type: 'number' },
   status: { required: false, type: 'enum', enum: ['Active', 'Inactive'] }
 };
 
@@ -57,6 +59,7 @@ const generateBillSchema = {
   company_id: { required: true, type: 'integer', positive: true },
   note: { required: false, type: 'string' },
   bill_date: { required: false, type: 'date' },
+  due_date: { required: false, type: 'date' },
   statuses: { required: false, custom: isStatusList },
   trip_ids: { required: false, custom: isTripIdList },
   charge_ids: { required: false, custom: isChargeIdList }
