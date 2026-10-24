@@ -13,7 +13,8 @@ function toPublicExpense(row) {
   if (!row) return null;
   return {
     ...row,
-    recovered: row.recovered_charge_id !== null
+    recovered: row.recovered_charge_id !== null,
+    flag_reasons: Array.isArray(row.flag_reasons) ? row.flag_reasons : (row.flag_reasons ? [row.flag_reasons] : [])
   };
 }
 
@@ -53,7 +54,7 @@ const expenseService = {
 
     // The vehicle must belong to the caller's organization.
     const vehicle = await query(
-      'SELECT id, odometer FROM vehicles WHERE id = $1 AND organization_id = $2',
+      'SELECT id, odometer, fuel_tank_capacity FROM vehicles WHERE id = $1 AND organization_id = $2',
       [payload.vehicle_id, user.organization_id]
     );
     if (vehicle.rows.length === 0) {
@@ -101,6 +102,77 @@ const expenseService = {
       if (running.rows.length > 0) tripId = running.rows[0].id;
     }
 
+    // Anti-Fraud & Duplicate Prevention Verification for Fuel Claims
+    const flagReasons = [];
+    if (isFuel) {
+      // Rule 1: Duplicate Invoice / Receipt number check within organization
+      if (payload.invoice_number && String(payload.invoice_number).trim()) {
+        const dupInv = await Expense.findDuplicateInvoice(user.organization_id, String(payload.invoice_number).trim());
+        if (dupInv) {
+          flagReasons.push(
+            `Duplicate receipt #${String(payload.invoice_number).trim()} already recorded on ${dupInv.expense_date} for vehicle ${dupInv.vehicle_registration} (₹${dupInv.amount}).`
+          );
+        }
+      }
+
+      // Rule 2: Identical claim (same vehicle, vendor, amount within 1 day)
+      const dupClaim = await Expense.findDuplicateClaim(
+        user.organization_id,
+        payload.vehicle_id,
+        payload.vendor || null,
+        Number(payload.amount),
+        payload.expense_date || null
+      );
+      if (dupClaim) {
+        flagReasons.push(
+          `Possible duplicate: identical claim of ₹${payload.amount}${payload.vendor ? ` at '${payload.vendor}'` : ''} logged on ${dupClaim.expense_date}.`
+        );
+      }
+
+      // Rule 3: Odometer sanity & sequence
+      const latestFuel = await Expense.findLatestFuelEntry(
+        user.organization_id,
+        payload.vehicle_id,
+        payload.expense_date || null
+      );
+      if (latestFuel && latestFuel.odometer != null) {
+        const prevOdo = Number(latestFuel.odometer);
+        const currOdo = Number(odometer);
+        if (currOdo <= prevOdo) {
+          flagReasons.push(
+            `Odometer reading (${currOdo.toLocaleString()} km) is ≤ previous reading (${prevOdo.toLocaleString()} km on ${latestFuel.expense_date}).`
+          );
+        } else if (payload.quantity && Number(payload.quantity) > 0) {
+          const deltaKm = currOdo - prevOdo;
+          const kpl = deltaKm / Number(payload.quantity);
+          if (kpl < 1.0) {
+            flagReasons.push(
+              `Abnormally low mileage: ${kpl.toFixed(2)} km/L (${deltaKm} km on ${payload.quantity}L). Possible fuel diversion or incorrect odometer.`
+            );
+          } else if (kpl > 8.5) {
+            flagReasons.push(
+              `Unusually high mileage: ${kpl.toFixed(2)} km/L (${deltaKm} km on ${payload.quantity}L). Verify distance and litres.`
+            );
+          }
+        }
+      }
+
+      // Rule 4: Tank capacity check
+      const tankCapacity = Number(vehicle.rows[0].fuel_tank_capacity) || 300;
+      if (payload.quantity && Number(payload.quantity) > tankCapacity) {
+        flagReasons.push(
+          `Refill of ${payload.quantity}L exceeds vehicle tank capacity (${tankCapacity}L).`
+        );
+      }
+
+      // Rule 5: Active trip link warning
+      if (!tripId) {
+        flagReasons.push('Vehicle had no active or scheduled trips around this date.');
+      }
+    }
+
+    const approvalStatus = flagReasons.length > 0 ? 'Under Review' : 'Approved';
+
     const created = await Expense.create({
       organization_id: user.organization_id,
       vehicle_id: payload.vehicle_id,
@@ -114,8 +186,10 @@ const expenseService = {
       quantity: isFuel && payload.quantity ? Number(payload.quantity) : null,
       vendor: payload.vendor ? String(payload.vendor).trim() : null,
       payment_mode: payload.payment_mode || 'Cash',
-      // Only stamp created_by when the caller is a real users row; test tokens
-      // and synthetic identities have no row, and the FK would reject them.
+      invoice_number: payload.invoice_number ? String(payload.invoice_number).trim() : null,
+      receipt_url: payload.receipt_url ? String(payload.receipt_url).trim() : null,
+      approval_status: approvalStatus,
+      flag_reasons: flagReasons,
       created_by: user.id || null
     });
     return toPublicExpense(created);
@@ -127,6 +201,7 @@ const expenseService = {
       category: filters.category || null,
       from_date: filters.from_date || null,
       to_date: filters.to_date || null,
+      approval_status: filters.approval_status || null,
       recovered: filters.recovered === undefined ? null : filters.recovered === 'true',
       limit: filters.limit ? Number(filters.limit) : 200,
       offset: filters.offset ? Number(filters.offset) : 0
@@ -139,6 +214,22 @@ const expenseService = {
       total,
       categories: EXPENSE_CATEGORIES
     };
+  },
+
+  reviewExpense: async (id, { action, notes }, user) => {
+    if (!['APPROVE', 'REJECT'].includes(action)) {
+      throw new ExpenseServiceError("Review action must be 'APPROVE' or 'REJECT'.", 400);
+    }
+    const existing = await Expense.findById(id, user.organization_id);
+    if (!existing) throw new ExpenseServiceError('Expense not found.', 404);
+
+    const approval_status = action === 'APPROVE' ? 'Approved' : 'Rejected';
+    const updated = await Expense.review(id, user.organization_id, {
+      approval_status,
+      reviewed_by: user.id || null,
+      review_notes: notes ? String(notes).trim() : null
+    });
+    return toPublicExpense(updated);
   },
 
   getExpense: async (id, user) => {

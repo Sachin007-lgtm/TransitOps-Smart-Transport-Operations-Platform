@@ -18,7 +18,9 @@ const createExpenseSchema = {
   odometer: { required: false, type: 'number' },
   quantity: { required: false, type: 'number' },
   vendor: { required: false, type: 'string' },
-  payment_mode: { required: false, type: 'enum', enum: PAYMENT_MODES }
+  payment_mode: { required: false, type: 'enum', enum: PAYMENT_MODES },
+  invoice_number: { required: false, type: 'string' },
+  receipt_url: { required: false, type: 'string' }
 };
 
 const updateExpenseSchema = {
@@ -32,12 +34,16 @@ const updateExpenseSchema = {
   odometer: { required: false, type: 'number' },
   quantity: { required: false, type: 'number' },
   vendor: { required: false, type: 'string' },
-  payment_mode: { required: false, type: 'enum', enum: PAYMENT_MODES }
+  payment_mode: { required: false, type: 'enum', enum: PAYMENT_MODES },
+  invoice_number: { required: false, type: 'string' },
+  receipt_url: { required: false, type: 'string' },
+  approval_status: { required: false, type: 'enum', enum: ['Approved', 'Under Review', 'Rejected'] }
 };
 
 const listExpensesSchema = {
   vehicle_id: { required: false, type: 'uuid' },
   category: { required: false, type: 'enum', enum: EXPENSE_CATEGORIES },
+  approval_status: { required: false, type: 'enum', enum: ['Approved', 'Under Review', 'Rejected'] },
   from_date: { required: false, type: 'date' },
   to_date: { required: false, type: 'date' },
   recovered: { required: false, type: 'enum', enum: ['true', 'false'] },
