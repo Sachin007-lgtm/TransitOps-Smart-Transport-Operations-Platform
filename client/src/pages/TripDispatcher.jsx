@@ -441,8 +441,92 @@ export default function TripDispatcher() {
   // ── Modals, Map Theme & Overlay Toggle ──
   const [mapTheme, setMapTheme] = useState('streets'); // Default style: Standard Streets
   const [showThemeMenu, setShowThemeMenu] = useState(false);
-  const [isDriverOverlayOpen, setIsDriverOverlayOpen] = useState(true);
   const [assignModal,   setAssignModal]   = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
+  const [availChecks,   setAvailChecks]   = useState([]);
+  const [availLoading,  setAvailLoading]  = useState(false);
+  const [availActionBusy, setAvailActionBusy] = useState(false);
+
+  const loadAvailabilityChecks = useCallback(async (tripId) => {
+    if (!tripId) return;
+    setAvailLoading(true);
+    try {
+      const res = await apiRequest('GET', `/availability/trip/${tripId}`);
+      setAvailChecks(res.data || []);
+    } catch (err) {
+      console.warn('Failed to load availability checks:', err.message);
+    } finally {
+      setAvailLoading(false);
+    }
+  }, []);
+
+  const openAssignModal = (trip) => {
+    setAssignModal({
+      open: true,
+      trip,
+      vehicleId: trip.vehicle_id || (vehicles.find(v => v.status === 'Available')?.id || ''),
+      driverId: trip.driver_id || ''
+    });
+    loadAvailabilityChecks(trip.id);
+  };
+
+  const handleRequestPing = async (drvId) => {
+    if (!assignModal.trip) return;
+    setAvailActionBusy(true);
+    try {
+      await apiRequest('POST', '/availability/request', {
+        trip_id: assignModal.trip.id,
+        driver_id: drvId
+      });
+      await loadAvailabilityChecks(assignModal.trip.id);
+    } catch (err) {
+      alert(`Could not request ping: ${err.message}`);
+    } finally {
+      setAvailActionBusy(false);
+    }
+  };
+
+  const handleSimulatePing = async (checkId, scenario = 'best') => {
+    setAvailActionBusy(true);
+    try {
+      let lat = 23.0722, lng = 72.6588, locName = 'Naroda Industrial Hub (12 km away)', claimedMins = 30;
+      if (scenario === 'feasible') {
+        lat = 23.4284; lng = 72.6616; locName = 'Mansa Freight Yard (38 km away)'; claimedMins = 60;
+      } else if (scenario === 'high_risk') {
+        lat = 22.3072; lng = 73.1812; locName = 'Vadodara Terminal (95 km away)'; claimedMins = 60;
+      }
+      await apiRequest('POST', `/availability/${checkId}/respond`, {
+        driver_latitude: lat,
+        driver_longitude: lng,
+        driver_location_name: locName,
+        driver_claimed_minutes: claimedMins,
+        driver_claimed_eta_text: `${claimedMins} minutes`
+      });
+      await loadAvailabilityChecks(assignModal.trip.id);
+    } catch (err) {
+      alert(`Simulation failed: ${err.message}`);
+    } finally {
+      setAvailActionBusy(false);
+    }
+  };
+
+  const handleAssignDriverFromCheck = async (checkId, drvId) => {
+    if (!assignModal.vehicleId) {
+      alert('Please select a vehicle to assign with this driver.');
+      return;
+    }
+    setAvailActionBusy(true);
+    try {
+      await apiRequest('PATCH', `/availability/${checkId}/assign`, {
+        vehicle_id: String(assignModal.vehicleId)
+      });
+      setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
+      await loadData(true);
+    } catch (err) {
+      alert(`Assignment failed: ${err.message}`);
+    } finally {
+      setAvailActionBusy(false);
+    }
+  };
   const navigate = useNavigate();
 
   // Completed trips do not belong in the tracking list — they move to Trip
@@ -1480,12 +1564,7 @@ export default function TripDispatcher() {
                         {(t.status === 'Draft' || t.status === 'Planned') && (
                           <button
                             className="tc-act"
-                            onClick={() => setAssignModal({
-                              open: true,
-                              trip: t,
-                              vehicleId: t.vehicle_id || '',
-                              driverId: t.driver_id || ''
-                            })}
+                            onClick={() => openAssignModal(t)}
                           >
                             <Truck size={12} /> Assign vehicle &amp; driver
                           </button>
@@ -1732,52 +1811,200 @@ export default function TripDispatcher() {
         </div>
       )}
 
-      {/* MODALS */}
+      {/* PRE-TRIP DRIVER AVAILABILITY & ETA CONFIRMATION MODAL */}
       {assignModal.open && (
         <div className="modal-overlay" onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Assign Trip #{assignModal.trip?.id}</h3>
-              <button className="modal-close" onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="field-wrap">
-                <label className="field-label">Select Vehicle</label>
-                <select className="field-select" value={assignModal.vehicleId} onChange={e => setAssignModal({ ...assignModal, vehicleId: e.target.value })}>
-                  <option value="">Select vehicle...</option>
-                  {vehicles.filter(v => v.status === 'Available').map(v => (
-                    <option key={v.id} value={v.id}>{v.name} ({v.type})</option>
-                  ))}
-                </select>
+          <div className="avail-modal-card" onClick={e => e.stopPropagation()}>
+            <div className="avail-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <Clock size={19} color="#d97706" />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                    Pre-Trip Availability &amp; ETA Check · {tripCode(assignModal.trip?.id)}
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--sub)' }}>
+                    Verify driver GPS distance &amp; system road ETA before assigning the trip
+                  </span>
+                </div>
               </div>
-              <div className="field-wrap">
-                <label className="field-label">Select Driver</label>
-                <select className="field-select" value={assignModal.driverId} onChange={e => setAssignModal({ ...assignModal, driverId: e.target.value })}>
-                  <option value="">Select driver...</option>
-                  {drivers.filter(d => d.status === 'Available').map(d => (
-                    <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
-                  ))}
-                </select>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="avail-modal-body">
+              {/* Trip Context Banner */}
+              <div className="avail-trip-banner">
+                <div className="avail-trip-col">
+                  <span className="avail-chip-label">Pickup Location (Origin)</span>
+                  <b>{assignModal.trip?.origin}</b>
+                </div>
+                <div className="avail-trip-col">
+                  <span className="avail-chip-label">Reporting / Departure</span>
+                  <b>{assignModal.trip?.start_time ? new Date(assignModal.trip.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : 'Immediate'}</b>
+                </div>
+                <div className="avail-trip-col">
+                  <span className="avail-chip-label">Destination</span>
+                  <b>{assignModal.trip?.destination}</b>
+                </div>
+                <div className="avail-trip-col">
+                  <span className="avail-chip-label">Select Vehicle *</span>
+                  <select
+                    className="avail-vehicle-select"
+                    value={assignModal.vehicleId}
+                    onChange={e => setAssignModal({ ...assignModal, vehicleId: e.target.value })}
+                  >
+                    <option value="">Select vehicle...</option>
+                    {vehicles.filter(v => v.status === 'Available' || String(v.id) === String(assignModal.vehicleId)).map(v => (
+                      <option key={v.id} value={v.id}>{v.name} ({v.type})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Drivers Comparison Table */}
+              <div className="avail-table-wrap">
+                <div className="avail-section-title">
+                  <span>Candidate Drivers &amp; Location Confirmation</span>
+                  <span className="avail-hint">30-minute availability ping window</span>
+                </div>
+
+                {availLoading ? (
+                  <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--sub)' }}>
+                    Loading candidate availability checks...
+                  </div>
+                ) : (
+                  <table className="avail-table">
+                    <thead>
+                      <tr>
+                        <th>Driver</th>
+                        <th>Current Location</th>
+                        <th>Distance to Pickup</th>
+                        <th>System Road ETA</th>
+                        <th>Driver Claimed</th>
+                        <th>Decision / Risk</th>
+                        <th style={{ textAlign: 'right' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drivers.map(d => {
+                        const check = availChecks.find(c => String(c.driver_id) === String(d.id));
+                        const isPending = check && check.status === 'PENDING';
+                        const isResponded = check && check.status === 'RESPONDED';
+
+                        return (
+                          <tr key={d.id} className={check?.decision_recommendation === 'BEST_OPTION' ? 'row-best-opt' : check?.decision_recommendation === 'HIGH_RISK_DELAY' ? 'row-delay-risk' : ''}>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>{d.name}</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--sub)' }}>{d.phone} · {d.license_category || 'Commercial'}</div>
+                            </td>
+                            <td>
+                              {isResponded ? (
+                                <div>
+                                  <span style={{ fontWeight: 500 }}>{check.driver_location_name || `${check.road_distance_km} km away`}</span>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--sub)' }}>
+                                    GPS fix ±{check.driver_accuracy || 15}m
+                                  </div>
+                                </div>
+                              ) : isPending ? (
+                                <span className="avail-pending-tag">
+                                  <span className="avail-pulse" /> Ping sent (waiting)
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--sub)', fontSize: '0.78rem' }}>No ping requested</span>
+                              )}
+                            </td>
+                            <td className="mono font-semibold">
+                              {isResponded ? `${check.road_distance_km} km` : '—'}
+                            </td>
+                            <td className="mono font-semibold" style={{ color: isResponded && check.system_eta_minutes > 90 ? 'var(--red)' : 'inherit' }}>
+                              {isResponded ? `${check.system_eta_minutes} min` : '—'}
+                            </td>
+                            <td className="mono">
+                              {isResponded ? (
+                                <span title={`Driver claimed ${check.driver_claimed_minutes} min`}>
+                                  {check.driver_claimed_eta_text || `${check.driver_claimed_minutes} min`}
+                                </span>
+                              ) : '—'}
+                            </td>
+                            <td>
+                              {isResponded ? (
+                                <div>
+                                  {check.decision_recommendation === 'BEST_OPTION' && (
+                                    <span className="avail-badge badge-best">★ Best Option</span>
+                                  )}
+                                  {check.decision_recommendation === 'FEASIBLE' && (
+                                    <span className="avail-badge badge-feasible">Feasible</span>
+                                  )}
+                                  {check.decision_recommendation === 'HIGH_RISK_DELAY' && (
+                                    <span className="avail-badge badge-risk" title={`System road ETA is ${check.eta_gap_minutes}m slower than claimed!`}>
+                                      <AlertTriangle size={11} /> Delay Risk (+{check.eta_gap_minutes}m)
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span style={{ color: 'var(--sub)', fontSize: '0.75rem' }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              {!check ? (
+                                <button
+                                  type="button"
+                                  className="avail-btn btn-ping"
+                                  disabled={availActionBusy}
+                                  onClick={() => handleRequestPing(d.id)}
+                                >
+                                  Request Ping
+                                </button>
+                              ) : isPending ? (
+                                <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    className="avail-btn btn-sim"
+                                    title="Simulate driver sending GPS location"
+                                    disabled={availActionBusy}
+                                    onClick={() => handleSimulatePing(check.id, d.name.toLowerCase().includes('mahesh') ? 'best' : d.name.toLowerCase().includes('suresh') ? 'high_risk' : 'feasible')}
+                                  >
+                                    Simulate Ping
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className={`avail-btn ${check.decision_recommendation === 'BEST_OPTION' ? 'btn-assign-best' : check.decision_recommendation === 'HIGH_RISK_DELAY' ? 'btn-assign-risk' : 'btn-assign'}`}
+                                    disabled={availActionBusy || !assignModal.vehicleId}
+                                    onClick={() => handleAssignDriverFromCheck(check.id, d.id)}
+                                  >
+                                    Assign Driver
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}>Cancel</button>
-              <button className="btn-submit" onClick={async () => {
-                if (!assignModal.vehicleId || !assignModal.driverId) return;
-                try {
-                  const tripId = assignModal.trip.id;
-                  await apiRequest('PATCH', `/trips/${tripId}`, {
-                    vehicle_id: String(assignModal.vehicleId),
-                    driver_id: String(assignModal.driverId)
-                  });
-                  if (assignModal.trip.status === 'Draft' || assignModal.trip.status === 'Planned') {
-                    await apiRequest('PATCH', `/trips/${tripId}/status`, { status: 'Assigned' });
-                  }
-                  showToast(`Trip #${tripId} assigned!`);
-                  setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' });
-                  await loadData(true);
-                } catch(e) { showToast(`Error: ${e.message}`); }
-              }}>Save Assignment</button>
+
+            <div className="avail-modal-footer">
+              <span style={{ fontSize: '0.75rem', color: 'var(--sub)' }}>
+                Comparing GPS road ETA with driver claimed time prevents false verbal estimates before dispatch.
+              </span>
+              <button
+                type="button"
+                className="btn-cancel"
+                onClick={() => setAssignModal({ open: false, trip: null, vehicleId: '', driverId: '' })}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

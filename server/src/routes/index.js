@@ -14,6 +14,7 @@ const userRoutes = require('./userRoutes');
 const locationRoutes = require('./locationRoutes');
 const platformRoutes = require('./platformRoutes');
 const documentRoutes = require('./documentRoutes');
+const availabilityRoutes = require('./availabilityRoutes');
 
 router.use('/trips', tripRoutes);
 router.use('/billing', billingRoutes);
@@ -28,5 +29,6 @@ router.use('/users', userRoutes);
 router.use('/locations', locationRoutes);
 router.use('/platform', platformRoutes);
 router.use('/documents', documentRoutes);
+router.use('/availability', availabilityRoutes);
 
 module.exports = router;
