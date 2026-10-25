@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, RefreshCw, FileText, ChevronDown, ShieldAlert,
-  AlertTriangle, CheckCircle2, XCircle, ExternalLink, X
+  AlertTriangle, CheckCircle2, XCircle, ExternalLink, X,
+  Camera, Sparkles, UploadCloud, Check
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { apiRequest, apiOpenDocument, apiDownloadFile } from '../utils/api';
@@ -9,6 +10,7 @@ import { tripCode } from '../utils/tripCode';
 import PageToolbar from '../components/common/PageToolbar';
 import StatStrip from '../components/common/StatStrip';
 import SideDrawer from '../components/common/SideDrawer';
+import { scanReceiptWithOcr, parseFuelReceiptText, SAMPLE_RECEIPTS } from '../utils/fuelOcrParser';
 import './FuelExpenses.css';
 
 const PRIMARY_CATEGORIES = ['All', 'FUEL', 'MAINTENANCE', 'TOLL', 'OTHER'];
@@ -54,6 +56,13 @@ export default function FuelExpenses() {
 
   // Animation state (id of newly added row)
   const [newId, setNewId] = useState(null);
+
+  // OCR states
+  const [ocrScanning, setOcrScanning] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrStatusText, setOcrStatusText] = useState('');
+  const [ocrPreviewUrl, setOcrPreviewUrl] = useState(null);
+  const [ocrExtractedData, setOcrExtractedData] = useState(null);
 
   // Form states
   const [fuelForm, setFuelForm] = useState({
@@ -154,6 +163,87 @@ export default function FuelExpenses() {
   let colCount = 6;
   if (showMileageCols) colCount += 2; // Odometer, Mileage
   if (showVendorCol) colCount += 1; // Vendor
+
+  const applyExtractedOcrData = (ext, previewUrl) => {
+    setOcrExtractedData(ext);
+
+    let matchedVehicleId = fuelForm.vehicle_id;
+    if (ext.vehicle_registration && vehicles.length > 0) {
+      const cleanTarget = ext.vehicle_registration.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      const foundVeh = vehicles.find(v =>
+        v.registration_number.replace(/[^A-Z0-9]/gi, '').toUpperCase() === cleanTarget
+      );
+      if (foundVeh) matchedVehicleId = foundVeh.id;
+    }
+
+    setFuelForm(prev => ({
+      ...prev,
+      vehicle_id: matchedVehicleId || prev.vehicle_id,
+      date: ext.date || prev.date || today(),
+      liters: ext.liters || prev.liters,
+      cost: ext.amount || prev.cost,
+      invoice_number: ext.bill_number || prev.invoice_number,
+      vendor: ext.fuel_station || prev.vendor,
+      odometer: ext.odometer || prev.odometer,
+      receipt_url: previewUrl || prev.receipt_url
+    }));
+
+    window.dispatchEvent(
+      new CustomEvent('app-toast', {
+        detail: `✨ OCR Auto-Filled: Bill #${ext.bill_number || 'N/A'} · ${ext.liters || '0'} L · ₹${ext.amount || '0'}`,
+        type: 'success'
+      })
+    );
+  };
+
+  const handleOcrFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const previewUrl = URL.createObjectURL(file);
+    setOcrPreviewUrl(previewUrl);
+    setOcrScanning(true);
+    setOcrProgress(10);
+    setOcrStatusText('Loading Tesseract OCR engine…');
+
+    try {
+      const res = await scanReceiptWithOcr(file, ({ status, progress }) => {
+        setOcrStatusText(status);
+        if (progress) setOcrProgress(progress);
+      });
+
+      if (res.success && res.extracted) {
+        applyExtractedOcrData(res.extracted, previewUrl);
+      } else {
+        window.dispatchEvent(
+          new CustomEvent('app-toast', {
+            detail: res.error || 'Could not parse text from this image. Please enter details manually.',
+            type: 'error'
+          })
+        );
+      }
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: 'Failed to scan receipt image.',
+          type: 'error'
+        })
+      );
+    } finally {
+      setOcrScanning(false);
+    }
+  };
+
+  const handleApplySampleReceipt = (sample) => {
+    setOcrScanning(true);
+    setOcrProgress(50);
+    setOcrStatusText('Parsing sample slip…');
+    setTimeout(() => {
+      const extracted = parseFuelReceiptText(sample.sampleText);
+      applyExtractedOcrData(extracted, null);
+      setOcrScanning(false);
+    }, 350);
+  };
 
   const handleFuelSubmit = async (e) => {
     e.preventDefault();
@@ -570,6 +660,93 @@ export default function FuelExpenses() {
         subtitle="From the pump bill: litres, amount, and odometer reading"
       >
         <form onSubmit={handleFuelSubmit}>
+          {/* Smart Receipt OCR Scanner Box */}
+          <div className="ocr-scanner-card">
+            <div className="ocr-scanner-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Sparkles size={16} color="#d97706" />
+                <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Smart Pump Bill OCR</span>
+              </div>
+              <span className="ocr-badge-ai">AI Auto-Extract</span>
+            </div>
+
+            <p style={{ fontSize: '0.75rem', color: 'var(--sub)', margin: '0.2rem 0 0.65rem 0' }}>
+              Upload pump slip or snap a photo to auto-extract bill number, volume, rate &amp; amount.
+            </p>
+
+            {/* Drop / Upload zone */}
+            <label className={`ocr-drop-zone ${ocrScanning ? 'scanning' : ''}`}>
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleOcrFileSelect}
+                disabled={ocrScanning}
+              />
+              {ocrScanning ? (
+                <div className="ocr-scanning-state">
+                  <div className="ocr-scan-line" />
+                  <RefreshCw size={24} className="animate-spin text-amber-600" />
+                  <span style={{ fontWeight: 600, fontSize: '0.8rem', marginTop: '0.4rem', color: '#b45309' }}>
+                    {ocrStatusText} ({ocrProgress}%)
+                  </span>
+                </div>
+              ) : ocrPreviewUrl ? (
+                <div className="ocr-preview-state">
+                  <img src={ocrPreviewUrl} alt="Receipt preview" className="ocr-thumb" />
+                  <div style={{ textAlign: 'left', flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#16a34a' }}>
+                      ✓ Slip Attached &amp; Scanned
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--sub)' }}>
+                      Click to choose another photo or test sample slips below
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="ocr-prompt-state">
+                  <Camera size={22} color="var(--amber)" />
+                  <div>
+                    <span style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text)' }}>
+                      Take photo or upload pump slip
+                    </span>
+                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--sub)' }}>
+                      PNG, JPG, WEBP supported
+                    </span>
+                  </div>
+                </div>
+              )}
+            </label>
+
+            {/* Pre-calibrated sample receipts for 1-click test/demo */}
+            <div className="ocr-samples-bar">
+              <span style={{ fontSize: '0.7rem', color: 'var(--sub)', fontWeight: 600 }}>Try sample slip:</span>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                {SAMPLE_RECEIPTS.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className="ocr-sample-chip"
+                    onClick={() => handleApplySampleReceipt(s)}
+                    disabled={ocrScanning}
+                    title={`Auto-fill with ${s.station} receipt data`}
+                  >
+                    📄 {s.billNumber}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {ocrExtractedData && (
+              <div className="ocr-success-pill">
+                <span>✨ Auto-Extracted:</span>
+                <strong>Bill #{ocrExtractedData.bill_number || 'N/A'}</strong> ·
+                <strong>{ocrExtractedData.liters || '0'} L</strong> ·
+                <strong>₹{ocrExtractedData.amount || '0'}</strong>
+              </div>
+            )}
+          </div>
+
           <div className="input-group mb-4">
             <label>Vehicle *</label>
             <select
@@ -615,7 +792,12 @@ export default function FuelExpenses() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
             <div className="input-group">
-              <label>Litres *</label>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Litres *</span>
+                {ocrExtractedData?.liters && (
+                  <span style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 600 }}>✓ From Slip</span>
+                )}
+              </label>
               <input
                 required
                 type="number"
@@ -628,7 +810,12 @@ export default function FuelExpenses() {
               />
             </div>
             <div className="input-group">
-              <label>Amount (₹) *</label>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Amount (₹) *</span>
+                {ocrExtractedData?.amount && (
+                  <span style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 600 }}>✓ From Slip</span>
+                )}
+              </label>
               <input
                 required
                 type="number"
@@ -644,7 +831,12 @@ export default function FuelExpenses() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
             <div className="input-group">
-              <label>Bill / Receipt # (optional)</label>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Bill / Receipt # (optional)</span>
+                {ocrExtractedData?.bill_number && (
+                  <span style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 600 }}>✓ From Slip</span>
+                )}
+              </label>
               <input
                 type="text"
                 className="input w-full"
@@ -656,9 +848,9 @@ export default function FuelExpenses() {
             <div className="input-group">
               <label>Receipt Photo URL (optional)</label>
               <input
-                type="url"
+                type="text"
                 className="input w-full"
-                placeholder="https://..."
+                placeholder="Receipt attachment"
                 value={fuelForm.receipt_url}
                 onChange={(e) => setFuelForm({ ...fuelForm, receipt_url: e.target.value })}
               />
