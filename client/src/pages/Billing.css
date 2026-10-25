@@ -739,3 +739,119 @@
   font-size: 0.8125rem;
   line-height: 1.5;
 }
+
+/* --- Ageing Report & Credit Limit -------------------------------------- */
+
+.ageing-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card, #ffffff);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ageing-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  background: var(--card, #ffffff);
+  border: none;
+  font-size: 0.82rem;
+  color: var(--text, #111827);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ageing-panel-header:hover {
+  background: var(--bg, #f8fafc);
+}
+
+.ageing-badge {
+  background: var(--bg, #f1f5f9);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 20px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--sub, #64748b);
+  margin-left: 0.5rem;
+}
+
+.ageing-table-wrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--line, #e2e8f0);
+}
+
+.ageing-col-mild {
+  color: #d97706;
+}
+
+.ageing-col-warn {
+  color: #b45309;
+}
+
+.ageing-col-danger {
+  color: #c2410c;
+}
+
+.ageing-col-critical {
+  color: var(--red, #ef4444);
+  font-weight: 700;
+}
+
+.ageing-row-breach {
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.ageing-overlimit-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--red, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 4px;
+  padding: 0.08rem 0.35rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.credit-breach-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+.credit-breach-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 6px;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.8125rem;
+  color: #92400e;
+  line-height: 1.45;
+}
+
+.credit-breach-warning svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: #d97706;
+}
+

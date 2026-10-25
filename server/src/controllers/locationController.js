@@ -19,6 +19,15 @@ const recordLocation = asyncWrapper(async (req, res) => {
   }
 });
 
+const syncBatchLocations = asyncWrapper(async (req, res) => {
+  try {
+    const result = await locationService.syncBatchLocations(req.body, req.user);
+    return apiResponse.success(res, result, `Successfully synced ${result.synced_count} offline buffered pings.`, 201);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 const getActiveLocations = asyncWrapper(async (req, res) => {
   try {
     const locations = await locationService.getLatestActiveLocations(req.user);
@@ -40,6 +49,7 @@ const getTripLocations = asyncWrapper(async (req, res) => {
 
 module.exports = {
   recordLocation,
+  syncBatchLocations,
   getActiveLocations,
   getTripLocations
 };

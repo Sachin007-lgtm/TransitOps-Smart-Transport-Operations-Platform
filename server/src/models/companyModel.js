@@ -9,6 +9,7 @@ const UPDATABLE_FIELDS = [
   'address',
   'gstin',
   'opening_balance',
+  'credit_limit',
   'status'
 ];
 
@@ -25,13 +26,14 @@ const Company = {
     address = null,
     gstin = null,
     opening_balance = 0.00,
+    credit_limit = null,
     status = 'Active'
   }) => {
     const sql = `
       INSERT INTO companies (
         organization_id, name, contact_person, email, phone, address, gstin,
-        opening_balance, status
-      ) VALUES ($1, BTRIM($2), $3, $4, $5, $6, $7, $8, $9)
+        opening_balance, credit_limit, status
+      ) VALUES ($1, BTRIM($2), $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *;
     `;
     const values = [
@@ -43,6 +45,7 @@ const Company = {
       address,
       gstin,
       opening_balance,
+      credit_limit,
       status
     ];
     const result = await query(sql, values);
@@ -164,6 +167,63 @@ const Company = {
       [id, organization_id]
     );
     return result.rows[0] || null;
+  },
+
+  /**
+   * Receivables Ageing Report.
+   *
+   * For every company with open bills, returns outstanding amounts bucketed
+   * by how many days past due_date each bill is:
+   *   current   : due_date >= today (not yet overdue)
+   *   days_1_15 : 1-15 days overdue
+   *   days_16_30: 16-30 days overdue
+   *   days_31_60: 31-60 days overdue
+   *   days_60plus: > 60 days overdue
+   *
+   * Also returns total_outstanding, oldest_due_date (how old the oldest
+   * unpaid bill is), and open_bill_count. Companies with no open bills are
+   * excluded — the report focuses on receivables action.
+   */
+  getAgeing: async (organization_id) => {
+    const sql = `
+      SELECT
+        c.id,
+        c.name,
+        c.contact_person,
+        c.phone,
+        c.credit_limit,
+        COUNT(b.id)                                                          AS open_bill_count,
+        SUM(b.balance_due - b.amount_paid)                                   AS total_outstanding,
+        MIN(b.due_date)                                                       AS oldest_due_date,
+        -- current (not yet overdue)
+        COALESCE(SUM(CASE WHEN b.due_date >= CURRENT_DATE
+          THEN b.balance_due - b.amount_paid ELSE 0 END), 0)                 AS current_amt,
+        -- 1-15 days overdue
+        COALESCE(SUM(CASE WHEN b.due_date < CURRENT_DATE
+          AND CURRENT_DATE - b.due_date BETWEEN 1 AND 15
+          THEN b.balance_due - b.amount_paid ELSE 0 END), 0)                 AS days_1_15,
+        -- 16-30 days overdue
+        COALESCE(SUM(CASE WHEN b.due_date < CURRENT_DATE
+          AND CURRENT_DATE - b.due_date BETWEEN 16 AND 30
+          THEN b.balance_due - b.amount_paid ELSE 0 END), 0)                 AS days_16_30,
+        -- 31-60 days overdue
+        COALESCE(SUM(CASE WHEN b.due_date < CURRENT_DATE
+          AND CURRENT_DATE - b.due_date BETWEEN 31 AND 60
+          THEN b.balance_due - b.amount_paid ELSE 0 END), 0)                 AS days_31_60,
+        -- 60+ days overdue
+        COALESCE(SUM(CASE WHEN b.due_date < CURRENT_DATE
+          AND CURRENT_DATE - b.due_date > 60
+          THEN b.balance_due - b.amount_paid ELSE 0 END), 0)                 AS days_60plus
+      FROM companies c
+      JOIN bills b ON b.company_id = c.id
+        AND b.organization_id = $1
+        AND b.status IN ('Unpaid', 'Partially Paid')
+      WHERE c.organization_id = $1
+      GROUP BY c.id, c.name, c.contact_person, c.phone, c.credit_limit
+      ORDER BY total_outstanding DESC;
+    `;
+    const result = await query(sql, [organization_id]);
+    return result.rows;
   }
 };
 

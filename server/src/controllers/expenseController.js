@@ -88,4 +88,24 @@ const getMonthlyBillDownload = asyncWrapper(async (req, res) => {
   }
 });
 
-module.exports = { createExpense, listExpenses, getExpense, updateExpense, deleteExpense, vehicleSummary, getMonthlyBill, getMonthlyBillDownload };
+const reviewExpense = asyncWrapper(async (req, res) => {
+  try {
+    const expense = await expenseService.reviewExpense(req.params.id, req.body, req.user);
+    return apiResponse.success(res, expense, `Expense marked as ${expense.approval_status}.`);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
+module.exports = {
+  createExpense,
+  listExpenses,
+  getExpense,
+  updateExpense,
+  deleteExpense,
+  vehicleSummary,
+  getMonthlyBill,
+  getMonthlyBillDownload,
+  reviewExpense
+};
+

@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, RefreshCw, FileText, ChevronDown } from 'lucide-react';
+import {
+  Plus, RefreshCw, FileText, ChevronDown, ShieldAlert,
+  AlertTriangle, CheckCircle2, XCircle, ExternalLink, X
+} from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { apiRequest, apiOpenDocument, apiDownloadFile } from '../utils/api';
 import { tripCode } from '../utils/tripCode';
@@ -32,6 +35,7 @@ export default function FuelExpenses() {
   const [vehicles, setVehicles] = useState([]);
   const [trips, setTrips] = useState([]);
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -40,6 +44,7 @@ export default function FuelExpenses() {
   const [isFuelDrawerOpen, setIsFuelDrawerOpen] = useState(false);
   const [isExpenseDrawerOpen, setIsExpenseDrawerOpen] = useState(false);
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+  const [reviewModal, setReviewModal] = useState({ open: false, expense: null, notes: '' });
 
   // Monthly bill state
   const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -58,7 +63,9 @@ export default function FuelExpenses() {
     cost: '',
     odometer: '',
     vendor: '',
-    trip_id: ''
+    trip_id: '',
+    invoice_number: '',
+    receipt_url: ''
   });
 
   const [expenseForm, setExpenseForm] = useState({
@@ -114,20 +121,26 @@ export default function FuelExpenses() {
   }, [fetchExpenses, fetchPickups]);
 
   // Filtered dataset
-  const visible = categoryFilter === 'All' ? expenses : expenses.filter((e) => e.category === categoryFilter);
+  const visible = expenses
+    .filter((e) => (categoryFilter === 'All' ? true : e.category === categoryFilter))
+    .filter((e) => (statusFilter === 'All' ? true : e.approval_status === statusFilter));
+
+  const underReviewCount = expenses.filter(
+    (e) => (categoryFilter === 'All' || e.category === categoryFilter) && e.approval_status === 'Under Review'
+  ).length;
 
   // Calculated totals
   const totalCost = visible.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-  const fuelCost = expenses
+  const fuelCost = visible
     .filter((e) => e.category === 'FUEL')
     .reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-  const maintCost = expenses
+  const maintCost = visible
     .filter((e) => ['MAINTENANCE', 'TYRES', 'GARAGE'].includes(e.category))
     .reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-  const otherCost = expenses
+  const otherCost = visible
     .filter((e) => !['FUEL', 'MAINTENANCE', 'TYRES', 'GARAGE'].includes(e.category))
     .reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-  const totalLitres = expenses
+  const totalLitres = visible
     .filter((e) => e.category === 'FUEL')
     .reduce((acc, e) => acc + (Number(e.quantity || e.litres || e.liters) || 0), 0);
 
@@ -135,10 +148,10 @@ export default function FuelExpenses() {
   // Show Odometer & Mileage only under FUEL filter or when rows contain odometer data
   const hasOdometerData = visible.some((e) => e.odometer != null);
   const showMileageCols = categoryFilter === 'FUEL' || hasOdometerData;
-  const showVendorCol = visible.some((e) => Boolean(e.vendor)) || ['FUEL', 'MAINTENANCE'].includes(categoryFilter);
+  const showVendorCol = visible.some((e) => Boolean(e.vendor || e.invoice_number)) || ['FUEL', 'MAINTENANCE'].includes(categoryFilter);
 
-  // Column count for colspan
-  let colCount = 5; // Date, Category, Description, Vehicle, Trip, Amount
+  // Column count for colspan: Date, Category, Description, Vehicle, Trip, Status, Amount (+ Mileage cols, + Vendor col)
+  let colCount = 6;
   if (showMileageCols) colCount += 2; // Odometer, Mileage
   if (showVendorCol) colCount += 1; // Vendor
 
@@ -156,15 +169,40 @@ export default function FuelExpenses() {
         expense_date: fuelForm.date || undefined,
         trip_id: fuelForm.trip_id || undefined,
         vendor: fuelForm.vendor || undefined,
+        invoice_number: fuelForm.invoice_number ? fuelForm.invoice_number.trim() : undefined,
+        receipt_url: fuelForm.receipt_url ? fuelForm.receipt_url.trim() : undefined,
         payment_mode: 'Cash'
       });
       setIsFuelDrawerOpen(false);
-      setFuelForm({ vehicle_id: '', date: today(), liters: '', cost: '', odometer: '', vendor: '', trip_id: '' });
+      setFuelForm({
+        vehicle_id: '',
+        date: today(),
+        liters: '',
+        cost: '',
+        odometer: '',
+        vendor: '',
+        trip_id: '',
+        invoice_number: '',
+        receipt_url: ''
+      });
       setNewId(res.data.id);
       setTimeout(() => setNewId(null), 1000);
       await fetchExpenses(true);
     } catch (err) {
       setError(err.message || 'Could not log the fuel entry.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReview = async (id, action, notes = '') => {
+    setBusy(true);
+    try {
+      await apiRequest('PATCH', `/expenses/${id}/review`, { action, notes });
+      setReviewModal({ open: false, expense: null, notes: '' });
+      await fetchExpenses(true);
+    } catch (err) {
+      setError(err.message || 'Could not review the fuel claim.');
     } finally {
       setBusy(false);
     }
@@ -329,6 +367,42 @@ export default function FuelExpenses() {
         ]}
       />
 
+      {/* Anti-Fraud Review Alert Banner */}
+      {underReviewCount > 0 && (
+        <div className="fe-review-banner">
+          <div className="fe-review-banner-text">
+            <ShieldAlert size={18} className="fe-banner-icon" />
+            <span>
+              <b>{underReviewCount} fuel claim{underReviewCount > 1 ? 's' : ''} require manager review</b> — potential duplicate receipts, odometer anomalies, or tank capacity exceedances.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline"
+            style={{ borderColor: 'rgba(217, 119, 6, 0.4)', color: '#b45309', background: '#fff' }}
+            onClick={() => { setCategoryFilter('FUEL'); setStatusFilter(statusFilter === 'Under Review' ? 'All' : 'Under Review'); }}
+          >
+            {statusFilter === 'Under Review' ? 'Show All Claims' : 'Filter Under Review'}
+          </button>
+        </div>
+      )}
+
+      {/* Status filter bar */}
+      <div className="status-filter-bar">
+        <span className="status-filter-label">Approval Status:</span>
+        {['All', 'Under Review', 'Approved', 'Rejected'].map((st) => (
+          <button
+            key={st}
+            type="button"
+            className={`status-chip ${statusFilter === st ? 'active' : ''} ${st === 'Under Review' && underReviewCount > 0 ? 'has-review' : ''}`}
+            onClick={() => setStatusFilter(st)}
+          >
+            {st === 'Under Review' && underReviewCount > 0 && <span className="status-chip-dot" />}
+            {st} {st === 'Under Review' && underReviewCount > 0 ? `(${underReviewCount})` : ''}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div className="fe-error" role="alert">
           {error}
@@ -348,7 +422,8 @@ export default function FuelExpenses() {
                 <th>Trip</th>
                 {showMileageCols && <th>Odometer</th>}
                 {showMileageCols && <th>Mileage</th>}
-                {showVendorCol && <th>Vendor</th>}
+                {showVendorCol && <th>Vendor / Bill #</th>}
+                <th>Status & Anti-Fraud</th>
                 <th className="num">Amount</th>
               </tr>
             </thead>
@@ -399,7 +474,76 @@ export default function FuelExpenses() {
                           : '—'}
                       </td>
                     )}
-                    {showVendorCol && <td>{exp.vendor || '—'}</td>}
+                    {showVendorCol && (
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                          <span>{exp.vendor || '—'}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            {exp.invoice_number && (
+                              <span className="fe-bill-tag">
+                                #{exp.invoice_number}
+                              </span>
+                            )}
+                            {exp.receipt_url && (
+                              <a
+                                href={exp.receipt_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="fe-receipt-link"
+                                title="Open receipt image"
+                              >
+                                <ExternalLink size={10} /> receipt
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    )}
+                    <td>
+                      {exp.approval_status === 'Under Review' ? (
+                        <div className="fe-status-cell">
+                          <button
+                            type="button"
+                            className="fe-status-badge fe-badge-review"
+                            onClick={() => setReviewModal({ open: true, expense: exp, notes: '' })}
+                            title="Click to view fraud warnings & review"
+                          >
+                            <AlertTriangle size={11} /> Under Review ({exp.flag_reasons?.length || 1})
+                          </button>
+                          <div className="fe-quick-actions">
+                            <button
+                              type="button"
+                              className="fe-act-btn fe-act-approve"
+                              title="Approve claim"
+                              disabled={busy}
+                              onClick={() => handleReview(exp.id, 'APPROVE')}
+                            >
+                              <CheckCircle2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="fe-act-btn fe-act-reject"
+                              title="Reject claim"
+                              disabled={busy}
+                              onClick={() => setReviewModal({ open: true, expense: exp, notes: '' })}
+                            >
+                              <XCircle size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : exp.approval_status === 'Rejected' ? (
+                        <span
+                          className="fe-status-badge fe-badge-rejected"
+                          title={exp.review_notes ? `Rejected: ${exp.review_notes}` : 'Rejected claim'}
+                        >
+                          <XCircle size={11} /> Rejected
+                        </span>
+                      ) : (
+                        <span className="fe-status-badge fe-badge-approved">
+                          <CheckCircle2 size={11} /> Approved
+                        </span>
+                      )}
+                    </td>
                     <td className="num" style={{ fontWeight: 700 }}>
                       {formatCurrency(exp.amount)}
                     </td>
@@ -498,6 +642,29 @@ export default function FuelExpenses() {
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+            <div className="input-group">
+              <label>Bill / Receipt # (optional)</label>
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="e.g. INV-98124"
+                value={fuelForm.invoice_number}
+                onChange={(e) => setFuelForm({ ...fuelForm, invoice_number: e.target.value })}
+              />
+            </div>
+            <div className="input-group">
+              <label>Receipt Photo URL (optional)</label>
+              <input
+                type="url"
+                className="input w-full"
+                placeholder="https://..."
+                value={fuelForm.receipt_url}
+                onChange={(e) => setFuelForm({ ...fuelForm, receipt_url: e.target.value })}
+              />
+            </div>
+          </div>
+
           <div className="input-group mb-4">
             <label>Pump / Vendor (optional)</label>
             <input
@@ -509,7 +676,7 @@ export default function FuelExpenses() {
             />
           </div>
 
-          <div className="input-group mb-6">
+          <div className="input-group mb-4">
             <label>Trip (optional — auto-detected if during one)</label>
             <select
               className="select w-full"
@@ -526,6 +693,36 @@ export default function FuelExpenses() {
                 ))}
             </select>
           </div>
+
+          {/* Live Odometer & Tank sanity hints */}
+          {(() => {
+            const v = vehicles.find((veh) => String(veh.id) === String(fuelForm.vehicle_id));
+            if (!v) return null;
+            const prevOdo = Number(v.odometer) || 0;
+            const tankCap = Number(v.fuel_tank_capacity) || 300;
+            const odoVal = Number(fuelForm.odometer);
+            const litresVal = Number(fuelForm.liters);
+            const isOdoLow = odoVal > 0 && prevOdo > 0 && odoVal <= prevOdo;
+            const isTankOver = litresVal > 0 && litresVal > tankCap;
+            if (!isOdoLow && !isTankOver) return null;
+            return (
+              <div className="fe-form-warning mb-4">
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  {isOdoLow && (
+                    <div>
+                      Entered odometer ({odoVal.toLocaleString()} km) is ≤ vehicle's recorded odometer ({prevOdo.toLocaleString()} km). It will be flagged for review.
+                    </div>
+                  )}
+                  {isTankOver && (
+                    <div>
+                      Entered quantity ({litresVal}L) exceeds vehicle's fuel tank capacity ({tankCap}L). It will be flagged for review.
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--line)' }}>
             <button
@@ -788,6 +985,131 @@ export default function FuelExpenses() {
           </div>,
           document.body
         )}
+
+      {/* Review Modal for Flagged Fuel Claims */}
+      {reviewModal.open && reviewModal.expense && createPortal(
+        <div className="fe-modal-overlay" onClick={() => setReviewModal({ open: false, expense: null, notes: '' })}>
+          <div className="fe-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="fe-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ShieldAlert size={18} color="#d97706" />
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Review Fuel Claim</h3>
+              </div>
+              <button
+                type="button"
+                className="fe-modal-close"
+                onClick={() => setReviewModal({ open: false, expense: null, notes: '' })}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="fe-modal-body">
+              <div className="fe-review-details-grid">
+                <div>
+                  <span className="fe-detail-label">Vehicle</span>
+                  <b>{reviewModal.expense.vehicle_registration} ({reviewModal.expense.vehicle_kind})</b>
+                </div>
+                <div>
+                  <span className="fe-detail-label">Date</span>
+                  <b>{reviewModal.expense.expense_date}</b>
+                </div>
+                <div>
+                  <span className="fe-detail-label">Claimed Amount</span>
+                  <b style={{ color: '#d97706' }}>{formatCurrency(reviewModal.expense.amount)}</b>
+                </div>
+                <div>
+                  <span className="fe-detail-label">Quantity</span>
+                  <b>{reviewModal.expense.quantity ? `${reviewModal.expense.quantity} L` : '—'}</b>
+                </div>
+                <div>
+                  <span className="fe-detail-label">Odometer</span>
+                  <b>{reviewModal.expense.odometer ? `${Number(reviewModal.expense.odometer).toLocaleString('en-IN')} km` : '—'}</b>
+                </div>
+                <div>
+                  <span className="fe-detail-label">Pump / Vendor</span>
+                  <b>{reviewModal.expense.vendor || '—'}</b>
+                </div>
+                <div>
+                  <span className="fe-detail-label">Receipt / Bill #</span>
+                  <b>{reviewModal.expense.invoice_number ? `#${reviewModal.expense.invoice_number}` : 'None provided'}</b>
+                </div>
+                <div>
+                  <span className="fe-detail-label">Trip</span>
+                  <b>{reviewModal.expense.trip_id ? tripCode(reviewModal.expense.trip_id) : 'Unassigned'}</b>
+                </div>
+              </div>
+
+              {/* Anomaly flags */}
+              <div className="fe-flag-box">
+                <div className="fe-flag-header">
+                  <AlertTriangle size={14} color="#d97706" />
+                  <b>Detected Anomaly Flags ({reviewModal.expense.flag_reasons?.length || 0})</b>
+                </div>
+                <ul className="fe-flag-list">
+                  {reviewModal.expense.flag_reasons && reviewModal.expense.flag_reasons.length > 0 ? (
+                    reviewModal.expense.flag_reasons.map((reason, idx) => (
+                      <li key={idx}>{reason}</li>
+                    ))
+                  ) : (
+                    <li>Manual review requested for this entry.</li>
+                  )}
+                </ul>
+              </div>
+
+              {reviewModal.expense.receipt_url && (
+                <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'var(--bg)', borderRadius: '6px' }}>
+                  <span className="fe-detail-label">Receipt Document</span>
+                  <a
+                    href={reviewModal.expense.receipt_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: '0.8rem', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 600 }}
+                  >
+                    <ExternalLink size={12} /> Open original receipt image
+                  </a>
+                </div>
+              )}
+
+              <div className="input-group" style={{ marginTop: '1rem' }}>
+                <label>Reviewer Notes / Verification Reason (optional)</label>
+                <textarea
+                  className="input w-full"
+                  rows={2}
+                  placeholder="e.g. Verified with driver; physical slip checked and matches pump records."
+                  value={reviewModal.notes}
+                  onChange={(e) => setReviewModal({ ...reviewModal, notes: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="fe-modal-footer">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setReviewModal({ open: false, expense: null, notes: '' })}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={busy}
+                onClick={() => handleReview(reviewModal.expense.id, 'REJECT', reviewModal.notes)}
+              >
+                Reject Claim
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => handleReview(reviewModal.expense.id, 'APPROVE', reviewModal.notes)}
+              >
+                Approve Claim
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

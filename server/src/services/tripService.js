@@ -4,6 +4,7 @@ const Vehicle = require('../models/vehicleModel');
 const Driver = require('../models/driverModel');
 const Company = require('../models/companyModel');
 const { haversineMeters } = require('../utils/geo');
+const { punctualityService } = require('./punctualityService');
 
 class TripServiceError extends Error {
   constructor(message, statusCode = 400) {
@@ -742,6 +743,14 @@ const tripService = {
 
       // Update the trip row, scoped strictly by organization_id
       await Trip.update(id, updateFields, user.organization_id, client);
+
+      if (nextStatus === 'Completed') {
+        try {
+          await punctualityService.evaluateTripCompletion(id, user.organization_id, client);
+        } catch (punctErr) {
+          console.warn('Driver punctuality evaluation skipped due to non-fatal error:', punctErr);
+        }
+      }
 
       await client.query('COMMIT');
 

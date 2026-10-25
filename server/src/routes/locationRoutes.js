@@ -5,6 +5,7 @@ const requireTenantContext = require('../middleware/requireTenantContext');
 const authorize = require('../middleware/authorize');
 const {
   recordLocation,
+  syncBatchLocations,
   getActiveLocations,
   getTripLocations
 } = require('../controllers/locationController');
@@ -18,6 +19,13 @@ router.post(
   '/',
   authorize(['Driver', 'Owner/Manager']),
   recordLocation
+);
+
+// Drivers and Owner/Managers can sync offline buffered locations
+router.post(
+  '/sync-batch',
+  authorize(['Driver', 'Owner/Manager']),
+  syncBatchLocations
 );
 
 // Owner/Managers can view all active dispatched vehicle locations

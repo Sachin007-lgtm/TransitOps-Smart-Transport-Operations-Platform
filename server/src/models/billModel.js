@@ -193,7 +193,7 @@ const Bill = {
    * @param {string[]} statuses        trip statuses that count as billable
    * @param {number[]} [trip_ids]      optional explicit subset of trips
    */
-  generate: async ({ organization_id, company_id, statuses, trip_ids = null, charge_ids = null, note = null, bill_date = null }) => {
+  generate: async ({ organization_id, company_id, statuses, trip_ids = null, charge_ids = null, note = null, bill_date = null, due_date = null }) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -278,15 +278,18 @@ const Bill = {
 
       const billResult = await client.query(
         `INSERT INTO bills (
-           organization_id, bill_no, company_id, bill_date, previous_balance,
+           organization_id, bill_no, company_id, bill_date, due_date, previous_balance,
            subtotal, charges_total, total_advance, balance_due, status, note
-         ) VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $6, $7, $8, $9, 'Unpaid', $10)
+         ) VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE),
+                   COALESCE($5::date, COALESCE($4::date, CURRENT_DATE) + INTERVAL '30 days'),
+                   $6, $7, $8, $9, $10, 'Unpaid', $11)
          RETURNING *;`,
         [
           organization_id,
           bill_no,
           company_id,
           bill_date,
+          due_date,
           previousBalance,
           subtotal,
           chargesTotal,

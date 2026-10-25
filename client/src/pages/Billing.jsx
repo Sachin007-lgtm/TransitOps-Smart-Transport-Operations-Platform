@@ -11,7 +11,10 @@ import {
   Receipt,
   Check,
   Edit2,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  ShieldAlert,
+  Clock
 } from 'lucide-react';
 import { apiRequest, apiOpenDocument } from '../utils/api';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
@@ -62,6 +65,8 @@ export default function Billing() {
 
   const [companies, setCompanies] = useState([]);
   const [bills, setBills] = useState([]);
+  const [ageing, setAgeing] = useState([]);
+  const [showAgeing, setShowAgeing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -82,6 +87,7 @@ export default function Billing() {
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
   const [note, setNote] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [chargeForm, setChargeForm] = useState({
     id: null,
     kind: 'TOLL',
@@ -100,7 +106,8 @@ export default function Billing() {
     contact_person: '',
     phone: '',
     address: '',
-    opening_balance: ''
+    opening_balance: '',
+    credit_limit: ''
   });
 
   const loadCompanies = useCallback(async () => {
@@ -123,11 +130,21 @@ export default function Billing() {
     }
   }, []);
 
+  const loadAgeing = useCallback(async () => {
+    try {
+      const res = await apiRequest('GET', '/billing/companies/ageing');
+      setAgeing(res.data || []);
+    } catch (err) {
+      // Non-fatal — ageing panel just stays empty
+      console.warn('Ageing load failed:', err.message);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadCompanies(), loadBills()]);
+    await Promise.all([loadCompanies(), loadBills(), loadAgeing()]);
     setLoading(false);
-  }, [loadCompanies, loadBills]);
+  }, [loadCompanies, loadBills, loadAgeing]);
 
   useEffect(() => {
     refreshAll();
@@ -261,12 +278,14 @@ export default function Billing() {
       const allCharges = selectedChargeIds.length === charges.length;
       const res = await apiRequest('POST', `/billing/companies/${companyId}/statement/issue`, {
         note: note.trim() || undefined,
+        due_date: dueDate || undefined,
         statuses,
         trip_ids: allTrips ? undefined : selectedTripIds,
         charge_ids: allCharges ? undefined : selectedChargeIds
       });
       showToast(`Statement ${res.data.bill_no} issued.`);
       setNote('');
+      setDueDate('');
       setIsStatementDrawerOpen(false);
       await refreshAll();
       setOpenBill(res.data);
@@ -354,10 +373,11 @@ export default function Billing() {
         contact_person: companyForm.contact_person.trim() || undefined,
         phone: companyForm.phone.trim() || undefined,
         address: companyForm.address.trim() || undefined,
-        opening_balance: companyForm.opening_balance ? parseFloat(companyForm.opening_balance) : 0
+        opening_balance: companyForm.opening_balance ? parseFloat(companyForm.opening_balance) : 0,
+        credit_limit: companyForm.credit_limit ? parseFloat(companyForm.credit_limit) : undefined
       });
       showToast(`Company ${res.data.name} added.`);
-      setCompanyForm({ name: '', gstin: '', contact_person: '', phone: '', address: '', opening_balance: '' });
+      setCompanyForm({ name: '', gstin: '', contact_person: '', phone: '', address: '', opening_balance: '', credit_limit: '' });
       setShowCompanyForm(false);
       await loadCompanies();
       setCompanyId(res.data.id);
@@ -522,15 +542,24 @@ export default function Billing() {
             {visibleCompanies.map((c) => {
               const owes = Number(c.outstanding_balance) || 0;
               const unbilled = Number(c.unbilled_trip_count) || 0;
+              const creditLimit = c.credit_limit !== null && c.credit_limit !== undefined ? parseFloat(c.credit_limit) : null;
+              const overLimit = creditLimit !== null && owes > creditLimit;
               return (
                 <button
                   key={c.id}
                   type="button"
                   className={`rail-item ${companyId === c.id ? 'active' : ''}`}
                   onClick={() => setCompanyId(c.id)}
-                  title={`${c.name} · ${unbilled} unbilled trips · Owes ${money(owes)}`}
+                  title={`${c.name} · ${unbilled} unbilled trips · Owes ${money(owes)}${overLimit ? ' · CREDIT LIMIT EXCEEDED' : ''}`}
                 >
-                  <div className="rail-item-name">{c.name}</div>
+                  <div className="rail-item-name">
+                    {c.name}
+                    {overLimit && (
+                      <span className="credit-breach-badge" title={`Exceeds credit limit of ${money(creditLimit)}`}>
+                        <ShieldAlert size={11} /> Over limit
+                      </span>
+                    )}
+                  </div>
                   <div className="rail-item-sub">
                     <span>{unbilled > 0 ? `${unbilled} unbilled` : '0 unbilled'}</span>
                     <span className={owes > 0 ? 'rail-due' : ''}>
@@ -563,6 +592,73 @@ export default function Billing() {
                   <FileText size={14} /> Review & Issue Statement <ChevronRight size={14} />
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Ageing Report Panel */}
+          {ageing.length > 0 && (
+            <div className="ageing-panel">
+              <button
+                type="button"
+                className="ageing-panel-header"
+                onClick={() => setShowAgeing((v) => !v)}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Clock size={14} />
+                  <b>Receivables Ageing</b>
+                  <span className="ageing-badge">{ageing.length} clients · {money(ageing.reduce((s, a) => s + parseFloat(a.total_outstanding || 0), 0))}</span>
+                </span>
+                <ChevronDown size={14} style={{ transform: showAgeing ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+              </button>
+              {showAgeing && (
+                <div className="ageing-table-wrap">
+                  <table className="dense-table">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th className="num">Current</th>
+                        <th className="num ageing-col-mild">1–15 days</th>
+                        <th className="num ageing-col-warn">16–30 days</th>
+                        <th className="num ageing-col-danger">31–60 days</th>
+                        <th className="num ageing-col-critical">60+ days</th>
+                        <th className="num">Total</th>
+                        <th>Credit Limit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ageing.map((a) => {
+                        const lim = a.credit_limit !== null ? parseFloat(a.credit_limit) : null;
+                        const total = parseFloat(a.total_outstanding || 0);
+                        const overLimit = lim !== null && total > lim;
+                        return (
+                          <tr key={a.id} className={overLimit ? 'ageing-row-breach' : ''}>
+                            <td>
+                              <button
+                                type="button"
+                                className="link-btn"
+                                style={{ fontWeight: 600, textAlign: 'left' }}
+                                onClick={() => setCompanyId(a.id)}
+                              >
+                                {a.name}
+                              </button>
+                              {overLimit && <span className="ageing-overlimit-tag"><ShieldAlert size={10} /> Over limit</span>}
+                            </td>
+                            <td className="num">{parseFloat(a.current_amt) > 0 ? money(a.current_amt) : '—'}</td>
+                            <td className="num ageing-col-mild">{parseFloat(a.days_1_15) > 0 ? money(a.days_1_15) : '—'}</td>
+                            <td className="num ageing-col-warn">{parseFloat(a.days_16_30) > 0 ? money(a.days_16_30) : '—'}</td>
+                            <td className="num ageing-col-danger">{parseFloat(a.days_31_60) > 0 ? money(a.days_31_60) : '—'}</td>
+                            <td className="num ageing-col-critical">{parseFloat(a.days_60plus) > 0 ? money(a.days_60plus) : '—'}</td>
+                            <td className="num" style={{ fontWeight: 700 }}>{money(total)}</td>
+                            <td style={{ fontSize: '0.77rem', color: overLimit ? 'var(--red)' : 'var(--sub)' }}>
+                              {lim !== null ? money(lim) : <span style={{ color: 'var(--sub)' }}>—</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -725,6 +821,21 @@ export default function Billing() {
               placeholder="0"
             />
           </div>
+          <div className="input-group mb-4">
+            <label>Credit limit (₹) — max outstanding allowed</label>
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              className="input w-full"
+              value={companyForm.credit_limit}
+              onChange={(e) => setCompanyForm({ ...companyForm, credit_limit: e.target.value })}
+              placeholder="Leave blank for no limit"
+            />
+            <span style={{ fontSize: '0.72rem', color: 'var(--sub)', marginTop: '0.25rem', display: 'block' }}>
+              You'll see a warning before issuing new trips if the client exceeds this.
+            </span>
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.5rem' }}>
             <button type="button" className="btn btn-outline" onClick={() => setShowCompanyForm(false)}>
@@ -749,6 +860,17 @@ export default function Billing() {
 
         {!previewLoading && preview && (
           <div>
+            {/* Credit limit breach warning */}
+            {preview?.credit_limit_breach && (
+              <div className="credit-breach-warning">
+                <ShieldAlert size={15} />
+                <span>
+                  <b>Credit limit breach:</b> {preview?.company?.name} owes {money(preview?.ledger?.closing_balance)}, which exceeds their credit limit of {money(preview?.credit_limit)}.
+                  You can still issue the statement, but consider collecting before dispatching new trips.
+                </span>
+              </div>
+            )}
+
             {/* Ledger breakdown */}
             <div className="ledger-block mb-4">
               <div className="ledger-row">
@@ -910,7 +1032,7 @@ export default function Billing() {
               </form>
             </div>
 
-            {/* Note & Action */}
+            {/* Note, Due Date & Action */}
             <div className="input-group mb-4">
               <label>Statement Note (optional)</label>
               <input
@@ -918,6 +1040,15 @@ export default function Billing() {
                 placeholder="e.g. Due within 15 days"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
+              />
+            </div>
+            <div className="input-group mb-4">
+              <label>Payment Due Date (optional — defaults to net 30)</label>
+              <input
+                type="date"
+                className="input w-full"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
               />
             </div>
 

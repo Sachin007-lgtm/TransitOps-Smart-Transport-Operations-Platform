@@ -49,6 +49,16 @@ function createLiveMapPopupHtml(trip) {
   const speedVal = trip.speed != null ? `${parseFloat(trip.speed).toFixed(0)} km/h` : '—';
   const coordsVal = hasLastKnown ? `${parseFloat(trip.latitude).toFixed(4)}, ${parseFloat(trip.longitude).toFixed(4)}` : '—';
   const lastSync = trip.captured_at ? formatTime(trip.captured_at) : 'Never';
+  const batteryVal = trip.battery_level != null ? `${trip.battery_level}%` : '—';
+  const geofenceTag = trip.geofence_status === 'ARRIVED_PICKUP'
+    ? '🎯 At Pickup'
+    : trip.geofence_status === 'ARRIVED_DESTINATION'
+    ? '🏁 At Destination'
+    : '🚛 In Transit';
+
+  const punctualityRating = trip.driver_punctuality_score
+    ? `⭐ ${trip.driver_punctuality_score} (${trip.driver_on_time_rate || '100'}% On-Time)`
+    : '⭐ 5.0 (New)';
 
   return `
     <div class="live-marker-popup">
@@ -68,6 +78,23 @@ function createLiveMapPopupHtml(trip) {
       <div class="lmp-route-row">
         <div class="lmp-route-text">${trip.origin || 'Origin'} <span>→</span> ${trip.destination || 'Destination'}</div>
         <div class="lmp-status-pill ${statusClass}">${statusLabel}</div>
+      </div>
+
+      <div style="display: flex; gap: 0.5rem; margin: 0.4rem 0 0.6rem 0; flex-wrap: wrap;">
+        <span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; background: #EEF2FF; color: #4338CA;">
+          ${geofenceTag}
+        </span>
+        <span style="font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 6px; background: #FEF3C7; color: #92400E;">
+          🔋 ${batteryVal}
+        </span>
+        ${trip.is_offline_sync ? `
+          <span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; background: #F3E8FF; color: #7E22CE;">
+            📦 Offline Synced
+          </span>
+        ` : ''}
+        <span style="font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 6px; background: #DCFCE7; color: #15803D;">
+          ${punctualityRating}
+        </span>
       </div>
 
       <!-- Real Time Metrics Section -->
@@ -403,6 +430,120 @@ export default function LiveMap() {
     }
   }, [activeTrips, selectedTripId]);
 
+  const [simulating, setSimulating] = useState(false);
+
+  const handleSimulateLivePing = async (targetTrip) => {
+    if (!targetTrip) return;
+    try {
+      setSimulating(true);
+      const baseLat = parseFloat(targetTrip.latitude) || 23.0225;
+      const baseLng = parseFloat(targetTrip.longitude) || 72.5714;
+      const nextLat = baseLat + (Math.random() * 0.006 - 0.001);
+      const nextLng = baseLng + (Math.random() * 0.006 - 0.001);
+
+      await apiRequest('POST', '/locations', {
+        trip_id: targetTrip.trip_id,
+        latitude: nextLat,
+        longitude: nextLng,
+        speed: Math.floor(45 + Math.random() * 20),
+        heading: Math.floor(Math.random() * 360),
+        accuracy: 6,
+        battery_level: 82,
+        is_offline_sync: false,
+        captured_at: new Date().toISOString()
+      });
+
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: `⚡ Simulated live telemetry ping for Trip #${targetTrip.trip_id} (${targetTrip.driver_name || 'Driver'})`,
+          type: 'success'
+        })
+      );
+      await fetchActiveLocations(true);
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: err.message || 'Failed to simulate live ping',
+          type: 'error'
+        })
+      );
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const handleSimulateOfflineBatchSync = async (targetTrip) => {
+    if (!targetTrip) return;
+    try {
+      setSimulating(true);
+      const baseLat = parseFloat(targetTrip.latitude) || 23.0225;
+      const baseLng = parseFloat(targetTrip.longitude) || 72.5714;
+      const now = Date.now();
+
+      // 4 sequential pings simulating dead zone recovery
+      const pings = [
+        {
+          latitude: baseLat + 0.003,
+          longitude: baseLng + 0.003,
+          speed: 48,
+          heading: 80,
+          accuracy: 10,
+          battery_level: 84,
+          captured_at: new Date(now - 18 * 60 * 1000).toISOString()
+        },
+        {
+          latitude: baseLat + 0.007,
+          longitude: baseLng + 0.008,
+          speed: 55,
+          heading: 85,
+          accuracy: 8,
+          battery_level: 82,
+          captured_at: new Date(now - 12 * 60 * 1000).toISOString()
+        },
+        {
+          latitude: baseLat + 0.012,
+          longitude: baseLng + 0.014,
+          speed: 58,
+          heading: 90,
+          accuracy: 7,
+          battery_level: 80,
+          captured_at: new Date(now - 6 * 60 * 1000).toISOString()
+        },
+        {
+          latitude: baseLat + 0.018,
+          longitude: baseLng + 0.021,
+          speed: 50,
+          heading: 95,
+          accuracy: 6,
+          battery_level: 79,
+          captured_at: new Date(now).toISOString()
+        }
+      ];
+
+      const res = await apiRequest('POST', '/locations/sync-batch', {
+        trip_id: targetTrip.trip_id,
+        pings
+      });
+
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: `📦 ${res.message || 'Synced 4 offline buffered GPS pings!'}`,
+          type: 'success'
+        })
+      );
+      await fetchActiveLocations(true);
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: err.message || 'Failed to simulate offline sync',
+          type: 'error'
+        })
+      );
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   // ─── Fly to selected trip location ───────────────────────────────────────────
   const handleSelectTrip = (trip) => {
     setSelectedTripId(trip.trip_id);
@@ -504,7 +645,33 @@ export default function LiveMap() {
             ) : null}
           </div>
 
-
+          {/* Telemetry & Offline Sync Simulator Panel */}
+          {activeTrips.length > 0 && (
+            <div className="live-sim-panel">
+              <div className="live-sim-header">
+                <span>🧪 Telemetry &amp; Sync Simulator</span>
+                <span className="live-sim-target">{selectedTrip ? `Trip #${selectedTrip.trip_id}` : `Target: Trip #${activeTrips[0]?.trip_id}`}</span>
+              </div>
+              <div className="live-sim-actions">
+                <button
+                  className="sim-action-btn ping"
+                  onClick={() => handleSimulateLivePing(selectedTrip || activeTrips[0])}
+                  disabled={simulating}
+                  title="Send a real-time moving GPS ping"
+                >
+                  ⚡ Simulate Live Ping
+                </button>
+                <button
+                  className="sim-action-btn offline"
+                  onClick={() => handleSimulateOfflineBatchSync(selectedTrip || activeTrips[0])}
+                  disabled={simulating}
+                  title="Simulate driver recovering from dead-zone with 4 buffered pings"
+                >
+                  📦 Sync Offline (4 Pings)
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="live-trips-list">
             {isLoading ? (
@@ -525,6 +692,11 @@ export default function LiveMap() {
                 const isSelected  = trip.trip_id === selectedTripId;
                 const isLive = trip.latitude != null && trip.longitude != null && !isLocationStale(trip);
                 const hasLastKnown = trip.latitude != null && trip.longitude != null;
+                const geofenceTag = trip.geofence_status === 'ARRIVED_PICKUP'
+                  ? '🎯 At Pickup'
+                  : trip.geofence_status === 'ARRIVED_DESTINATION'
+                  ? '🏁 At Destination'
+                  : '🚛 In Transit';
 
                 return (
                   <div
@@ -549,6 +721,28 @@ export default function LiveMap() {
 
                     <div className="live-trip-route">
                       {trip.origin} → {trip.destination}
+                    </div>
+
+                    {/* Milestone & Telemetry Badges */}
+                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '4px', background: '#EEF2FF', color: '#4338CA' }}>
+                        {geofenceTag}
+                      </span>
+                      {trip.battery_level != null && (
+                        <span style={{ fontSize: '0.68rem', fontWeight: 600, padding: '0.15rem 0.45rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E' }}>
+                          🔋 {trip.battery_level}%
+                        </span>
+                      )}
+                      {trip.is_offline_sync && (
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '4px', background: '#F3E8FF', color: '#7E22CE' }}>
+                          📦 Synced
+                        </span>
+                      )}
+                      {trip.driver_punctuality_score && (
+                        <span style={{ fontSize: '0.68rem', fontWeight: 600, padding: '0.15rem 0.45rem', borderRadius: '4px', background: '#DCFCE7', color: '#15803D' }}>
+                          ⭐ {trip.driver_punctuality_score}
+                        </span>
+                      )}
                     </div>
 
                     <div className="live-trip-meta-row">

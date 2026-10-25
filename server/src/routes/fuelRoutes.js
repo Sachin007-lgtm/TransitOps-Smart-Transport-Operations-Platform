@@ -16,7 +16,8 @@ const {
 const {
   createExpense,
   listExpenses,
-  vehicleSummary
+  vehicleSummary,
+  reviewExpense
 } = require('../controllers/expenseController');
 
 router.use(authenticate);
@@ -37,6 +38,7 @@ const forceFuelQuery = (req, res, next) => {
 
 router.get('/', authorize(READ_ROLES), forceFuelQuery, validateListExpenses, listExpenses);
 router.post('/', authorize(WRITE_ROLES), forceFuelCategory, validateCreateExpense, createExpense);
+router.patch('/:id/review', authorize(WRITE_ROLES), reviewExpense);
 router.get('/summary/vehicles', authorize(READ_ROLES), forceFuelQuery, validateListExpenses, vehicleSummary);
 
 module.exports = router;

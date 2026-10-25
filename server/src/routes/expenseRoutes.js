@@ -15,7 +15,8 @@ const {
   deleteExpense,
   vehicleSummary,
   getMonthlyBill,
-  getMonthlyBillDownload
+  getMonthlyBillDownload,
+  reviewExpense
 } = require('../controllers/expenseController');
 
 // All expense endpoints require a valid JWT; tenant scoping happens in the
@@ -38,6 +39,8 @@ router.get('/summary/vehicles', authorize(READ_ROLES), validateListExpenses, veh
 // validator is needed; the service rejects a malformed month with a 400.
 router.get('/monthly-bill', authorize(READ_ROLES), getMonthlyBill);
 router.get('/monthly-bill/:month/download', authorize(READ_ROLES), getMonthlyBillDownload);
+
+router.patch('/:id/review', authorize(WRITE_ROLES), reviewExpense);
 
 router.route('/:id')
   .get(authorize(READ_ROLES), getExpense)

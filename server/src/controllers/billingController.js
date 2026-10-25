@@ -63,6 +63,16 @@ const deleteCompany = asyncWrapper(async (req, res) => {
   }
 });
 
+// Receivables ageing: outstanding per client in 0-15, 16-30, 31-60, 60+ day buckets.
+const getCompaniesAgeing = asyncWrapper(async (req, res) => {
+  try {
+    const ageing = await billingService.getAgeing(req.user.organization_id);
+    return apiResponse.success(res, ageing, 'Ageing report retrieved successfully.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 // --- Bills ---------------------------------------------------------------
 
 // The trips a bill for this company would be composed from, plus a breakdown
@@ -227,6 +237,7 @@ module.exports = {
   getCompanyById,
   updateCompany,
   deleteCompany,
+  getCompaniesAgeing,
   getUnbilledTrips,
   getStatement,
   issueStatement,
