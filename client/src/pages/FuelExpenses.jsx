@@ -741,14 +741,25 @@ export default function FuelExpenses() {
               <div className="ocr-success-pill">
                 <span>✨ Auto-Extracted:</span>
                 <strong>Bill #{ocrExtractedData.bill_number || 'N/A'}</strong> ·
-                <strong>{ocrExtractedData.liters || '0'} L</strong> ·
+                <strong>{ocrExtractedData.liters || '0'} L</strong>
+                {ocrExtractedData.cost_per_liter && <span>(@ ₹{ocrExtractedData.cost_per_liter}/L)</span>} ·
                 <strong>₹{ocrExtractedData.amount || '0'}</strong>
+                {ocrExtractedData.vehicle_registration && (
+                  <span>· <strong>Plate: {ocrExtractedData.vehicle_registration}</strong></span>
+                )}
               </div>
             )}
           </div>
 
           <div className="input-group mb-4">
-            <label>Vehicle *</label>
+            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Vehicle *</span>
+              {ocrExtractedData?.vehicle_registration && (
+                <span style={{ fontSize: '0.7rem', color: fuelForm.vehicle_id ? '#16a34a' : '#d97706', fontWeight: 600 }}>
+                  {fuelForm.vehicle_id ? `✓ Matched Plate: ${ocrExtractedData.vehicle_registration}` : `🏷️ Slip Plate: ${ocrExtractedData.vehicle_registration}`}
+                </span>
+              )}
+            </label>
             <select
               required
               className="select w-full"

@@ -4,16 +4,17 @@ import Tesseract from 'tesseract.js';
  * Common Indian Fuel Station Brands Heuristic
  */
 const FUEL_BRANDS = [
-  { name: 'Indian Oil Corporation Ltd', keywords: ['indian oil', 'iocl', 'indianoil', 'swagat', 'kisan seva'] },
-  { name: 'Bharat Petroleum (BPCL)', keywords: ['bharat petroleum', 'bpcl', 'speed', 'pure for sure', 'mak'] },
-  { name: 'Hindustan Petroleum (HPCL)', keywords: ['hindustan petroleum', 'hpcl', 'power', 'club hp'] },
-  { name: 'Shell India', keywords: ['shell', 'v-power'] },
-  { name: 'Nayara Energy', keywords: ['nayara', 'essar'] },
-  { name: 'Reliance Petroleum (Jio-bp)', keywords: ['reliance', 'jio-bp', 'jio bp'] }
+  { name: 'Indian Oil Corporation Ltd', regex: /indian\s*[o0q]il|indianoqil|iocl|swagat|kisan\s*seva/i },
+  { name: 'Bharat Petroleum (BPCL)', regex: /bharat\s*petroleum|bpcl|pure\s*for\s*sure|speed|mak/i },
+  { name: 'Hindustan Petroleum (HPCL)', regex: /hindustan\s*petroleum|hpcl|club\s*hp|power/i },
+  { name: 'Shell India', regex: /shell\s*india|shell/i },
+  { name: 'Nayara Energy', regex: /nayara|essar/i },
+  { name: 'Reliance Petroleum (Jio-bp)', regex: /reliance|jio[- ]?bp/i }
 ];
 
 /**
- * Parse raw OCR text from a fuel receipt into structured fields.
+ * Parse raw OCR text from an Indian fuel receipt into structured fields using
+ * contextual line-by-line inspection and mathematical sanity checks.
  */
 export function parseFuelReceiptText(rawText) {
   if (!rawText || typeof rawText !== 'string') return {};
@@ -34,125 +35,151 @@ export function parseFuelReceiptText(rawText) {
 
   const textLower = rawText.toLowerCase();
 
-  // 1. Detect Fuel Station Brand
+  // 1. Detect Fuel Station Brand (with OCR character substitution tolerance)
   for (const brand of FUEL_BRANDS) {
-    if (brand.keywords.some(k => textLower.includes(k))) {
+    if (brand.regex.test(textLower)) {
       result.fuel_station = brand.name;
       result.confidence_flags.fuel_station = true;
       break;
     }
   }
-  // Fallback to first line if looks like a merchant name
+  // Fallback to merchant heading if unrecognized
   if (!result.fuel_station && lines.length > 0) {
-    const firstLine = lines[0].replace(/[^\w\s\.\-]/g, '').trim();
-    if (firstLine.length >= 4 && firstLine.length <= 40) {
-      result.fuel_station = firstLine;
+    const firstClean = lines[0].replace(/[^\w\s\.\-]/g, '').trim();
+    if (firstClean.length >= 4 && firstClean.length <= 40) {
+      result.fuel_station = firstClean;
     }
   }
 
-  // 2. Detect Bill / Receipt / Invoice Number
-  // Examples: "Bill No: 12048", "Inv No.: INV-4921", "Txn ID: 94821", "Receipt #: 4829"
-  const billMatch = rawText.match(/(?:bill|inv(?:oice)?|slip|txn|trans(?:action)?|receipt|rcpt|memo|doc)\s*(?:no\.?|#|id)?[:\s\-]*([a-z0-9\-\/]{3,20})/i);
-  if (billMatch && billMatch[1]) {
-    // Avoid capturing words like "DATE" or "CASH" as bill number
-    const val = billMatch[1].trim();
-    if (!/^(date|cash|card|total|pump|time|sale|rate|diesel|petrol)$/i.test(val)) {
-      result.bill_number = val.toUpperCase();
-      result.confidence_flags.bill_number = true;
-    }
-  }
+  // 2. Line-by-line contextual parsing
+  for (const line of lines) {
+    const lineLower = line.toLowerCase();
 
-  // 3. Detect Date
-  // Formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, DD/MM/YY
-  const dateMatch = rawText.match(/(?:date[:\s]*)?(\b\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\b)/i);
-  if (dateMatch && dateMatch[1]) {
-    const rawDate = dateMatch[1].replace(/\./g, '/').replace(/-/g, '/');
-    const parts = rawDate.split('/');
-    if (parts.length === 3) {
-      let day = parseInt(parts[0], 10);
-      let month = parseInt(parts[1], 10);
-      let year = parseInt(parts[2], 10);
-
-      // Handle 2-digit year (e.g. 26 -> 2026)
-      if (year < 100) year += 2000;
-
-      // Check if parts are MM/DD or DD/MM
-      if (month > 12 && day <= 12) {
-        const temp = day;
-        day = month;
-        month = temp;
-      }
-
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        result.date = formattedDate;
-        result.confidence_flags.date = true;
+    // Bill / Invoice / Receipt / Memo Number
+    if (!result.bill_number && /(?:receipt|rcpt|inv(?:oice)?|bill|slip|txn|memo|doc)\s*(?:no\.?|#|id)?[:\s\-]*([a-z0-9\-\/]{3,25})/i.test(line)) {
+      const m = line.match(/(?:receipt|rcpt|inv(?:oice)?|bill|slip|txn|memo|doc)\s*(?:no\.?|#|id)?[:\s\-]*([a-z0-9\-\/]{3,25})/i);
+      if (m && m[1]) {
+        const candidate = m[1].trim();
+        if (!/^(date|cash|card|total|pump|time|sale|rate|diesel|petrol|online|mode)$/i.test(candidate)) {
+          result.bill_number = candidate.toUpperCase();
+          result.confidence_flags.bill_number = true;
+        }
       }
     }
-  }
 
-  // 4. Detect Liters / Volume
-  // Examples: "Volume: 65.40 L", "Qty: 50.00", "Volume(L): 45.20", "Ltrs: 62.50"
-  const volumeMatch = rawText.match(/(?:volume|vol|qty|quantity|litres?|ltrs?|vol\.?\s*\(l\))[:\s]*([0-9]+\.?[0-9]*)/i);
-  if (volumeMatch && volumeMatch[1]) {
-    const val = parseFloat(volumeMatch[1]);
-    if (!isNaN(val) && val > 0 && val < 1000) {
-      result.liters = val.toFixed(2);
-      result.confidence_flags.liters = true;
+    // Vehicle Registration (from explicit "VEH NO:" or line containing vehicle plate)
+    if (!result.vehicle_registration) {
+      if (/veh(?:icle)?\s*(?:no\.?|#)?/i.test(lineLower)) {
+        const m = line.match(/([a-z]{2}\s*[0-9]{1,2}\s*[a-z]{1,3}\s*[0-9]{4})/i);
+        if (m && m[1]) {
+          result.vehicle_registration = m[1].replace(/\s+/g, '').toUpperCase();
+          result.confidence_flags.vehicle_registration = true;
+        }
+      }
+    }
+
+    // Rate / Price per Liter (Explicitly requires RATE/PRICE/RSP and NOT Volume/Qty)
+    if (!result.cost_per_liter && /(?:rate|price|rsp)(?:\/ltr|\/l)?/i.test(lineLower) && !/density/i.test(lineLower)) {
+      // Find all numbers on the line and pick the rate (typically ₹60 to ₹180 in India)
+      const numMatches = line.match(/\b([0-9]{2,3}(?:\.[0-9]{1,2})?)\b/g);
+      if (numMatches) {
+        for (const numStr of numMatches) {
+          const val = parseFloat(numStr);
+          if (val >= 60 && val <= 180) {
+            result.cost_per_liter = val.toFixed(2);
+            result.confidence_flags.cost_per_liter = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Volume / Liters (Must contain VOLUME, VOL, QTY, LITRE and MUST NOT contain RATE, PRICE, RSP, DENSITY)
+    if (!result.liters && /(?:volume|vol(?:\(ltr\))?|qty|quantity|litres?|ltrs?)/i.test(lineLower) && !/(?:rate|price|rsp|density)/i.test(lineLower)) {
+      // e.g. "VOLUME(LTR.): 33.78 LT", "QTY: 42.50 L"
+      const numMatches = line.match(/([0-9]{1,4}(?:\.[0-9]{1,3})?)/g);
+      if (numMatches) {
+        for (const numStr of numMatches) {
+          const val = parseFloat(numStr);
+          if (val > 0 && val < 1000) {
+            result.liters = val.toFixed(2);
+            result.confidence_flags.liters = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Amount (Must contain AMOUNT, TOTAL, NET AMOUNT, SALE and MUST NOT contain RATE, PRICE, DENSITY, VAT, GST)
+    if (!result.amount && /(?:amount|total|net\s*amount|sale)/i.test(lineLower) && !/(?:rate|price|rsp|density|tax|vat|gst)/i.test(lineLower)) {
+      // e.g. "AMOUNT: 3500", "NET AMOUNT: Rs 4114.00"
+      const numMatches = line.match(/([0-9]{2,6}(?:\.[0-9]{1,2})?)/g);
+      if (numMatches) {
+        for (const numStr of numMatches) {
+          const val = parseFloat(numStr);
+          if (val >= 50 && val <= 500000) {
+            result.amount = val.toFixed(2);
+            result.confidence_flags.amount = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Date: DD/MM/YYYY (Indian standard fuel receipt date format)
+    if (!result.date && /date/i.test(lineLower)) {
+      const dm = line.match(/(\b\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\b)/);
+      if (dm && dm[1]) {
+        const parts = dm[1].replace(/[\-\.]/g, '/').split('/');
+        if (parts.length === 3) {
+          let day = parseInt(parts[0], 10);
+          let month = parseInt(parts[1], 10);
+          let year = parseInt(parts[2], 10);
+          if (year < 100) year += 2000;
+          if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+            result.date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            result.confidence_flags.date = true;
+          }
+        }
+      }
+    }
+
+    // Odometer
+    if (!result.odometer && /(?:odometer|odo(?:\s*reading)?|km(?:\s*reading)?)/i.test(lineLower)) {
+      const om = line.match(/([0-9]{4,7})/);
+      if (om && om[1]) {
+        result.odometer = om[1];
+        result.confidence_flags.odometer = true;
+      }
     }
   }
 
-  // 5. Detect Rate / Price per Liter
-  // Examples: "Rate: 96.72", "Rate/L: 96.72", "Price/Ltr: 94.50", "RSP: 96.50"
-  const rateMatch = rawText.match(/(?:rate(?:\/ltr|\/l)?|price(?:\/ltr|\/l)?|rsp)[:\s]*(?:₹|rs\.?)?[:\s]*([0-9]+\.?[0-9]*)/i);
-  if (rateMatch && rateMatch[1]) {
-    const val = parseFloat(rateMatch[1]);
-    if (!isNaN(val) && val >= 50 && val <= 200) { // realistic fuel price range in India
-      result.cost_per_liter = val.toFixed(2);
-      result.confidence_flags.cost_per_liter = true;
+  // Fallback vehicle search anywhere in text if not found in labeled line
+  if (!result.vehicle_registration) {
+    const vm = rawText.match(/\b([A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4})\b/);
+    if (vm && vm[1]) {
+      result.vehicle_registration = vm[1].toUpperCase();
+      result.confidence_flags.vehicle_registration = true;
     }
   }
 
-  // 6. Detect Total Amount
-  // Examples: "Total: 6,325.00", "Net Amount: 4,500", "Amount: 5210.50", "Sale: 6000"
-  const amountMatch = rawText.match(/(?:total(?:\s*amount)?|net\s*amount|amount(?:\s*paid)?|grand\s*total|sale)[:\s]*(?:₹|rs\.?)?[:\s]*([0-9,]+\.?[0-9]*)/i);
-  if (amountMatch && amountMatch[1]) {
-    const cleanNum = amountMatch[1].replace(/,/g, '');
-    const val = parseFloat(cleanNum);
-    if (!isNaN(val) && val > 0 && val < 500000) {
-      result.amount = val.toFixed(2);
+  // 3. Mathematical Consistency & Reconciliation
+  const ltr = parseFloat(result.liters);
+  const rate = parseFloat(result.cost_per_liter);
+  const amt = parseFloat(result.amount);
+
+  if (ltr > 0 && rate > 0) {
+    const calculatedAmt = ltr * rate;
+    if (!amt) {
+      result.amount = calculatedAmt.toFixed(2);
       result.confidence_flags.amount = true;
     }
-  }
-
-  // Cross-check: If we have liters & rate, or liters & amount, compute missing value!
-  if (result.liters && result.cost_per_liter && !result.amount) {
-    const computed = parseFloat(result.liters) * parseFloat(result.cost_per_liter);
-    result.amount = computed.toFixed(2);
-    result.confidence_flags.amount = true;
-  } else if (result.amount && result.cost_per_liter && !result.liters) {
-    const computed = parseFloat(result.amount) / parseFloat(result.cost_per_liter);
-    result.liters = computed.toFixed(2);
+  } else if (amt > 0 && rate > 0 && !ltr) {
+    result.liters = (amt / rate).toFixed(2);
     result.confidence_flags.liters = true;
-  } else if (result.amount && result.liters && !result.cost_per_liter) {
-    const computed = parseFloat(result.amount) / parseFloat(result.liters);
-    result.cost_per_liter = computed.toFixed(2);
+  } else if (amt > 0 && ltr > 0 && !rate) {
+    result.cost_per_liter = (amt / ltr).toFixed(2);
     result.confidence_flags.cost_per_liter = true;
-  }
-
-  // 7. Detect Indian Vehicle Registration Number if printed
-  // Pattern: GJ01AB1234, MH12CD5678, DL1A1234
-  const vehMatch = rawText.match(/\b([A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4})\b/);
-  if (vehMatch && vehMatch[1]) {
-    result.vehicle_registration = vehMatch[1].toUpperCase();
-    result.confidence_flags.vehicle_registration = true;
-  }
-
-  // 8. Detect Odometer reading if entered
-  const odoMatch = rawText.match(/(?:odometer|odo(?:\s*reading)?|km(?:\s*reading)?)[:\s]*([0-9]{4,7})/i);
-  if (odoMatch && odoMatch[1]) {
-    result.odometer = odoMatch[1];
-    result.confidence_flags.odometer = true;
   }
 
   return result;
@@ -170,7 +197,7 @@ export async function scanReceiptWithOcr(imageSource, onProgress = () => {}) {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             const pct = Math.round((m.progress || 0) * 100);
-            onProgress({ status: 'Scanning text…', progress: pct });
+            onProgress({ status: 'Scanning receipt text…', progress: pct });
           } else {
             onProgress({ status: m.status, progress: 0 });
           }
@@ -199,30 +226,40 @@ export async function scanReceiptWithOcr(imageSource, onProgress = () => {}) {
  */
 export const SAMPLE_RECEIPTS = [
   {
-    id: 'iocl_highway',
-    label: 'Indian Oil Highway Pump (#IOC-94821)',
+    id: 'iocl_nh48',
+    label: 'Indian Oil Slip (#INV-2025-6554)',
     station: 'Indian Oil Corporation Ltd',
-    billNumber: 'IOC-94821',
-    liters: '64.20',
-    rate: '96.75',
-    amount: '6211.35',
-    date: new Date().toISOString().slice(0, 10),
+    billNumber: 'INV-2025-6554',
+    liters: '33.78',
+    rate: '103.62',
+    amount: '3500.00',
+    vehicleReg: 'MH47BP4346',
+    date: '2025-01-04',
     sampleText: `
-INDIAN OIL CORPORATION LTD
-COCO HIGHWAY OUTLET NH-48
-GSTIN: 24AAACI1681G1Z1
---------------------------------
-DATE: ${new Date().toLocaleDateString('en-GB')}  TIME: 14:32
-RECEIPT NO: IOC-94821
-PUMP NO: 04  NOZZLE: 02
-FUEL TYPE: DIESEL (HSD)
-RATE / LTR: Rs 96.75
-VOLUME: 64.20 LTR
-TOTAL AMOUNT: Rs 6211.35
-VEHICLE NO: GJ01AB4920
-MODE: FLEET CARD
---------------------------------
-SAVE FUEL YAANI SAVE MONEY
+IndianOQil
+WELCOME!!! |
+ROHAN GUPTA
+23 HILLTOP COLONY, HYDERABAD, DELHI 116612"
+GSTIN 28NKQOW3518T1Z5
+TEL. NO.:
+RECEIPT NO.: INV-2025-6554
+LOCAL ID: 67369873
+FCC ID: -
+FIP NO.: 05
+NOZZLE NO.: 01
+PRODUCT: PETROL
+RATE/LTR: 2 103.62
+DENSITY: 733.5 KG/M3
+AMOUNT: 3500
+VOLUME(LTR.): 33.78 LT
+VEH TYPE: PETROL
+VEH NO: MH47BP4346
+CUSTOMER NAME: AARAV SINGH
+DATE: 04/01/2025 TIME: 16:03
+MODE: ONLINE
+GSTIN: 28NKQOW3518T1Z5
+SAVE FUEL YAANI SAVE MONEY !! THANKS FOR
+FUELLING WITH US.
     `
   },
   {
@@ -233,6 +270,7 @@ SAVE FUEL YAANI SAVE MONEY
     liters: '42.50',
     rate: '96.80',
     amount: '4114.00',
+    vehicleReg: 'MH12DE3910',
     date: new Date().toISOString().slice(0, 10),
     sampleText: `
 BHARAT PETROLEUM CORP LTD
@@ -242,10 +280,10 @@ BILL NO: BP-38204
 DATE: ${new Date().toLocaleDateString('en-GB')}
 PRODUCT: DIESEL
 DENSITY: 832.4 kg/m3
-RATE: Rs 96.80 / LTR
-QTY: 42.50 L
-NET AMOUNT: Rs 4114.00
-VEHICLE: MH12DE3910
+RATE/LTR: Rs 96.80
+VOLUME(LTR.): 42.50 LT
+AMOUNT: 4114.00
+VEH NO: MH12DE3910
 THANK YOU VISIT AGAIN
     `
   },
@@ -257,16 +295,18 @@ THANK YOU VISIT AGAIN
     liters: '78.00',
     rate: '96.70',
     amount: '7542.60',
+    vehicleReg: 'GJ01AB4920',
     date: new Date().toISOString().slice(0, 10),
     sampleText: `
 HINDUSTAN PETROLEUM CORP LTD
 CLUB HP LOGISTICS PARK
 SLIP NO: HP-59102
 DATE: ${new Date().toLocaleDateString('en-GB')}
-RATE: Rs 96.70
-VOL: 78.00 LTRS
-TOTAL: Rs 7542.60
+RATE/LTR: Rs 96.70
+VOLUME(LTR.): 78.00 LT
+AMOUNT: 7542.60
 ODO READING: 58240 KM
+VEH NO: GJ01AB4920
 CASH MEMO - ORIGINAL
     `
   }
