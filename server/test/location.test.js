@@ -225,7 +225,7 @@ describe('TransitOps GPS & Vehicle Locations Backend Tests', { timeout: 60000 },
         trip_id: tripAId,
         latitude: 19.081,
         longitude: 72.881,
-        captured_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+        captured_at: new Date(Date.now() - 50 * 60 * 60 * 1000).toISOString()
       })
     });
     assert.equal(stale.status, 400);
