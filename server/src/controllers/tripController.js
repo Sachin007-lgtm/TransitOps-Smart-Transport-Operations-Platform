@@ -78,6 +78,15 @@ const deleteTrip = asyncWrapper(async (req, res) => {
   }
 });
 
+const getDelayedTripsAlerts = asyncWrapper(async (req, res) => {
+  try {
+    const delayed = await tripService.getDelayedTrips(req.user);
+    return apiResponse.success(res, delayed, 'Delayed trips retrieved successfully.');
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 module.exports = {
   createTrip,
   getAllTrips,
@@ -85,5 +94,6 @@ module.exports = {
   updateTrip,
   updateTripStatus,
   updateTripLoadingMilestone,
-  deleteTrip
+  deleteTrip,
+  getDelayedTripsAlerts
 };

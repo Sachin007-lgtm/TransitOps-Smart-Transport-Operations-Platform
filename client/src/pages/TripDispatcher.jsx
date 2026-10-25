@@ -58,6 +58,19 @@ const DEST_PRESETS   = Object.keys(LOCATION_COORDS).slice(3, 8);
 const GPS_FRESHNESS_MS = 30000;
 const STATIONARY_SPEED_MS = 2;
 
+function formatDateTimeLocal(d) {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = date.getFullYear();
+  const m = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const h = pad(date.getHours());
+  const min = pad(date.getMinutes());
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
 function isFreshGps(location) {
   if (location?.latitude == null || location?.longitude == null || !location.captured_at) return false;
   const capturedAt = new Date(location.captured_at).getTime();
@@ -443,6 +456,7 @@ export default function TripDispatcher() {
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [isDriverOverlayOpen, setIsDriverOverlayOpen] = useState(true);
   const [assignModal,   setAssignModal]   = useState({ open: false, trip: null, vehicleId: '', driverId: '' });
+  const [deleteModal,   setDeleteModal]   = useState({ open: false, trip: null, confirmText: '' });
   const navigate = useNavigate();
 
   // Completed trips do not belong in the tracking list — they move to Trip
@@ -513,7 +527,7 @@ export default function TripDispatcher() {
   useEffect(() => {
     loadData();
     const now = new Date();
-    setStartTime(new Date(now.getTime() + 30 * 60000).toISOString().slice(0, 16));
+    setStartTime(formatDateTimeLocal(new Date(now.getTime() + 30 * 60000)));
     setExpectedArrival(new Date(now.getTime() + 180 * 60000).toISOString().slice(0, 16));
   }, []);
 
@@ -1171,6 +1185,7 @@ export default function TripDispatcher() {
       setCompany(editingTrip.external_party_name || '');
       setAdvanceReceived(editingTrip.advance_received || '');
       setInitialStatus(editingTrip.status || 'Draft');
+      setStartTime(formatDateTimeLocal(editingTrip.scheduled_start_time || editingTrip.start_time));
     }
   }, [editingTrip]);
 
@@ -1179,6 +1194,7 @@ export default function TripDispatcher() {
     setVehicleId(''); setDriverId(''); setCargoWeight('');
     setRevenue(''); setInitialStatus('Draft');
     setCompany(''); setAdvanceReceived('');
+    setStartTime(formatDateTimeLocal(new Date(Date.now() + 30 * 60000)));
     setConflictError(null);
     setEditingTrip(null);
     setDrawerOpen(false);
@@ -1198,6 +1214,9 @@ export default function TripDispatcher() {
     // then immediately advance to Assigned via the lifecycle PATCH.
     const creationStatus = initialStatus === 'Planned' ? 'Planned' : 'Draft';
 
+    const startIso = startTime ? new Date(startTime).toISOString() : new Date().toISOString();
+    const autoArrivalIso = new Date(new Date(startIso).getTime() + 4 * 3600000).toISOString();
+
     const payload = {
       origin:          originAC.query.trim(),
       destination:     destAC.query.trim(),
@@ -1205,8 +1224,9 @@ export default function TripDispatcher() {
       dest_coords:     destAC.selectedLocation?.center   || await resolveCoordsAsync(destAC.query.trim(), false, false) || undefined,
       planned_route:   `${originAC.query.trim()} -> ${destAC.query.trim()}`,
       status:          editingTrip ? initialStatus : creationStatus,
-      start_time:      startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
-      expected_arrival: expectedArrival ? new Date(expectedArrival).toISOString() : new Date(Date.now() + 7200000).toISOString(),
+      start_time:      startIso,
+      scheduled_start_time: startTime ? startIso : null,
+      expected_arrival: autoArrivalIso,
       vehicle_id:      vehicleId ? String(vehicleId) : null,
       driver_id:       driverId  ? String(driverId)  : null,
       cargo_weight:    weightNum  > 0 ? weightNum  : null,
@@ -1259,6 +1279,40 @@ export default function TripDispatcher() {
       await loadData(true);
     } catch (err) {
       showToast(`Error: ${err.message}`);
+    }
+  };
+
+  const handleCancelTrip = async (trip) => {
+    const ok = await confirm({
+      title: `Cancel Trip #${tripCode(trip.id)}`,
+      message: `Are you sure you want to cancel this trip (${trip.origin} → ${trip.destination})? Any assigned vehicle and driver will be released.`,
+      confirmText: 'Cancel Trip',
+      variant: 'danger'
+    });
+    if (!ok) return;
+
+    try {
+      await apiRequest('PATCH', `/trips/${trip.id}/status`, { status: 'Cancelled' });
+      showToast(`Trip #${tripCode(trip.id)} has been cancelled.`);
+      await loadData(true);
+    } catch (err) {
+      showToast(err.message || 'Error cancelling trip', 'error');
+    }
+  };
+
+  const handleConfirmDeleteTrip = async () => {
+    if (!deleteModal.trip || deleteModal.confirmText.trim().toLowerCase() !== 'delete') return;
+    const targetTrip = deleteModal.trip;
+    try {
+      await apiRequest('DELETE', `/trips/${targetTrip.id}`);
+      showToast(`Trip #${tripCode(targetTrip.id)} deleted successfully.`);
+      setDeleteModal({ open: false, trip: null, confirmText: '' });
+      if (selectedTripId === targetTrip.id) {
+        setSelectedTripId(null);
+      }
+      await loadData(true);
+    } catch (err) {
+      showToast(err.message || 'Error deleting trip', 'error');
     }
   };
 
@@ -1423,6 +1477,16 @@ export default function TripDispatcher() {
                           <button className="tc-small-edit" onClick={() => setEditingTrip(t)} title="Edit Trip">
                             <Edit2 size={13} />
                           </button>
+                          {['Draft', 'Planned', 'Assigned', 'Cancelled'].includes(t.status) && (
+                            <button
+                              className="tc-small-edit"
+                              onClick={() => setDeleteModal({ open: true, trip: t, confirmText: '' })}
+                              title="Delete Trip"
+                              style={{ color: '#ef4444' }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                           <button
                             className="tc-expand-btn"
                             onClick={(e) => toggleTripExpanded(t.id, e)}
@@ -1454,9 +1518,20 @@ export default function TripDispatcher() {
                       </div>
 
                       <div className="tc-dates-row">
-                        <span className="tc-date-item"><em>Depart</em>{t.start_time ? new Date(t.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
-                        <span className="tc-date-item"><em>Arrive</em>{t.expected_arrival ? new Date(t.expected_arrival).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
+                        <span className="tc-date-item">
+                          <em>Depart</em>
+                          {t.scheduled_start_time
+                            ? new Date(t.scheduled_start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            : (t.start_time ? new Date(t.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--')}
+                        </span>
                       </div>
+
+                      {t.scheduled_start_time && new Date(t.scheduled_start_time) < new Date() && ['Draft', 'Planned', 'Assigned'].includes(t.status) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', background: 'rgba(239, 68, 68, 0.1)', padding: '5px 8px', borderRadius: '4px', margin: '4px 0 8px 0' }}>
+                          <Clock size={13} />
+                          <span>Start Overdue · Scheduled for {new Date(t.scheduled_start_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      )}
 
                       {/* Billing line: who this trip is billed to, the fare, and
                           whether it has already been put on a bill. */}
@@ -1478,23 +1553,72 @@ export default function TripDispatcher() {
                           trips could never leave 'Assigned'. */}
                       <div className="tc-actions-row" onClick={e => e.stopPropagation()}>
                         {(t.status === 'Draft' || t.status === 'Planned') && (
-                          <button
-                            className="tc-act"
-                            onClick={() => setAssignModal({
-                              open: true,
-                              trip: t,
-                              vehicleId: t.vehicle_id || '',
-                              driverId: t.driver_id || ''
-                            })}
-                          >
-                            <Truck size={12} /> Assign vehicle &amp; driver
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                            <button
+                              className="tc-act"
+                              onClick={() => setAssignModal({
+                                open: true,
+                                trip: t,
+                                vehicleId: t.vehicle_id || '',
+                                driverId: t.driver_id || ''
+                              })}
+                            >
+                              <Truck size={12} /> Assign vehicle &amp; driver
+                            </button>
+                            <button
+                              className="tc-act"
+                              onClick={() => handleCancelTrip(t)}
+                              style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#dc2626', background: 'rgba(239, 68, 68, 0.05)' }}
+                              title="Cancel trip"
+                            >
+                              <X size={12} /> Cancel
+                            </button>
+                            <button
+                              className="tc-act"
+                              onClick={() => setDeleteModal({ open: true, trip: t, confirmText: '' })}
+                              style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#dc2626', background: 'rgba(239, 68, 68, 0.05)' }}
+                              title="Delete trip"
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          </div>
                         )}
 
                         {t.status === 'Assigned' && (
-                          <button className="tc-act" onClick={() => handleAdvanceStatus(t, 'Dispatched')}>
-                            <Navigation size={12} /> Dispatch
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                            <button className="tc-act" onClick={() => handleAdvanceStatus(t, 'Dispatched')}>
+                              <Navigation size={12} /> Dispatch
+                            </button>
+                            <button
+                              className="tc-act"
+                              onClick={() => handleCancelTrip(t)}
+                              style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#dc2626', background: 'rgba(239, 68, 68, 0.05)' }}
+                              title="Cancel trip"
+                            >
+                              <X size={12} /> Cancel Trip
+                            </button>
+                            <button
+                              className="tc-act"
+                              onClick={() => setDeleteModal({ open: true, trip: t, confirmText: '' })}
+                              style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#dc2626', background: 'rgba(239, 68, 68, 0.05)' }}
+                              title="Delete trip"
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          </div>
+                        )}
+
+                        {t.status === 'Cancelled' && (
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%' }}>
+                            <button
+                              className="tc-act"
+                              onClick={() => setDeleteModal({ open: true, trip: t, confirmText: '' })}
+                              style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#dc2626', background: 'rgba(239, 68, 68, 0.05)' }}
+                              title="Permanently delete this cancelled trip"
+                            >
+                              <Trash2 size={12} /> Delete Trip
+                            </button>
+                          </div>
                         )}
 
                         {t.status === 'Dispatched' && (
@@ -1544,6 +1668,16 @@ export default function TripDispatcher() {
                           <StatusTag status={t.status} />
                         </div>
                         <div className="tc-compact-actions" onClick={e => e.stopPropagation()}>
+                          {['Draft', 'Planned', 'Assigned', 'Cancelled'].includes(t.status) && (
+                            <button
+                              className="tc-small-edit"
+                              onClick={() => setDeleteModal({ open: true, trip: t, confirmText: '' })}
+                              title="Delete Trip"
+                              style={{ color: '#ef4444', marginRight: '4px' }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                           <button
                             className="tc-expand-btn"
                             onClick={(e) => toggleTripExpanded(t.id, e)}
@@ -1564,6 +1698,11 @@ export default function TripDispatcher() {
                           <span className="tc-compact-loc">{t.destination}</span>
                         </div>
                         <div className="tc-compact-sub">
+                          {t.scheduled_start_time && new Date(t.scheduled_start_time) < new Date() && ['Draft', 'Planned', 'Assigned'].includes(t.status) && (
+                            <span style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Clock size={11} /> Overdue ·
+                            </span>
+                          )}
                           {t.external_party_name && (
                             <span className="tc-compact-customer">{t.external_party_name}</span>
                           )}
@@ -1610,18 +1749,12 @@ export default function TripDispatcher() {
             </div>
           ) : null}
 
-          <div className="map-eta-callout">
-            <div className="eta-title">
-              <span>Scheduled drop-off:</span>
-              <strong>
-                {selectedTrip?.expected_arrival 
-                  ? new Date(selectedTrip.expected_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : 'ETA pending'}
-              </strong>
+          {selectedTrip && (
+            <div className="map-eta-callout">
+              <div className="eta-sub" style={{ fontWeight: 600, color: 'var(--text, #111827)' }}>{selectedTrip.destination}</div>
+              <div className="eta-code">Trip {tripCode(selectedTrip.id)}</div>
             </div>
-            <div className="eta-sub">{selectedTrip?.destination || 'Select a trip'}</div>
-            {selectedTrip ? <div className="eta-code">Trip {tripCode(selectedTrip.id)}</div> : null}
-          </div>
+          )}
 
           <div className="map-zoom-controls">
             <button onClick={handleZoomIn} title="Zoom In">+</button>
@@ -1695,6 +1828,16 @@ export default function TripDispatcher() {
               </div>
 
               <div className="form-row-2">
+                <div className="field-wrap">
+                  <label className="field-label">Trip Start Time & Date</label>
+                  <input
+                    type="datetime-local"
+                    className="field-input"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                  />
+                </div>
+
                 <div className="field-wrap">
                   <label className="field-label">Cargo Weight (kg)</label>
                   <input type="number" className="field-input" value={cargoWeight} onChange={e => setCargoWeight(e.target.value)} placeholder="500" />
@@ -1811,6 +1954,66 @@ export default function TripDispatcher() {
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE TRIP MODAL */}
+      {deleteModal.open && deleteModal.trip && (
+        <div className="modal-overlay" onClick={() => setDeleteModal({ open: false, trip: null, confirmText: '' })}>
+          <div className="modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--line, #e5e7eb)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.12)', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Trash2 size={16} />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Delete Trip {tripCode(deleteModal.trip.id)}</h3>
+              </div>
+              <button className="modal-close" onClick={() => setDeleteModal({ open: false, trip: null, confirmText: '' })}><X size={16} /></button>
+            </div>
+            <div className="modal-body" style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--sub, #4b5563)', lineHeight: '1.45' }}>
+                This will permanently delete trip <strong>{tripCode(deleteModal.trip.id)}</strong> ({deleteModal.trip.origin} → {deleteModal.trip.destination}). Any assigned vehicle or driver will be released. This action <strong>cannot be undone</strong>.
+              </p>
+              <div style={{ background: 'var(--card-subtle, #f9fafb)', border: '1px solid var(--line, #e5e7eb)', borderRadius: '6px', padding: '12px 14px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--sub, #374151)', marginBottom: '6px' }}>
+                  To confirm, type <strong style={{ color: '#dc2626', userSelect: 'none' }}>delete</strong> below:
+                </label>
+                <input
+                  type="text"
+                  className="field-input"
+                  style={{ width: '100%', fontSize: '0.9rem', borderColor: deleteModal.confirmText.trim().toLowerCase() === 'delete' ? '#dc2626' : undefined }}
+                  placeholder="Type delete to confirm"
+                  value={deleteModal.confirmText}
+                  onChange={e => setDeleteModal(prev => ({ ...prev, confirmText: e.target.value }))}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--line, #e5e7eb)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn-cancel"
+                onClick={() => setDeleteModal({ open: false, trip: null, confirmText: '' })}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-submit"
+                disabled={deleteModal.confirmText.trim().toLowerCase() !== 'delete'}
+                onClick={handleConfirmDeleteTrip}
+                style={{
+                  background: deleteModal.confirmText.trim().toLowerCase() === 'delete' ? '#dc2626' : '#9ca3af',
+                  borderColor: deleteModal.confirmText.trim().toLowerCase() === 'delete' ? '#b91c1c' : '#9ca3af',
+                  color: '#ffffff',
+                  cursor: deleteModal.confirmText.trim().toLowerCase() === 'delete' ? 'pointer' : 'not-allowed',
+                  opacity: deleteModal.confirmText.trim().toLowerCase() === 'delete' ? 1 : 0.6
+                }}
+              >
+                Delete Trip
+              </button>
             </div>
           </div>
         </div>

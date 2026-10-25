@@ -33,7 +33,8 @@ const Trip = {
     origin_lat = null,
     origin_lng = null,
     dest_lat = null,
-    dest_lng = null
+    dest_lng = null,
+    scheduled_start_time = null
   }, client = null) => {
     assertOrganizationId(organization_id, 'create');
 
@@ -45,8 +46,9 @@ const Trip = {
         cargo_weight, revenue,
         start_time, expected_arrival, status,
         company_id, trip_date, advance_received,
-        origin_lat, origin_lng, dest_lat, dest_lng
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        origin_lat, origin_lng, dest_lat, dest_lng,
+        scheduled_start_time
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
       RETURNING *;
     `;
     const values = [
@@ -69,7 +71,8 @@ const Trip = {
       origin_lat,
       origin_lng,
       dest_lat,
-      dest_lng
+      dest_lng,
+      scheduled_start_time
     ];
 
     const executor = client || { query };
@@ -296,7 +299,8 @@ const Trip = {
       'origin_lat',
       'origin_lng',
       'dest_lat',
-      'dest_lng'
+      'dest_lng',
+      'scheduled_start_time'
     ];
 
     const setClause = [];
@@ -327,6 +331,38 @@ const Trip = {
     const executor = client || { query };
     const result = await executor.query(sql, values);
     return result.rows[0];
+  },
+
+  /**
+   * Find trips that were scheduled to start in the past but have not started yet.
+   * Only checks trips with scheduled_start_time explicitly set (legacy trips with null are excluded).
+   */
+  findDelayedTrips: async (organization_id) => {
+    assertOrganizationId(organization_id, 'findDelayedTrips');
+
+    const sql = `
+      SELECT t.id,
+             t.organization_id,
+             t.origin,
+             t.destination,
+             t.status,
+             t.start_time,
+             t.scheduled_start_time,
+             t.created_at,
+             v.registration_number AS vehicle_registration,
+             v.type AS vehicle_type,
+             d.name AS driver_name
+      FROM trips t
+      LEFT JOIN vehicles v ON t.vehicle_id = v.id
+      LEFT JOIN drivers d ON t.driver_id = d.id
+      WHERE t.organization_id = $1
+        AND t.scheduled_start_time IS NOT NULL
+        AND t.scheduled_start_time < CURRENT_TIMESTAMP
+        AND t.status IN ('Draft', 'Planned', 'Assigned')
+      ORDER BY t.scheduled_start_time ASC;
+    `;
+    const result = await query(sql, [organization_id]);
+    return result.rows;
   },
 
   /**

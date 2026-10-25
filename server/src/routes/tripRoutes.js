@@ -10,7 +10,8 @@ const {
   updateTrip,
   updateTripStatus,
   updateTripLoadingMilestone,
-  deleteTrip
+  deleteTrip,
+  getDelayedTripsAlerts
 } = require('../controllers/tripController');
 const {
   validateCreateTrip,
@@ -22,6 +23,12 @@ const {
 // All trip endpoints require valid JWT authentication with tenant context
 router.use(authenticate);
 router.use(requireTenantContext);
+
+router.get(
+  '/alerts/delayed',
+  authorize(['Owner/Manager']),
+  getDelayedTripsAlerts
+);
 
 router.route('/')
   .post(

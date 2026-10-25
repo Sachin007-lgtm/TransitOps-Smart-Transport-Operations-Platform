@@ -13,13 +13,15 @@ import {
   CheckCheck,
   CheckCircle2,
   X,
-  Truck
+  Truck,
+  Clock
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { useGlobalSearch } from '../../contexts/GlobalSearchContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../utils/api';
+import { tripCode } from '../../utils/tripCode';
 import ChangePasswordModal from '../auth/ChangePasswordModal';
 import EditProfileModal from '../auth/EditProfileModal';
 import './Header.css';
@@ -91,11 +93,12 @@ export default function Header() {
   // Fetch real alerts from all data sources: driver license, vehicle docs, maintenance reports, vehicle status
   const fetchAllAlerts = React.useCallback(async () => {
     try {
-      const [driversRes, vehiclesRes, docAlertsRes, maintenanceRes] = await Promise.allSettled([
+      const [driversRes, vehiclesRes, docAlertsRes, maintenanceRes, delayedTripsRes] = await Promise.allSettled([
         apiRequest('GET', '/drivers'),
         apiRequest('GET', '/vehicles'),
         apiRequest('GET', '/documents/alerts'),
-        apiRequest('GET', '/maintenance/driver-reports?view=active')
+        apiRequest('GET', '/maintenance/driver-reports?view=active'),
+        apiRequest('GET', '/trips/alerts/delayed')
       ]);
 
       const dynamicAlerts = [];
@@ -211,6 +214,33 @@ export default function Header() {
         });
       }
 
+      // --- Overdue / Delayed Trip Start alerts ---
+      if (delayedTripsRes.status === 'fulfilled' && Array.isArray(delayedTripsRes.value?.data)) {
+        delayedTripsRes.value.data.forEach(t => {
+          if (t.scheduled_start_time) {
+            const sched = new Date(t.scheduled_start_time);
+            const overdueMs = now - sched;
+            if (overdueMs > 0) {
+              const minutesOverdue = Math.floor(overdueMs / 60000);
+              const overdueLabel = minutesOverdue < 60
+                ? `${Math.max(1, minutesOverdue)}m overdue`
+                : `${Math.floor(minutesOverdue / 60)}h ${minutesOverdue % 60}m overdue`;
+
+              dynamicAlerts.push({
+                id: `trip-delayed-${t.id}`,
+                type: 'trip_delay',
+                title: 'Trip Start Overdue',
+                message: `Trip ${tripCode(t.id)} (${t.origin} → ${t.destination}) was scheduled to start at ${sched.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}, but has not started yet.`,
+                time: overdueLabel,
+                unread: true,
+                link: '/trips',
+                actionText: 'Dispatch Trip'
+              });
+            }
+          }
+        });
+      }
+
       setNotifications(prev => {
         // Preserve toast-generated notifications (id starts with 'toast-')
         const toastNotifs = prev.filter(p => p.id.startsWith('toast-'));
@@ -293,6 +323,12 @@ export default function Header() {
 
   const getNotifStyle = (type) => {
     switch (type) {
+      case 'trip_delay':
+        return {
+          icon: Clock,
+          iconBg: 'rgba(239, 68, 68, 0.12)',
+          iconColor: '#dc2626'
+        };
       case 'license':
         return {
           icon: FileWarning,
@@ -322,8 +358,8 @@ export default function Header() {
   };
 
   const filteredNotifs = notifications.filter(n => {
-    if (notifFilter === 'alerts') return n.type === 'license' || n.type === 'lock';
-    if (notifFilter === 'fleet') return n.type === 'maintenance' || n.type === 'dispatch';
+    if (notifFilter === 'alerts') return n.type === 'license' || n.type === 'lock' || n.type === 'trip_delay';
+    if (notifFilter === 'fleet') return n.type === 'maintenance' || n.type === 'dispatch' || n.type === 'trip_delay';
     return true;
   });
   const unreadCount = notifications.filter(n => n.unread).length;
@@ -417,14 +453,14 @@ export default function Header() {
                   className={`notif-tab ${notifFilter === 'alerts' ? 'active' : ''}`}
                   onClick={() => setNotifFilter('alerts')}
                 >
-                  Alerts ({notifications.filter(n => n.type === 'license' || n.type === 'lock').length})
+                  Alerts ({notifications.filter(n => n.type === 'license' || n.type === 'lock' || n.type === 'trip_delay').length})
                 </button>
                 <button
                   type="button"
                   className={`notif-tab ${notifFilter === 'fleet' ? 'active' : ''}`}
                   onClick={() => setNotifFilter('fleet')}
                 >
-                  Fleet ({notifications.filter(n => n.type === 'maintenance' || n.type === 'dispatch').length})
+                  Fleet ({notifications.filter(n => n.type === 'maintenance' || n.type === 'dispatch' || n.type === 'trip_delay').length})
                 </button>
               </div>
 

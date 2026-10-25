@@ -1,148 +1,1172 @@
-/* Dashboard Container */
-.dashboard-container {
-  width: 100%;
-}
+/* ─── TransitOps Executive Dashboard Styles ────────────────────────────────── */
 
-.dashboard-header {
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-/* 6-Column Responsive KPI Grid */
-.dashboard-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 1rem;
-}
-
-@media (max-width: 1280px) {
-  .dashboard-kpi-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .dashboard-kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 480px) {
-  .dashboard-kpi-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* KPI Card Refinements */
-.kpi-card {
-  padding: 1.25rem 1.25rem 1rem 1.25rem;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  min-height: 110px;
+.dashboard-page-container {
+  padding: 1.5rem 2rem 3rem;
+  max-width: 1440px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
+  gap: 1.25rem;
+  font-family: inherit;
+  color: #111827;
+}
+
+/* ─── 1. Top Hero Banner ─────────────────────────────────────────────────── */
+.dash-hero-banner {
+  background: linear-gradient(135deg, #441731 0%, #68294a 55%, #501d39 100%);
+  border-radius: 16px;
+  padding: 1.75rem 2.25rem;
+  display: flex;
   justify-content: space-between;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  align-items: center;
+  color: #ffffff;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 20px -2px rgba(68, 23, 49, 0.25);
+}
+
+.dash-hero-banner::after {
+  content: '';
+  position: absolute;
+  right: -50px;
+  top: -50px;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(234, 179, 8, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.banner-left-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  z-index: 1;
+}
+
+.banner-date-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fbcfe8;
+  text-transform: uppercase;
+}
+
+.banner-greeting-title {
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: #ffffff;
+}
+
+.banner-subtitle {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+  font-weight: 400;
+}
+
+.banner-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 1;
+}
+
+.banner-btn-secondary {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.6rem 1.15rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.banner-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.banner-btn-primary {
+  background: #f59e0b;
+  color: #111827;
+  border: none;
+  padding: 0.6rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
+  transition: all 0.2s ease;
+}
+
+.banner-btn-primary:hover {
+  background: #d97706;
+  transform: translateY(-1px);
+}
+
+/* ─── 2. Top 4 Metric KPI Cards ─────────────────────────────────────────── */
+.dash-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+}
+
+.kpi-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.25rem 1.25rem 1rem;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .kpi-card:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
 }
 
-.kpi-label {
-  font-size: 0.7rem;
+.kpi-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.kpi-title {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.kpi-icon-pill {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+
+.kpi-icon-pill.icon-purple {
+  background: #fdf2f8;
+  color: #9d174d;
+}
+
+.kpi-icon-pill.icon-amber {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.kpi-icon-pill.icon-green {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.kpi-icon-pill.icon-blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.kpi-currency-symbol {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.kpi-big-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.4rem;
+}
+
+.kpi-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.kpi-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--sub);
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+}
+
+.kpi-trend-badge.badge-green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.kpi-trend-badge.badge-amber {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.kpi-comparison-text {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.kpi-sparkline-wrap {
+  margin-top: auto;
+  padding-top: 0.25rem;
+  display: flex;
+  justify-content: flex-start;
+  height: 38px;
+}
+
+.sparkline-svg {
+  width: 100%;
+  height: 36px;
+}
+
+/* ─── 3. Common Dash Card Styles ─────────────────────────────────────────── */
+.dash-card {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.dash-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.dash-card-subtitle {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin: 0.2rem 0 0 0;
+}
+
+.dash-card-header-link {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #68294a;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.dash-card-header-link:hover {
+  color: #4a1936;
+  text-decoration: underline;
+}
+
+/* ─── Grid rows ──────────────────────────────────────────────────────────── */
+.dash-middle-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
+}
+
+.dash-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1.25rem;
+}
+
+/* ─── Monthly Chart Card ─────────────────────────────────────────────────── */
+.chart-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.chart-toggle-group {
+  display: flex;
+  background: #f3f4f6;
+  padding: 3px;
+  border-radius: 8px;
+  gap: 2px;
+}
+
+.chart-toggle-btn {
+  background: transparent;
+  border: none;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #4b5563;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chart-toggle-btn.active {
+  background: #ffffff;
+  color: #111827;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.chart-legend-strip {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #4b5563;
+}
+
+.legend-line-solid {
+  width: 18px;
+  height: 2.5px;
+  background: #58213f;
+  border-radius: 2px;
+}
+
+.legend-line-dashed {
+  width: 18px;
+  height: 0px;
+  border-top: 2px dashed #9ca3af;
+}
+
+.chart-wrapper-box {
+  width: 100%;
+  height: 260px;
+  margin-top: 0.5rem;
+}
+
+.chart-custom-tooltip {
+  background: #18181b;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  font-size: 0.78rem;
+}
+
+.tooltip-date-header {
+  color: #9ca3af;
+  font-size: 0.72rem;
+  margin-bottom: 0.2rem;
+}
+
+.tooltip-val-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tooltip-amount {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.tooltip-badge-pill {
+  color: #4ade80;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+/* ─── Fuel Expense Breakdown Card ────────────────────────────────────────── */
+.fuel-card-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 0.25rem;
 }
 
-.kpi-value {
-  color: var(--text);
-  line-height: 1.1;
+.fuel-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
 }
 
-/* Left Accent Borders */
-.border-l-green { border-left: 4px solid var(--green) !important; }
-.border-l-amber { border-left: 4px solid var(--amber) !important; }
-.border-l-blue  { border-left: 4px solid var(--blue) !important; }
-.border-l-teal  { border-left: 4px solid var(--teal) !important; }
+.fuel-card-big-val {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+}
 
-/* Status Progress Bars */
-.status-progress-block {
+.fuel-card-subtitle {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-bottom: 1.25rem;
+}
+
+.fuel-progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.fuel-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  margin-bottom: 0.3rem;
+}
+
+.bar-label-name {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.bar-label-val {
+  color: #111827;
+  font-weight: 600;
+}
+
+.fuel-bar-track {
   width: 100%;
+  height: 7px;
+  background: #f3f4f6;
+  border-radius: 9999px;
+  overflow: hidden;
 }
 
-/* Alert Items */
-.alert-card-item {
-  transition: background-color var(--transition-fast);
+.fuel-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
 }
 
-.alert-card-item:hover {
-  background-color: var(--bg);
+.fuel-bar-fill.fill-amber {
+  background: #f59e0b;
 }
 
-.alerts-container::-webkit-scrollbar {
-  width: 5px;
+.fuel-bar-fill.fill-gray {
+  background: #d1d5db;
 }
 
-.alerts-container::-webkit-scrollbar-track {
-  background: transparent;
+.fuel-stats-dual-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
 }
 
-.alerts-container::-webkit-scrollbar-thumb {
-  background: var(--line);
+.fuel-stat-tile {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.fuel-stat-tile.tile-flagged {
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+}
+
+.tile-label {
+  font-size: 0.72rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.tile-main-val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.tile-main-val.val-flagged {
+  color: #b45309;
+}
+
+.tile-subtext {
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+
+.tile-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #b45309;
+  text-decoration: none;
+  margin-top: 0.15rem;
+}
+
+.tile-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── 4. Live Fleet Map & Active Trips ───────────────────────────────────── */
+.fleet-map-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.map-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.fleet-map-container {
+  width: 100%;
+  height: 270px;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid #e5e7eb;
+}
+
+.leaflet-map-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.map-badge-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(4px);
+  padding: 0.3rem 0.65rem;
+  border-radius: 9999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  z-index: 500;
+}
+
+.live-dot-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+}
+
+.map-vehicle-callout-pill {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(229, 231, 235, 0.8);
+  z-index: 500;
+}
+
+.callout-plate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.callout-bold-plate {
+  font-weight: 700;
+  color: #111827;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.callout-dot {
+  color: #9ca3af;
+}
+
+.callout-status-text {
+  font-size: 0.78rem;
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.callout-route-sub {
+  font-size: 0.72rem;
+  color: #6b7280;
+  margin-top: 0.15rem;
+}
+
+/* Custom Leaflet Map Markers */
+.vehicle-pulsing-circle {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.25);
+  animation: pulse-animation 2s infinite ease-out;
+}
+
+.core-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes pulse-animation {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.pin-circle {
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.start-dot {
+  width: 12px;
+  height: 12px;
+  background: #10b981;
+}
+
+.dest-dot {
+  width: 14px;
+  height: 14px;
+  background: #58213f;
+}
+
+/* ─── Active Trips Card ──────────────────────────────────────────────────── */
+.active-trips-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.active-trips-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.active-trip-box {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.at-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.at-trip-code {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.at-transit-pill {
+  background: #ecfdf5;
+  color: #065f46;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.live-dot-green {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.at-route-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.at-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.at-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.at-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #f3f4f6;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.at-progress-bar-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: 9999px;
+}
+
+.at-fare-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid #f3f4f6;
+}
+
+.at-fare-left {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.at-company-name {
+  color: #374151;
+  font-weight: 500;
+}
+
+.at-dot {
+  color: #9ca3af;
+}
+
+.at-fare-amount {
+  color: #111827;
+  font-weight: 700;
+}
+
+.at-unbilled-tag {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.45rem;
   border-radius: 4px;
 }
 
-.alerts-container::-webkit-scrollbar-thumb:hover {
-  background: var(--sub);
+.at-driver-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #4b5563;
 }
 
-/* Live Pulsing Dot */
-.live-dot {
+.at-avatar-circle {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #4b5563;
+  font-weight: 700;
+  font-size: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.active-trips-pending-box {
+  margin-top: 0.85rem;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.at-pending-text {
+  font-size: 0.78rem;
+  color: #4b5563;
+  max-width: 170px;
+  line-height: 1.35;
+}
+
+.at-create-trip-btn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #111827;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.45rem 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+}
+
+.at-create-trip-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+/* ─── 5. Bottom Row: Needs attention, Payments, Top vehicles ────────────── */
+/* Attention Card */
+.attention-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.attention-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.attention-badge-count {
+  background: #fee2e2;
+  color: #dc2626;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+}
+
+.attention-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.attention-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.attention-indicator {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  display: inline-block;
-  animation: pulseDot 2s infinite;
-}
-
-.live-dot.sm {
-  width: 6px;
-  height: 6px;
-  margin-right: 4px;
-}
-
-.live-dot.bg-green-500 {
-  background-color: var(--green);
-  box-shadow: 0 0 0 0 rgba(34, 160, 107, 0.4);
-}
-
-.live-dot.bg-blue-500 {
-  background-color: var(--blue);
-  box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.4);
-}
-
-@keyframes pulseDot {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.5); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(47, 111, 237, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(47, 111, 237, 0); }
-}
-
-/* Donut Wrapper */
-.donut-wrapper {
-  position: relative;
   flex-shrink: 0;
 }
 
-/* Empty State Card */
-.empty-state-box {
-  background: var(--bg);
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  padding: 2.5rem 1rem;
+.attention-text-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.attention-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attention-subtitle {
+  font-size: 0.72rem;
+  color: #6b7280;
+  margin-top: 0.1rem;
+}
+
+.attention-action-btn {
+  background: transparent;
+  border: none;
+  color: #68294a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  transition: color 0.15s ease;
+}
+
+.attention-action-btn:hover {
+  color: #4a1936;
+  text-decoration: underline;
+}
+
+/* Payments to Collect Card */
+.payments-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.payments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.payments-big-total {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.85rem;
+}
+
+.payments-segmented-bar {
+  display: flex;
+  width: 100%;
+  height: 7px;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.seg-segment {
+  height: 100%;
+}
+
+.seg-green {
+  background: #10b981;
+}
+
+.seg-orange {
+  background: #f59e0b;
+}
+
+.seg-red {
+  background: #ef4444;
+}
+
+.payments-aging-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1.15rem;
+}
+
+.aging-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.aging-legend-left {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.aging-color-box {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.aging-color-box.box-green {
+  background: #10b981;
+}
+
+.aging-color-box.box-orange {
+  background: #f59e0b;
+}
+
+.aging-color-box.box-red {
+  background: #ef4444;
+}
+
+.aging-label {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.aging-val {
+  color: #111827;
+  font-weight: 600;
+}
+
+.payments-footer-note {
+  font-size: 0.72rem;
+  color: #6b7280;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 0.65rem;
+  margin-top: auto;
+}
+
+.bold-payer {
+  font-weight: 700;
+  color: #111827;
+}
+
+/* Top Vehicles Card */
+.top-vehicles-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.top-vehicles-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+}
+
+.top-vehicles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.top-vehicle-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 50px;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.vehicle-plate-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.vehicle-rev-bar-track {
+  width: 100%;
+  height: 6px;
+  background: #f3f4f6;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.vehicle-rev-bar-fill {
+  height: 100%;
+  background: #58213f;
+  border-radius: 9999px;
+}
+
+.vehicle-rev-amount {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #111827;
+  text-align: right;
+}
+
+.top-vehicles-footer-note {
+  font-size: 0.72rem;
+  color: #6b7280;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 0.65rem;
+  margin-top: auto;
+}
+
+.top-vehicles-empty {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  padding: 1rem 0;
+  text-align: center;
+}
+
+.active-trip-empty-box {
+  border: 1px dashed #e5e7eb;
+  border-radius: 10px;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.4rem;
+  background: #fdfdfd;
+}
+
+.at-empty-icon {
+  margin-bottom: 0.25rem;
+}
+
+.at-empty-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.at-empty-sub {
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1.35;
+  max-width: 260px;
+}
+
+.attention-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 0.5rem;
+  font-size: 0.8rem;
+  color: #059669;
+  font-weight: 500;
+}
+
+/* ─── Responsive Breakdown ───────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .dash-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .dash-middle-grid {
+    grid-template-columns: 1fr;
+  }
+  .dash-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-page-container {
+    padding: 1rem;
+  }
+  .dash-hero-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.25rem;
+  }
+  .banner-right-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .dash-kpi-grid {
+    grid-template-columns: 1fr;
+  }
 }

@@ -17,6 +17,12 @@ const normalizeOrigin = (req, res, next) => {
   if (!req.body.origin && req.body.source) {
     req.body.origin = req.body.source;
   }
+  if (req.body.scheduled_start_time && !req.body.start_time) {
+    req.body.start_time = req.body.scheduled_start_time;
+  }
+  if (req.body.start_time && !req.body.expected_arrival) {
+    req.body.expected_arrival = new Date(new Date(req.body.start_time).getTime() + 4 * 3600000).toISOString();
+  }
   next();
 };
 
@@ -25,6 +31,7 @@ const createTripSchema = {
   destination: { required: true, type: 'string' },
   planned_route: { required: true, type: 'string' },
   start_time: { required: true, type: 'date' },
+  scheduled_start_time: { required: false, type: 'date' },
   expected_arrival: {
     required: true,
     type: 'date',
@@ -55,6 +62,7 @@ const updateTripSchema = {
   destination: { required: false, type: 'string' },
   planned_route: { required: false, type: 'string' },
   start_time: { required: false, type: 'date' },
+  scheduled_start_time: { required: false, type: 'date' },
   expected_arrival: {
     required: false,
     type: 'date',

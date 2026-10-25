@@ -142,6 +142,7 @@ const tripService = {
       cargo_weight = 0.00,
       revenue = 0.00,
       start_time,
+      scheduled_start_time = null,
       expected_arrival,
       status = 'Draft',
       company_id,
@@ -212,6 +213,7 @@ const tripService = {
       cargo_weight,
       revenue,
       start_time,
+      scheduled_start_time,
       expected_arrival,
       status,
       // Billing: the trip is attached to the customer's company row so it can
@@ -277,6 +279,13 @@ const tripService = {
     }
 
     return await Trip.findAll(filters);
+  },
+
+  /**
+   * List trips scheduled to start in the past that have not yet started.
+   */
+  getDelayedTrips: async (user) => {
+    return await Trip.findDelayedTrips(user.organization_id);
   },
 
   /**
@@ -473,6 +482,9 @@ const tripService = {
           organization_id: user.organization_id,
           client
         });
+      }
+      if (fields.scheduled_start_time !== undefined && fields.start_time === undefined) {
+        fields.start_time = fields.scheduled_start_time;
       }
       if (fields.start_time !== undefined && fields.trip_date === undefined) {
         fields.trip_date = deriveTripDate(fields.start_time);
@@ -744,7 +756,8 @@ const tripService = {
   },
 
   /**
-   * Restrict physical delete strictly to Draft trips.
+   * Delete a trip. Only trips that have not started (Draft, Planned, Assigned) or Cancelled trips can be deleted.
+   * Dispatched or Completed trips cannot be deleted.
    */
   deleteTrip: async (id, user) => {
     const trip = await Trip.findById(id, user.organization_id);
@@ -752,12 +765,33 @@ const tripService = {
       throw new TripServiceError('Trip not found.', 404);
     }
 
-    if (trip.status !== 'Draft') {
+    if (trip.status === 'Dispatched' || trip.status === 'Completed') {
       throw new TripServiceError(
         `Operational trips in '${trip.status}' status cannot be physically deleted. Use cancellation (PATCH /trips/:id/status with status: 'Cancelled') instead.`,
         400
       );
     }
+
+    if (trip.billing_status === 'Billed') {
+      throw new TripServiceError(
+        `Trip #${trip.id} is already on bill #${trip.bill_id}. Void that bill before deleting this trip.`,
+        409
+      );
+    }
+
+    // If assigned assets exist, ensure fleet availability is safely restored
+    if (trip.vehicle_id) {
+      await Vehicle.releaseIfOnTrip(pool, trip.vehicle_id, user.organization_id);
+    }
+    if (trip.driver_id) {
+      await Driver.releaseIfOnTrip(pool, trip.driver_id, user.organization_id);
+    }
+
+    // Clean up dependent child rows if any exist
+    await query('DELETE FROM trip_milestone_events WHERE trip_id = $1 AND organization_id = $2', [id, user.organization_id]);
+    await query('DELETE FROM vehicle_locations WHERE trip_id = $1 AND organization_id = $2', [id, user.organization_id]);
+    await query('UPDATE expenses SET trip_id = NULL WHERE trip_id = $1 AND organization_id = $2', [id, user.organization_id]);
+    await query('DELETE FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2', [id, user.organization_id]);
 
     const deleted = await Trip.delete(id, user.organization_id);
     return deleted;
