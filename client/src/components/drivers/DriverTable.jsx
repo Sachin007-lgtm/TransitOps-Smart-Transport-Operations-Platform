@@ -31,6 +31,7 @@ export default function DriverTable({
                 <th style={{ padding: '0.5rem 0.75rem' }}>Licence Expiry</th>
                 <th style={{ padding: '0.5rem 0.75rem' }}>Contact</th>
                 <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem' }}>Trips Count</th>
+                <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem' }}>Punctuality</th>
                 <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem' }}>App access</th>
                 <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
                 <th style={{ textAlign: 'right', paddingRight: '1.5rem', padding: '0.5rem 1.5rem' }}>Actions</th>
@@ -39,13 +40,13 @@ export default function DriverTable({
             <tbody>
               {loading && drivers.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-12 text-muted">
+                  <td colSpan="9" className="text-center py-12 text-muted">
                     Loading driver roster...
                   </td>
                 </tr>
               ) : drivers.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-12 text-muted">
+                  <td colSpan="9" className="text-center py-12 text-muted">
                     No drivers registered in your roster yet. Click "+ Add Driver" above to register your first driver.
                   </td>
                 </tr>
@@ -132,6 +133,18 @@ export default function DriverTable({
                       {/* Trips Count */}
                       <td className="mono font-medium" style={{ fontSize: '0.95rem', textAlign: 'center' }}>
                         {d.trips_count ?? 0}
+                      </td>
+
+                      {/* Punctuality */}
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#16a34a' }}>
+                            ⭐ {d.punctuality_score ? parseFloat(d.punctuality_score).toFixed(1) : '5.0'}
+                          </span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--sub)' }}>
+                            {d.on_time_rate != null ? `${parseFloat(d.on_time_rate).toFixed(0)}% On-Time` : '100% On-Time'}
+                          </span>
+                        </div>
                       </td>
 
                       {/* App Access */}

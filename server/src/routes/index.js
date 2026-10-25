@@ -15,6 +15,7 @@ const locationRoutes = require('./locationRoutes');
 const platformRoutes = require('./platformRoutes');
 const documentRoutes = require('./documentRoutes');
 const availabilityRoutes = require('./availabilityRoutes');
+const punctualityRoutes = require('./punctualityRoutes');
 
 router.use('/trips', tripRoutes);
 router.use('/billing', billingRoutes);
@@ -30,5 +31,6 @@ router.use('/locations', locationRoutes);
 router.use('/platform', platformRoutes);
 router.use('/documents', documentRoutes);
 router.use('/availability', availabilityRoutes);
+router.use('/punctuality', punctualityRoutes);
 
 module.exports = router;

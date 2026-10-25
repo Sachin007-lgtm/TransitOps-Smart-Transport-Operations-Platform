@@ -21,6 +21,9 @@ const Location = {
     heading = null,
     accuracy = null,
     altitude = null,
+    battery_level = null,
+    is_offline_sync = false,
+    geofence_status = 'IN_TRANSIT',
     captured_at = new Date()
   }) => {
     assertOrganizationId(organization_id, 'create');
@@ -37,8 +40,11 @@ const Location = {
         heading,
         accuracy,
         altitude,
+        battery_level,
+        is_offline_sync,
+        geofence_status,
         captured_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `;
 
@@ -53,11 +59,74 @@ const Location = {
       heading,
       accuracy,
       altitude,
+      battery_level,
+      is_offline_sync,
+      geofence_status,
       captured_at
     ];
 
     const result = await query(sql, values);
     return result.rows[0];
+  },
+
+  /**
+   * Insert a batch of vehicle location entries (e.g. from an offline sync buffer).
+   */
+  createBatch: async (pings, organization_id) => {
+    assertOrganizationId(organization_id, 'createBatch');
+    if (!Array.isArray(pings) || pings.length === 0) return [];
+
+    const valueClauses = [];
+    const values = [];
+    let idx = 1;
+
+    for (const p of pings) {
+      valueClauses.push(`(
+        $${idx++}, $${idx++}, $${idx++}, $${idx++},
+        $${idx++}, $${idx++}, $${idx++}, $${idx++},
+        $${idx++}, $${idx++}, $${idx++}, $${idx++},
+        $${idx++}, $${idx++}
+      )`);
+      values.push(
+        p.trip_id,
+        p.vehicle_id,
+        p.driver_id,
+        organization_id,
+        p.latitude,
+        p.longitude,
+        p.speed ?? null,
+        p.heading ?? null,
+        p.accuracy ?? null,
+        p.altitude ?? null,
+        p.battery_level ?? null,
+        p.is_offline_sync ?? true,
+        p.geofence_status ?? 'IN_TRANSIT',
+        p.captured_at || new Date()
+      );
+    }
+
+    const sql = `
+      INSERT INTO vehicle_locations (
+        trip_id,
+        vehicle_id,
+        driver_id,
+        organization_id,
+        latitude,
+        longitude,
+        speed,
+        heading,
+        accuracy,
+        altitude,
+        battery_level,
+        is_offline_sync,
+        geofence_status,
+        captured_at
+      ) VALUES ${valueClauses.join(', ')}
+      RETURNING *
+    `;
+
+    const result = await query(sql, values);
+    return result.rows;
   },
 
   /**
@@ -78,6 +147,9 @@ const Location = {
           heading,
           accuracy,
           altitude,
+          battery_level,
+          is_offline_sync,
+          geofence_status,
           captured_at,
           created_at AS location_created_at
         FROM vehicle_locations
@@ -89,6 +161,15 @@ const Location = {
         t.status AS trip_status,
         t.origin,
         t.destination,
+        t.origin_lat,
+        t.origin_lng,
+        t.dest_lat,
+        t.dest_lng,
+        t.arrived_pickup_at,
+        t.departed_pickup_at,
+        t.arrived_dest_at,
+        t.loaded_at,
+        t.unloaded_at,
         t.planned_route,
         t.start_time,
         t.expected_arrival,
@@ -101,6 +182,8 @@ const Location = {
         d.id AS driver_id,
         d.name AS driver_name,
         d.contact_number AS driver_phone,
+        d.punctuality_score AS driver_punctuality_score,
+        d.on_time_rate AS driver_on_time_rate,
         ll.location_id,
         ll.latitude,
         ll.longitude,
@@ -108,6 +191,9 @@ const Location = {
         ll.heading,
         ll.accuracy,
         ll.altitude,
+        ll.battery_level,
+        ll.is_offline_sync,
+        ll.geofence_status,
         ll.captured_at
       FROM trips t
       LEFT JOIN latest_loc ll ON ll.trip_id = t.id
@@ -140,6 +226,9 @@ const Location = {
         vl.heading,
         vl.accuracy,
         vl.altitude,
+        vl.battery_level,
+        vl.is_offline_sync,
+        vl.geofence_status,
         vl.captured_at,
         vl.created_at
       FROM vehicle_locations vl

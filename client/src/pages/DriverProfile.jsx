@@ -89,6 +89,7 @@ export default function DriverProfile() {
     contact: '',
     status: 'Off Duty'
   });
+  const [punctualityData, setPunctualityData] = useState(null);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
 
   async function loadProfile() {
@@ -121,6 +122,15 @@ export default function DriverProfile() {
       if (tripsRes.data && Array.isArray(tripsRes.data)) {
         const myTrips = tripsRes.data.filter(t => String(t.driver_id) === String(id));
         setTrips(myTrips);
+      }
+
+      try {
+        const punctRes = await apiRequest('GET', `/punctuality/driver/${id}`);
+        if (punctRes && punctRes.data) {
+          setPunctualityData(punctRes.data);
+        }
+      } catch (punctErr) {
+        // Non-fatal if no punctuality entries yet
       }
     } catch (err) {
       console.error(err);
@@ -343,6 +353,99 @@ export default function DriverProfile() {
                 <InfoCard icon={Clock} label="Time Left" value={daysLeft !== null ? (daysLeft < 0 ? 'Expired' : `${daysLeft} days`) : '—'} />
                 <InfoCard icon={User} label="Status" value={driver.status || 'Available'} />
               </div>
+            </div>
+
+            {/* Punctuality & Reliability Scorecard */}
+            <div className="vp-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--sub)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
+                  ⏱️ Punctuality &amp; Reliability Scorecard
+                </h3>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#DCFCE7', color: '#166534' }}>
+                  ⭐ {driver.punctuality_score ? parseFloat(driver.punctuality_score).toFixed(1) : '5.0'} / 5.0 Rating
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div style={{ padding: '0.85rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>On-Time Arrival Rate</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginTop: '0.25rem' }}>
+                    {driver.on_time_rate != null ? `${parseFloat(driver.on_time_rate).toFixed(0)}%` : '100%'}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#16a34a', marginTop: '0.2rem' }}>
+                    {driver.on_time_trips_count ?? 0} on-time trips
+                  </div>
+                </div>
+
+                <div style={{ padding: '0.85rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Average Delay</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginTop: '0.25rem' }}>
+                    {driver.avg_delay_minutes ? `+${parseFloat(driver.avg_delay_minutes).toFixed(0)}m` : '0m'}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.2rem' }}>
+                    {driver.late_trips_count ?? 0} delayed trips
+                  </div>
+                </div>
+
+                <div style={{ padding: '0.85rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Accountability Tier</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a', marginTop: '0.25rem' }}>
+                    {parseFloat(driver.punctuality_score || 5) >= 4.5 ? 'Tier A (Elite)' : parseFloat(driver.punctuality_score) >= 3.5 ? 'Tier B (Standard)' : 'Tier C (Review)'}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.2rem' }}>
+                    High dispatch priority
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Punctuality Audit Logs */}
+              {punctualityData?.logs && punctualityData.logs.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', textAlign: 'left', color: '#475569' }}>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Trip Route</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Scheduled</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Actual Delivery</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Delay</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Score</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {punctualityData.logs.slice(0, 5).map((log, lIdx) => (
+                        <tr key={log.id || lIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '0.5rem 0.6rem', fontWeight: 600 }}>{log.origin} → {log.destination}</td>
+                          <td style={{ padding: '0.5rem 0.6rem', color: '#64748b' }}>
+                            {log.expected_delivery_time ? new Date(log.expected_delivery_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.6rem' }}>
+                            {log.actual_delivery_time ? new Date(log.actual_delivery_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.6rem' }}>
+                            <span style={{
+                              fontWeight: 700,
+                              color: log.is_on_time_delivery ? '#16a34a' : '#dc2626'
+                            }}>
+                              {log.is_on_time_delivery ? 'On Time' : `+${log.delivery_delay_minutes}m`}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.5rem 0.6rem', fontWeight: 700 }}>
+                            ⭐ {parseFloat(log.trip_punctuality_score).toFixed(1)}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.6rem', color: '#64748b', fontSize: '0.75rem' }}>
+                            {log.summary_notes || 'Completed smoothly'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic', padding: '0.5rem 0' }}>
+                  No historical trip punctuality audits recorded yet. Completed trips automatically generate performance audit logs.
+                </div>
+              )}
             </div>
 
             {/* Recent Trips Preview */}
