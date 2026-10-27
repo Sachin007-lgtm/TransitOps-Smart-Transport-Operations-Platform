@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { getStoredToken, getStoredUser } from '../../utils/api';
 
 function LoadingScreen() {
   return (
@@ -44,7 +45,8 @@ export function ProtectedRoute() {
     return <LoadingScreen />;
   }
 
-  if (!isAuthenticated) {
+  const isAuthed = isAuthenticated || Boolean(getStoredToken() && getStoredUser());
+  if (!isAuthed) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -58,11 +60,15 @@ export function PlatformAdminRoute() {
     return <LoadingScreen />;
   }
 
-  if (!isAuthenticated) {
+  const storedUser = getStoredUser();
+  const activeUser = user || storedUser;
+  const isAuthed = isAuthenticated || Boolean(getStoredToken() && storedUser);
+
+  if (!isAuthed) {
     return <Navigate to="/login" replace />;
   }
 
-  if (user?.role !== 'Platform Admin') {
+  if (activeUser?.role !== 'Platform Admin') {
     return <Navigate to="/" replace />;
   }
 
@@ -76,15 +82,19 @@ export function TenantManagerRoute() {
     return <LoadingScreen />;
   }
 
-  if (!isAuthenticated) {
+  const storedUser = getStoredUser();
+  const activeUser = user || storedUser;
+  const isAuthed = isAuthenticated || Boolean(getStoredToken() && storedUser);
+
+  if (!isAuthed) {
     return <Navigate to="/login" replace />;
   }
 
-  if (user?.role === 'Platform Admin') {
+  if (activeUser?.role === 'Platform Admin') {
     return <Navigate to="/admin" replace />;
   }
 
-  if (user?.role === 'Owner/Manager') {
+  if (activeUser?.role === 'Owner/Manager') {
     return <Outlet />;
   }
 

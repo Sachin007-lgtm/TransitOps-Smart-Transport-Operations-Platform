@@ -77,15 +77,22 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
 
-    const trimmed = identifier.trim();
-    if (!trimmed || !password) {
+    // Capture values from DOM form elements to reliably catch browser autofill/password manager values
+    const form = e.currentTarget;
+    const domIdentifier = form?.elements?.['identifier']?.value ?? form?.querySelector('input[type="text"]')?.value;
+    const domPassword = form?.elements?.['password']?.value ?? form?.querySelector('input[type="password"]')?.value;
+
+    const trimmed = (domIdentifier != null && domIdentifier !== '' ? domIdentifier : identifier).trim();
+    const finalPassword = (domPassword != null && domPassword !== '' ? domPassword : password);
+
+    if (!trimmed || !finalPassword) {
       setError('Please enter your email or phone number and password.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const authUser = await login(trimmed, password);
+      const authUser = await login(trimmed, finalPassword);
       let destination = location.state?.from?.pathname;
       if (authUser?.role === 'Platform Admin') {
         destination = '/admin';
@@ -184,9 +191,11 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="login-form">
             <div className="input-group">
-              <label>EMAIL OR PHONE NUMBER</label>
+              <label htmlFor="identifier">EMAIL OR PHONE NUMBER</label>
               <input 
                 type="text" 
+                id="identifier"
+                name="identifier"
                 className="login-input" 
                 value={identifier} 
                 onChange={e => setIdentifier(e.target.value)} 
@@ -198,10 +207,12 @@ export default function LoginPage() {
             </div>
 
             <div className="input-group" style={{ position: 'relative' }}>
-              <label>PASSWORD</label>
+              <label htmlFor="password">PASSWORD</label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input 
                   type={showPassword ? "text" : "password"} 
+                  id="password"
+                  name="password"
                   className="login-input" 
                   style={{ paddingRight: '2.5rem' }} 
                   value={password} 

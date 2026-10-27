@@ -35,7 +35,8 @@ export function clearStoredAuth() {
 }
 
 export async function apiRequest(method, path, body = null, explicitToken = null) {
-  const token = explicitToken !== null ? explicitToken : getStoredToken();
+  const isLoginEndpoint = path === '/auth/login';
+  const token = !isLoginEndpoint ? (explicitToken !== null ? explicitToken : getStoredToken()) : null;
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {})

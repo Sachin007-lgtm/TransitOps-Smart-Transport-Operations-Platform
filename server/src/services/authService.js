@@ -53,7 +53,16 @@ const authService = {
 
 		const loginIdentifier = normalizePhoneNumber(rawIdentifier) || rawIdentifier;
 		const user = await User.findByLogin(loginIdentifier);
-		if (!user || user.is_active === false || !(await comparePassword(password, user.password_hash))) {
+		if (!user || user.is_active === false) {
+			throw new AuthServiceError('Invalid credentials.', 401);
+		}
+
+		// Verify password, with fallback for accidental leading/trailing whitespace
+		let isPassMatch = await comparePassword(password, user.password_hash);
+		if (!isPassMatch && typeof password === 'string' && password.trim() !== password) {
+			isPassMatch = await comparePassword(password.trim(), user.password_hash);
+		}
+		if (!isPassMatch) {
 			throw new AuthServiceError('Invalid credentials.', 401);
 		}
 
