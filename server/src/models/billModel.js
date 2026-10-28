@@ -244,6 +244,9 @@ const Bill = {
       if (charge_ids && charge_ids.length > 0) {
         chargeSql += ' AND id = ANY($3::int[])';
         chargeValues.push(charge_ids);
+      } else if (trip_ids && trip_ids.length > 0) {
+        chargeSql += ` AND trip_id = ANY($3::uuid[])`;
+        chargeValues.push(trip_ids);
       }
       chargeSql += ' ORDER BY charge_date ASC NULLS LAST, id ASC FOR UPDATE;';
 

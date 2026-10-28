@@ -80,12 +80,30 @@ const resetDriverPassword = asyncWrapper(async (req, res) => {
   }
 });
 
+const importDriversFromCsv = asyncWrapper(async (req, res) => {
+  try {
+    if (!req.file) {
+      return apiResponse.error(res, 'No CSV file uploaded.', 400);
+    }
+    const fs = require('fs');
+    const { parseCsv } = require('../utils/csvParser');
+    const text = fs.readFileSync(req.file.path, 'utf8');
+    const { rows, headers } = parseCsv(text);
+    const result = await driverService.importDriversFromCsv(rows, headers, req.user);
+    try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore cleanup errors */ }
+    return apiResponse.success(res, result, 'Driver CSV import completed.', 200);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 module.exports = {
   getAllDrivers,
   getDriverById,
   createDriver,
   updateDriver,
   deleteDriver,
-  updateDriverStatus
-  ,resetDriverPassword
+  updateDriverStatus,
+  resetDriverPassword,
+  importDriversFromCsv
 };

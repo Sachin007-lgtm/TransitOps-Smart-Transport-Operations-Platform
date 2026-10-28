@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronDown, Plus, RefreshCw } from 'lucide-react';
+import { Search, ChevronDown, Plus, RefreshCw, Upload } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
 import { useConfirm } from '../contexts/ConfirmContext';
-import { apiRequest } from '../utils/api';
+import { apiRequest, apiUploadFile } from '../utils/api';
 import DriverTable from '../components/drivers/DriverTable';
 import AddDriverModal from '../components/drivers/AddDriverModal';
 import CredentialModal from '../components/drivers/CredentialModal';
@@ -38,10 +38,15 @@ export default function Drivers() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // CSV Import state
+  const [importingDrivers, setImportingDrivers] = useState(false);
+  const [driverImportResult, setDriverImportResult] = useState(null);
+
   // Status Filter in toolbar (Matching Vehicles.jsx standard)
   const [statusFilter, setStatusFilter] = useState('All');
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const statusRef = useRef(null);
+  const driverFileInputRef = useRef(null);
 
   // Modal dialog states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -160,6 +165,30 @@ export default function Drivers() {
           type: 'error'
         })
       );
+    }
+  };
+
+  const handleImportDrivers = async (file) => {
+    if (!file) return;
+    setImportingDrivers(true);
+    setDriverImportResult(null);
+    try {
+      const result = await apiUploadFile('/drivers/import/csv', 'csv', file);
+      setDriverImportResult(result.data);
+      const created = result.data?.created ?? 0;
+      const skipped = result.data?.skipped ?? 0;
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: `Driver CSV import complete — ${created} added, ${skipped} skipped`
+        })
+      );
+      await loadDrivers();
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('app-toast', { detail: err.message || 'Driver CSV import failed', type: 'error' })
+      );
+    } finally {
+      setImportingDrivers(false);
     }
   };
 
@@ -343,14 +372,36 @@ export default function Drivers() {
               <RefreshCw size={14} className={loading ? 'spin-icon' : ''} />
               <span>Refresh</span>
             </button>
-            <button 
-              type="button" 
-              className="btn btn-plum-glow" 
-              style={{ height: '34px', fontSize: '0.82rem' }} 
+            <button
+              type="button"
+              className="btn btn-plum-glow"
+              style={{ height: '34px', fontSize: '0.82rem' }}
               onClick={() => setIsAddModalOpen(true)}
             >
               <Plus size={15} /> Add driver
             </button>
+            <button
+              type="button"
+              disabled={importingDrivers}
+              ref={driverFileInputRef}
+              className="btn btn-outline"
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.75rem', opacity: importingDrivers ? 0.7 : 1 }}
+              onClick={driverFileInputRef.current ? () => driverFileInputRef.current.click() : undefined}
+              title="Import drivers from CSV"
+            >
+              <Upload size={14} className={importingDrivers ? 'spin-icon' : ''} /> Import CSV
+            </button>
+            <input
+              ref={driverFileInputRef}
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportDrivers(f);
+                e.target.value = '';
+              }}
+            />
           </>
         }
       />

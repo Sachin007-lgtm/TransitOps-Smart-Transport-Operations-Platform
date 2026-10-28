@@ -65,11 +65,30 @@ const deleteVehicle = asyncWrapper(async (req, res) => {
   }
 });
 
+const importVehiclesFromCsv = asyncWrapper(async (req, res) => {
+  try {
+    if (!req.file) {
+      return apiResponse.error(res, 'No CSV file uploaded.', 400);
+    }
+    const fs = require('fs');
+    const { parseCsv } = require('../utils/csvParser');
+    const text = fs.readFileSync(req.file.path, 'utf8');
+    const { rows, headers } = parseCsv(text);
+    const result = await vehicleService.importVehiclesFromCsv(rows, headers, req.user);
+    // Clean up the uploaded file after processing.
+    try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore cleanup errors */ }
+    return apiResponse.success(res, result, 'Vehicle CSV import completed.', 200);
+  } catch (err) {
+    return handleError(res, err);
+  }
+});
+
 module.exports = {
   getAllVehicles,
   getVehicleById,
   createVehicle,
   updateVehicle,
   updateVehicleStatus,
-  deleteVehicle
+  deleteVehicle,
+  importVehiclesFromCsv
 };

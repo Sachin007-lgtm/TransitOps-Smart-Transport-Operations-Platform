@@ -593,6 +593,18 @@ const tripService = {
         throw new TripServiceError(`Cannot transition from terminal status '${currentStatus}'.`, 400);
       }
 
+      // A trip already on an issued bill cannot be cancelled: the bill holds
+      // a snapshot line for it, so cancelling strands that line against a trip
+      // that no longer happened. Void the bill first (which returns the trip
+      // to the unbilled pool), then cancel. Mirrors the edit-path guard at
+      // lines 304-316.
+      if (nextStatus === 'Cancelled' && trip.billing_status === 'Billed') {
+        throw new TripServiceError(
+          `This trip is already on bill ${trip.bill_id}. Void that bill first if it was raised in error, then cancel.`,
+          409
+        );
+      }
+
       if (nextStatus === 'Completed') {
         const fixingReport = await client.query(
           "SELECT 1 FROM maintenance_reports WHERE trip_id = $1 AND organization_id = $2 AND status = 'Acknowledged' LIMIT 1",

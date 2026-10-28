@@ -175,20 +175,21 @@ describe('TransitOps Expense Module Backend Tests', () => {
     assert.ok(rows.length >= 3);
 
     const fills = rows.filter((r) => r.category === 'FUEL' && r.odometer !== null).sort((a, b) => b.odometer - a.odometer);
-    // km/l of a fill = distance that tank covered: (this fill's odometer −
-    // the previous fill's odometer, newest-first) / litres. Three fills exist
-    // (45500 smuggled-alias, 45490, 45200): the chain reads
-    //   45500 -> null (nothing before it)
-    //   45490 -> (45500−45490)/38 = 0.26
-    //   45200 -> (45490−45200)/40 = 7.25
+    // km/l of a fill = distance that tank covered:
+    //   (this fill's odometer − the previous fill's odometer, per vehicle) / this fill's litres.
+    // Chain computed in odometer-ascending order (the real fill order), so each fill owns its own delta.
+    // Three fills exist (45500 smuggled-alias, 45490, 45200): the chain reads
+    //   45200 -> null                 (first fill, nothing before it)
+    //   45490 -> (45490−45200)/38 = 7.63   (290 km on its own 38 L)
+    //   45500 -> null                 (qty not recorded, so km/l undefined even though delta=10)
     const byOdo = new Map(fills.map((f) => [Number(f.odometer), f]));
     assert.equal(byOdo.get(45500).km_per_litre, null);
-    assert.equal(byOdo.get(45490).km_per_litre, 0.26);
-    assert.equal(byOdo.get(45200).km_per_litre, 7.25);
+    assert.equal(byOdo.get(45490).km_per_litre, 7.63);
+    assert.equal(byOdo.get(45200).km_per_litre, null);
     // Distance travelled since the previous refill rides the same rows.
-    assert.equal(byOdo.get(45500).distance_since_prev, null);
-    assert.equal(byOdo.get(45490).distance_since_prev, 10);
-    assert.equal(byOdo.get(45200).distance_since_prev, 290);
+    assert.equal(byOdo.get(45500).distance_since_prev, 10);
+    assert.equal(byOdo.get(45490).distance_since_prev, 290);
+    assert.equal(byOdo.get(45200).distance_since_prev, null);
   });
 
   test('GET /expenses filters by category and recovered status', async () => {

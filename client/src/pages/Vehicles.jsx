@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronDown, Copy, Edit3, Info, FileText, RefreshCw } from 'lucide-react';
+import { Plus, Search, ChevronDown, Copy, Edit3, Info, FileText, RefreshCw, Upload } from 'lucide-react';
 import { useGlobalSearch } from '../contexts/GlobalSearchContext';
-import { apiRequest } from '../utils/api';
+import { apiRequest, apiUploadFile } from '../utils/api';
 import { formatIndianNumberPlate, validateIndianNumberPlate } from '../utils/numberPlate';
 import PageToolbar from '../components/common/PageToolbar';
 import StatStrip from '../components/common/StatStrip';
@@ -59,10 +59,15 @@ export default function Vehicles() {
   // Toast State
   const [toasts, setToasts] = useState([]);
 
+  // CSV Import state
+  const [importingVehicles, setImportingVehicles] = useState(false);
+  const [vehicleImportResult, setVehicleImportResult] = useState(null);
+
   // Refs for click outside
   const typeRef = useRef(null);
   const sizeRef = useRef(null);
   const statusRef = useRef(null);
+  const vehicleFileInputRef = useRef(null);
 
   const loadVehicles = async () => {
     try {
@@ -146,6 +151,24 @@ export default function Vehicles() {
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 2500);
+  };
+
+  const handleImportVehicles = async (file) => {
+    if (!file) return;
+    setImportingVehicles(true);
+    setVehicleImportResult(null);
+    try {
+      const result = await apiUploadFile('/vehicles/import/csv', 'csv', file);
+      setVehicleImportResult(result.data);
+      const created = result.data?.created ?? 0;
+      const skipped = result.data?.skipped ?? 0;
+      addToast(`Vehicle CSV import complete — ${created} added, ${skipped} skipped`);
+      await loadVehicles();
+    } catch (err) {
+      addToast(err.message || 'Vehicle CSV import failed', true);
+    } finally {
+      setImportingVehicles(false);
+    }
   };
 
   const copyToClipboard = (text) => {
@@ -488,14 +511,36 @@ export default function Vehicles() {
               <RefreshCw size={14} className={loading ? 'spin-icon' : ''} />
               <span>Refresh</span>
             </button>
-            <button 
-              type="button" 
-              className="btn btn-plum-glow" 
-              style={{ height: '34px', fontSize: '0.82rem' }} 
+            <button
+              type="button"
+              className="btn btn-plum-glow"
+              style={{ height: '34px', fontSize: '0.82rem' }}
               onClick={() => setIsModalOpen(true)}
             >
               <Plus size={15} /> Add vehicle
             </button>
+            <button
+              type="button"
+              disabled={importingVehicles}
+              ref={vehicleFileInputRef}
+              className="btn btn-outline"
+              style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.75rem', opacity: importingVehicles ? 0.7 : 1 }}
+              onClick={vehicleFileInputRef.current ? () => vehicleFileInputRef.current.click() : undefined}
+              title="Import vehicles from CSV"
+            >
+              <Upload size={14} className={importingVehicles ? 'spin-icon' : ''} /> Import CSV
+            </button>
+            <input
+              ref={vehicleFileInputRef}
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportVehicles(f);
+                e.target.value = '';
+              }}
+            />
           </>
         }
       />

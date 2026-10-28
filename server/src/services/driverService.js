@@ -317,6 +317,133 @@ const driverService = {
     } finally {
       client.release();
     }
+  },
+
+  /**
+   * Import drivers from a parsed CSV row set.
+   *
+   * Every owner may ship their own column names, so columns are resolved via
+   * aliases (see src/utils/columnMapper.js). Each row is validated and created
+   * independently: a bad row is skipped with a reason and never blocks the
+   * rest of the batch. Results are never partial within a single row (a row
+   * either creates fully or not at all), but the batch as a whole can contain
+   * both created and skipped rows.
+   *
+   * @param {Array<Record<string,string>>} rows - parsed CSV rows
+   * @param {string[]} headers - normalized CSV header keys
+   * @param {Object} user - authenticated user (provides organization_id)
+   * @returns {Object} { created: number, skipped: number, details: Array<{row, driver, error, skipped: boolean}> }
+   */
+  importDriversFromCsv: async (rows, headers, user) => {
+    const { matchColumn, pickRow, DRIVER_ALIASES } = require('../utils/columnMapper');
+    const {
+      normalizeIndianLicenseNumber,
+      normalizeLicenseCategory
+    } = require('../utils/license');
+    const { normalizePhoneNumber } = require('../utils/phone');
+    const { generateTemporaryPassword, hashPassword } = require('../utils/credentials');
+    const User = require('../models/userModel');
+
+    const details = [];
+    let created = 0;
+    let skipped = 0;
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
+      const mapped = pickRow(row, DRIVER_ALIASES, headers);
+
+      const rawName = mapped.name || '';
+      if (!rawName || !rawName.trim()) {
+        skipped++;
+        details.push({ row: rowIndex + 2, driver: null, error: 'Driver name is required.', skipped: true });
+        continue;
+      }
+
+      const rawLicense = mapped.license_number || '';
+      if (!rawLicense || !rawLicense.trim()) {
+        skipped++;
+        details.push({ row: rowIndex + 2, driver: null, error: 'License number is required.', skipped: true });
+        continue;
+      }
+
+      const normalizedLicense = normalizeIndianLicenseNumber(rawLicense);
+      if (!normalizedLicense) {
+        skipped++;
+        details.push({ row: rowIndex + 2, driver: null, error: `Invalid license number format: ${rawLicense.trim()}.`, skipped: true });
+        continue;
+      }
+
+      const existing = await Driver.findByLicense(normalizedLicense, null, user.organization_id);
+      if (existing) {
+        skipped++;
+        details.push({ row: rowIndex + 2, driver: null, error: `License '${normalizedLicense}' already exists in your organization.`, skipped: true });
+        continue;
+      }
+
+      const rawPhone = mapped.contact_number || '';
+      const phoneNumber = normalizePhoneNumber(rawPhone);
+      if (!phoneNumber) {
+        skipped++;
+        details.push({ row: rowIndex + 2, driver: null, error: 'A valid phone number is required.', skipped: true });
+        continue;
+      }
+
+      const normalizedCategory = normalizeLicenseCategory(mapped.license_category) || 'LMV-TR';
+      const status = (mapped.status || 'Available').trim();
+      if (status === 'On Trip') {
+        skipped++;
+        details.push({ row: rowIndex + 2, driver: null, error: 'Driver status cannot be manually set to "On Trip".', skipped: true });
+        continue;
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const driver = await Driver.create({
+          name: rawName.trim(),
+          license_number: normalizedLicense,
+          license_category: normalizedCategory,
+          license_expiry_date: mapped.license_expiry_date || null,
+          contact_number: phoneNumber,
+          status,
+          organization_id: user.organization_id
+        }, client);
+
+        const temporaryPassword = generateTemporaryPassword();
+        const passwordHash = await hashPassword(temporaryPassword);
+
+        await User.createDriverAccount({
+          name: rawName.trim(),
+          phoneNumber,
+          passwordHash,
+          organizationId: user.organization_id,
+          driverId: driver.id
+        }, client);
+
+        await client.query('COMMIT');
+        const savedDriver = await Driver.findById(driver.id, user.organization_id);
+        created++;
+        details.push({
+          row: rowIndex + 2,
+          driver: { ...savedDriver, temporary_password: temporaryPassword, must_change_password: true },
+          error: null,
+          skipped: false
+        });
+      } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+          skipped++;
+          details.push({ row: rowIndex + 2, driver: null, error: 'A driver account already exists for this phone number or license.', skipped: true });
+        } else {
+          skipped++;
+          details.push({ row: rowIndex + 2, driver: null, error: err.message || 'Failed to create driver.', skipped: true });
+        }
+      } finally {
+        client.release();
+      }
+    }
+
+    return { created, skipped, details };
   }
 };
 

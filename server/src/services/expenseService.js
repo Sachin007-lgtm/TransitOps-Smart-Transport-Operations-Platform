@@ -18,27 +18,39 @@ function toPublicExpense(row) {
 }
 
 // Attach mileage to each fuel entry by comparing its odometer with the
-// previous fill on the same vehicle. Rows arrive newest-first, so the delta
-// reads backwards: distance_since_prev = how far the truck travelled on that
-// tank, km_per_litre = that distance / litres.
+// previous fill on the same vehicle.
+// The chain MUST be computed in odometer order (the real physical order of
+// fills), never in display order. Rows arrive newest-first for display, but
+// the newest fill owns its own distance; attaching deltas one row early makes
+// the newest fill show "—" and credits every older fill with the wrong fill's
+// consumption (expenseService.js bug). Display order must not define the chain.
 function withKmPerLitre(rows) {
-  const lastOdo = new Map();
-  for (const row of rows) {
-    if (row.category !== 'FUEL') continue;
-    if (row.odometer != null && row.quantity) {
-      const prev = lastOdo.get(row.vehicle_id);
-      const delta = prev !== undefined ? prev - row.odometer : null;
-      row.distance_since_prev = delta && delta > 0 ? delta : null;
-      row.km_per_litre = delta && delta > 0 ? Math.round((delta / Number(row.quantity)) * 100) / 100 : null;
-      lastOdo.set(row.vehicle_id, row.odometer);
-    } else {
-      // A fill without litres (or odometer) carries no mileage, but still
-      // moves the odometer chain forward so the next fill's delta stays honest.
-      row.distance_since_prev = null;
-      row.km_per_litre = null;
-      if (!lastOdo.has(row.vehicle_id) || row.odometer != null) {
-        lastOdo.set(row.vehicle_id, row.odometer);
+  const fills = rows.filter((r) => r.category === 'FUEL');
+  const byVehicle = new Map();
+  for (const fill of fills) {
+    if (!byVehicle.has(fill.vehicle_id)) byVehicle.set(fill.vehicle_id, []);
+    byVehicle.get(fill.vehicle_id).push(fill);
+  }
+  // odometer-ascending per vehicle -> each fill's delta = how far that tank
+  // carried the truck, owned by this fill, not shifted one row early.
+  for (const vehicleFills of byVehicle.values()) {
+    const ordered = vehicleFills.slice().sort(
+      (a, b) => Number(a.odometer || 0) - Number(b.odometer || 0)
+    );
+    let prevOdo = null;
+    for (const fill of ordered) {
+      let distance = null;
+      let kmpl = null;
+      if (fill.odometer != null && prevOdo !== null) {
+        const delta = Number(fill.odometer) - prevOdo;
+        if (delta > 0) {
+          distance = delta;
+          if (fill.quantity) kmpl = Math.round((delta / Number(fill.quantity)) * 100) / 100;
+        }
       }
+      fill.distance_since_prev = distance;
+      fill.km_per_litre = kmpl;
+      prevOdo = fill.odometer != null ? Number(fill.odometer) : prevOdo;
     }
   }
   return rows;

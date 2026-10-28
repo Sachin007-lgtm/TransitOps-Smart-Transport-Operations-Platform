@@ -214,6 +214,84 @@ const vehicleService = {
 
     const deleted = await Vehicle.delete(id, user.organization_id);
     return deleted;
+  },
+
+  /**
+   * Import vehicles from a parsed CSV row set.
+   *
+   * Every owner may ship their own column names, so columns are resolved via
+   * aliases (see src/utils/columnMapper.js). Each row is validated and created
+   * independently: a bad row is skipped with a reason and never blocks the
+   * rest of the batch. Results are never partial within a single row (a row
+   * either creates fully or not at all), but the batch as a whole can contain
+   * both created and skipped rows.
+   *
+   * @param {Array<Record<string,string>>} rows - parsed CSV rows
+   * @param {string[]} headers - normalized CSV header keys
+   * @param {Object} user - authenticated user (provides organization_id)
+   * @returns {Object} { created: number, skipped: number, details: Array<{row, vehicle, error, skipped: boolean}> }
+   */
+  importVehiclesFromCsv: async (rows, headers, user) => {
+    const { matchColumn, pickRow, VEHICLE_ALIASES } = require('../utils/columnMapper');
+    const { normalizeIndianNumberPlate } = require('../utils/numberPlate');
+
+    const details = [];
+    let created = 0;
+    let skipped = 0;
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
+      const mapped = pickRow(row, VEHICLE_ALIASES, headers);
+
+      // registration_number is mandatory for a vehicle.
+      const rawPlate =
+        mapped.registration_number ||
+        row[matchColumn(headers, ['registrationnumber', 'vehicle_number', 'vehiclenumber', 'numberplate', 'number_plate', 'plate'])] ||
+        '';
+      if (!rawPlate || !rawPlate.trim()) {
+        skipped++;
+        details.push({ row: rowIndex + 2, vehicle: null, error: 'Number plate is required.', skipped: true });
+        continue;
+      }
+
+      const plate = normalizeIndianNumberPlate(rawPlate);
+      if (!plate) {
+        skipped++;
+        details.push({ row: rowIndex + 2, vehicle: null, error: `Invalid number plate format: ${rawPlate.trim()}.`, skipped: true });
+        continue;
+      }
+
+      const existing = await Vehicle.findByRegistration(plate, user.organization_id);
+      if (existing) {
+        skipped++;
+        details.push({ row: rowIndex + 2, vehicle: null, error: `Vehicle '${plate}' already exists in your organization.`, skipped: true });
+        continue;
+      }
+
+      const type = (mapped.type || 'Truck').trim();
+      const size = (mapped.size || 'Standard').trim();
+      const odometer = parseFloat(mapped.odometer) || 0;
+      const maxLoadCapacity = parseFloat(mapped.max_load_capacity) || 1000.00;
+
+      try {
+        const vehicle = await Vehicle.create({
+          registration_number: plate,
+          type,
+          size,
+          max_load_capacity: maxLoadCapacity,
+          odometer,
+          status: 'Available',
+          organization_id: user.organization_id
+        });
+        created++;
+        details.push({ row: rowIndex + 2, vehicle, error: null, skipped: false });
+      } catch (err) {
+        skipped++;
+        details.push({ row: rowIndex + 2, vehicle: null, error: err.message || 'Failed to create vehicle.', skipped: true });
+      }
+    }
+
+    return { created, skipped, details };
   }
 };
 
